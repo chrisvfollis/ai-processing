@@ -1,0 +1,35 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+pyinstaller = "*"
+requests = "*"
+pillow = "*"
+opencv-python = "*"
+notebook = "*"
+matplotlib = "*"
+ipython = "*"
+opencv-contrib-python = "*"
+numpy = "*"
+pandas = "*"
+polars = "*"
+scipy = "*"
+tensorflow = "*"
+tensorflow-hub = "*"
+shapely = "*"
+torch = "*"
+deepface = "*"
+boto3 = "*"
+python-dotenv = "*"
+ffmpeg-python = "*"
+tqdm = "4.43.0"
+easydict = "1.9"
+pycocotools = "*"
+scipy = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"

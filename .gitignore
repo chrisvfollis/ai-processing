@@ -1,0 +1,15 @@
+*.hdf5
+
+*.mp4
+
+*.png
+*.jpeg
+*.jpg
+
+*.csv
+
+*.txt
+
+.DS_Store
+.idea/
+.vscode/

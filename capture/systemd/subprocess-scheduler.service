@@ -1,0 +1,19 @@
+[Unit]
+Description=Subprocess Scheduler
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ivaktvision
+Group=ivaktvision
+Type=simple
+ExecStart=/home/ivaktvision/.local/share/virtualenvs/edgesoftware-SOQyN1sR/bin/python3 /home/ivaktvision/Documents/edgesoftware/subprocess_scheduler.py
+Restart=on-failure
+WorkingDirectory=/home/ivaktvision/Documents/edgesoftware
+Environment="PATH=/usr/bin:/usr/local/bin:/bin:/usr/sbin:/sbin"
+LimitFSIZE=infinity
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target
+
