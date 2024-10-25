@@ -1,7 +1,7 @@
 from deepface import DeepFace
 import tensorflow as tf
 import cv2
-import input_output as io_utils
+import io_utils
 import datetime
 import sys
 

@@ -27,7 +27,8 @@ ffmpeg-python = "*"
 tqdm = "4.43.0"
 easydict = "1.9"
 pycocotools = "*"
-scipy = "*"
+torchreid = "*"
+torchvision = "*"
 
 [dev-packages]
 

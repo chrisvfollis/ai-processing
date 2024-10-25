@@ -1,6 +1,6 @@
 import numpy as np
 import bisect
-import input_output as io_utils
+import io_utils
 from utilities import percent_in_polygon, is_coincident
 import subprocess
 import sys
@@ -106,13 +106,13 @@ def filter_entryway_stays(all_trks, entryways, threshold=.5):
     return all_trks
 
 
-def identify_tracks(all_trks, subset, min_span=0):
+def identify_tracks(file, all_trks, subset, min_span=0):
     trks = [trk for trk in subset if (all_trks[trk]['trk_span'][1]
                                       - all_trks[trk]['trk_span'][0])
                                       >= min_span]
     for trk in trks:
         cam = trk.split('_')[0].strip('c')
-        vid_file = f'{location}_{timestamp}_{cam}.mp4'
+        vid_file = f'{file}_{cam}.mp4'
         
         identity, _ = facial_recognition(vid_file, all_trks[trk])
         if identity:
@@ -251,8 +251,9 @@ def logical_identification(all_trks, section, headcount):
     return all_trks
 
 
-if __name__ == '__main__':
 
+
+def identify_all(file):
     physical_devices = tf.config.list_physical_devices('GPU')
     if physical_devices:
         try:
@@ -262,14 +263,10 @@ if __name__ == '__main__':
             print(e, flush=True)
     else:
         print("No GPU available", flush=True)
-
     start = datetime.datetime.now()
 
-    stride = 3
 
-    location = 'CP_Sacramento'
-    timestamp = '2024-08-12_08_35_57'
-    base_path = f'../intermediate_output/s{stride}_{location}_{timestamp}'
+    base_path = f'../intermediate_output/{file}'
     trk_path = base_path + '_trk_data.hdf5'
 
     config = io_utils.get_config()
@@ -293,7 +290,7 @@ if __name__ == '__main__':
     # Attempt to identify entry tracks and perform logical associations
     entry_subset = [trk for trk in all_trks.keys() if all_trks[trk]['entry']]
     print(entry_subset)
-    all_trks = identify_tracks(all_trks, entry_subset, min_span=240)
+    all_trks = identify_tracks(file, all_trks, entry_subset, min_span=240)
 
     for section in sorted(sections.keys()):
         headcount = headcounts[sections[section]['span'][0]]
@@ -301,9 +298,9 @@ if __name__ == '__main__':
 
     # Attempt to identify exit tracks and perform logical associations
     exit_subset = [trk for trk in all_trks.keys() if all_trks[trk]['exit']
-                   and not all_trks[trk].get('identity', None)]
+                and not all_trks[trk].get('identity', None)]
     print(exit_subset)
-    all_trks = identify_tracks(all_trks, exit_subset, min_span=240)
+    all_trks = identify_tracks(file, all_trks, exit_subset, min_span=240)
 
     for section in sorted(sections.keys()):
         headcount = headcounts[sections[section]['span'][0]]
@@ -312,12 +309,12 @@ if __name__ == '__main__':
     # Find biggest unidentified tracks
     for trk, data in all_trks.items():
         avg = (sum([box[2] * box[3] for box in data['detections'].values()])
-               / len(data['detections'].keys()))
+            / len(data['detections'].keys()))
         data['box_avg'] = int(round(avg, 0))
     
     large_box_subset = []
     for trk in sorted(all_trks.keys(), key=lambda k: all_trks[k]['box_avg'],
-                      reverse=True):
+                    reverse=True):
         if trk in entry_subset + exit_subset:
                 continue
         data = all_trks[trk]
@@ -325,30 +322,30 @@ if __name__ == '__main__':
             large_box_subset.append(trk)
             if len(large_box_subset) >= 4:
                 break
-    all_trks = identify_tracks(all_trks, large_box_subset)
+    all_trks = identify_tracks(file, all_trks, large_box_subset)
     for section in sorted(sections.keys()):
         headcount = headcounts[sections[section]['span'][0]]
         all_trks = logical_identification(all_trks, sections[section], headcount)
     
     # Attempt to identify secondary tracks
     secondary_subset = []
-    for k, v in all_trks.items():
-        if ((k.split('_')[0] == primary_cams[0]) and (v['exit'] or v['entry'])
-            and (not v.get('identity', None))):
-            for k2, v2 in secondary_trks.items():
-                if is_coincident(v['trk_span'], v2['trk_span']):
-                    secondary_subset.append(k2)
-    for k in secondary_subset:
-        all_trks[k] = secondary_trks[k]    
-    all_trks = identify_tracks(all_trks, secondary_subset, min_span=210)
-    for trk in secondary_subset:
-        if not all_trks[trk].get('identity', False):
-            del all_trks[trk]
-    sections = headcount_sections(all_trks, headcounts)
+    # for k, v in all_trks.items():
+    #     if ((k.split('_')[0] == primary_cams[0]) and (v['exit'] or v['entry'])
+    #         and (not v.get('identity', None))):
+    #         for k2, v2 in secondary_trks.items():
+    #             if is_coincident(v['trk_span'], v2['trk_span']):
+    #                 secondary_subset.append(k2)
+    # for k in secondary_subset:
+    #     all_trks[k] = secondary_trks[k]    
+    # all_trks = identify_tracks(file, all_trks, secondary_subset, min_span=210)
+    # for trk in secondary_subset:
+    #     if not all_trks[trk].get('identity', False):
+    #         del all_trks[trk]
+    # sections = headcount_sections(all_trks, headcounts)
 
-    for section in sorted(sections.keys()):
-        headcount = headcounts[sections[section]['span'][0]]
-        all_trks = logical_identification(all_trks, sections[section], headcount)
+    # for section in sorted(sections.keys()):
+    #     headcount = headcounts[sections[section]['span'][0]]
+    #     all_trks = logical_identification(all_trks, sections[section], headcount)
     
 
     # Attempt to identify remaining tracks
@@ -360,13 +357,13 @@ if __name__ == '__main__':
 
     final_subset = []
     for trk in sorted(all_trks.keys(), key=lambda k: all_trks[k]['box_avg'],
-                      reverse=True):
+                    reverse=True):
         if trk in entry_subset + exit_subset + secondary_subset:
                 continue
         data = all_trks[trk]
         if not data.get('identity', False):
             final_subset.append(trk)
-    all_trks = identify_tracks(all_trks, final_subset)
+    all_trks = identify_tracks(file, all_trks, final_subset)
     for section in sorted(sections.keys()):
         headcount = headcounts[sections[section]['span'][0]]
         all_trks = logical_identification(all_trks, sections[section], headcount)
@@ -374,9 +371,8 @@ if __name__ == '__main__':
     # Print results
     end = datetime.datetime.now()
 
-    io_utils.write_track_ids(location, timestamp, all_trks)
-    io_utils.write_trackspans(location, timestamp, all_frames, headcounts,
-                              all_trks, granularity=90)
+    io_utils.write_track_ids(file, all_trks)
+    io_utils.write_trackspans(file, all_frames, headcounts, all_trks, granularity=90)
 
     io_utils.update_identities(trk_path, all_trks)
     

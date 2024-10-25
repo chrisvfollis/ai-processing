@@ -39,16 +39,114 @@ class SelectWorkspace(tk.Frame):
             self.selected_shop.set(options[0])
     
     def submit(self):
-        def _save_shop():
+        def _save_shop(db_path):
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS shop (
+                    uuid TEXT PRIMARY KEY,
+                    shop_name TEXT NOT NULL
+                )
+            ''')
+            cursor.execute('DELETE FROM shop')
+            conn.commit()
+
             selected_workspace = self.selected_shop.get()
             self.controller.selected_shop = selected_workspace
-            
-            with open('../appdata/selected_shop.txt', 'w') as file:
-                selected_workspace = '_'.join(selected_workspace.split(' '))
-                print(selected_workspace)
-                file.write(selected_workspace)
+
+            shop_uuid = None
+            for uuid, shop_name in self.controller.shop_data.items():
+                print(uuid)
+                print(shop_name)
+                if shop_name == selected_workspace:
+                    shop_uuid = uuid
+                    break
+            if shop_uuid:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO shop (
+                        uuid, shop_name
+                    ) VALUES (?, ?)
+                ''', (shop_uuid, shop_name))
+
+                conn.commit()
+            else:
+                print('No shop UUID')
+
+            conn.close()
+            return shop_uuid
         
-        _save_shop()
+        def _fetch_employee_data(shop_uuid):
+            base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
+            employees_endpoint = 'employees-json/'
+            url = f"{base_url}{employees_endpoint}?shop_uuid={shop_uuid}"
+            headers = {
+                "X-Custom-API-Key": self.controller.api_key,
+                "Authorization": f"Bearer {self.controller.access_token}"
+            }
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                employee_data = response.json().get('employees', [])
+                for employee in employee_data:
+                    print(employee['first_name'])
+                    link = employee['front_image']
+                    r = requests.get(link)
+                    if response.status_code == 200:
+                        filename = link.rsplit('/', 1)[1]
+                        filename = filename.rsplit('_', 1)[0] + '.' + filename.rsplit('_', 1)[1]
+                        with open(f'../input_files/faces/{filename}', 'wb') as file:
+                            file.write(r.content)
+                        employee['front_image'] = filename
+                    else:
+                        print(response.status_code)
+                        print(response.text)
+            else:
+                print(response.status_code)
+                print(response.text)
+            
+            return employee_data
+
+        def _save_employee_data(db_path, employee_data):
+            """Inserts employee data into the employees table."""
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS employees (
+                    uuid TEXT PRIMARY KEY,
+                    first_name TEXT NOT NULL,
+                    last_name TEXT NOT NULL,
+                    shop_uuid TEXT NOT NULL,
+                    front_image TEXT
+                )
+            ''')
+            cursor.execute('DELETE FROM employees')
+            conn.commit()
+
+            insert_query = '''
+                INSERT OR REPLACE INTO employees (
+                    uuid, first_name, last_name, shop_uuid, front_image
+                ) VALUES (?, ?, ?, ?, ?)
+            '''
+
+            for employee in employee_data:
+                cursor.execute(insert_query, (
+                    employee['uuid'],
+                    employee['first_name'],
+                    employee['last_name'],
+                    employee['shop_uuid'],
+                    employee['front_image']
+                ))
+
+            conn.commit()
+            conn.close()
+    
+        shop_uuid = _save_shop('../appdata/data.db')
+        if shop_uuid:
+            employee_data = _fetch_employee_data(shop_uuid)
+            _save_employee_data('../appdata/data.db', employee_data)
+        else:
+            print('no uuid')
         self.controller.show_frame('AnnotateImages')
 
 
@@ -341,7 +439,10 @@ class SelectPrimary(tk.Frame):
                 designation TEXT NOT NULL
             )
         ''')
+
+        cursor.execute('DELETE FROM camera_designations')
         conn.commit()
+
 
         for file in self.image_files:
             i = self.image_files.index(file)

@@ -2,15 +2,32 @@ import numpy as np
 import os
 import torch
 import cv2
-import input_output as io_utils
+import io_utils
 import sys
 import datetime
 import warnings
+import torchreid
+import h5py
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'YOLOV4'))
 from models import Yolov4
 from YOLOv4.tool.torch_utils import do_detect
 
+
+def load_extractor(weights_path, device):
+    checkpoint = torch.load(weights_path, map_location=device)
+    state_dict = checkpoint['state_dict']
+
+    new_state_dict = {}
+    for key in state_dict.keys():
+        new_key = key.replace('module.', '')
+        new_state_dict[new_key] = state_dict[key]
+
+    model = torchreid.models.osnet.osnet_x1_0(num_classes=751, pretrained=False, loss='triplet')
+    model.load_state_dict(new_state_dict)
+    model.to(device)
+    model.eval()
+    return model
 
 def load_yolov4(weights_path, device):
     model = Yolov4(inference=True)
@@ -70,37 +87,71 @@ def detect_yolov4(img, class_num, model, device, conf_thresh=0.65,
     return filtered_detections
 
 
-def process_clip(file, model, stride=1, start=0):
+def process_clip(file, detector, extractor, stride=1, start=0, batch_size=100):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     base_path = '../input_files/'
     cap = cv2.VideoCapture(base_path + file)
 
     frame_data = {}
+    embeddings = []
+    frames_batch = []
+    box_indices_batch = []
     frame_number = start
 
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start)
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    with h5py.File(f'../intermediate_output/{file.split(".")[0]}_embeddings.hdf5', 'a') as hdf5_file:
+        embeddings_dataset = hdf5_file.create_dataset('embeddings', (0, 512), maxshape=(None, 512))
+        frames_dataset = hdf5_file.create_dataset('frames', (0,), maxshape=(None,), dtype='i')
+        box_indices_dataset = hdf5_file.create_dataset('box_indices', (0,), maxshape=(None,), dtype='i')
 
-        if frame_number % 300 == 0:
-            print(f'Frame: {frame_number}')
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start)
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        if (frame_number - start) % stride == 0:
-            det_xywhc = detect_yolov4(frame, 0, model, device)
-            if len(det_xywhc) > 0:
-                frame_data[frame_number] = det_xywhc
+            # if frame_number % 300 == 0:
+            #     print(f'Frame: {frame_number}')
 
+            if (frame_number - start) % stride == 0:
+                det_xywhc = detect_yolov4(frame, 0, detector, device)
+                if len(det_xywhc) > 0:
+                    frame_data[frame_number] = det_xywhc
 
-        if (stride == None) or (stride <= 15):
-            frame_number += 1
-        else:
-            frame_number += stride
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+                    for i, box in enumerate(det_xywhc):
+                        x, y, w, h, _ = box
+                        cropped = frame[y:y+h, x:x+w]
 
+                        try:
+                            image = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+                            image = cv2.resize(image, (128, 256))
+                            image = image.astype(np.float32)
+                            image = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0)
+                            image = image.to(device)
+
+                            embedding = extractor(image).cpu().detach().numpy().flatten()
+                            embeddings.append(embedding)
+                            frames_batch.append(frame_number)
+                            box_indices_batch.append(i)
+                        except:
+                            embeddings.append([])
+                            print(f"Error processing bounding box at {x},{y},{w},{h}")
+            if len(embeddings) >= batch_size:
+                io_utils.write_embeddings_hdf5(hdf5_file, embeddings, frames_batch, box_indices_batch)
+                embeddings.clear()
+                frames_batch.clear()
+                box_indices_batch.clear()
+
+            if (stride == None) or (stride <= 15):
+                frame_number += 1
+            else:
+                frame_number += stride
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+
+        if len(embeddings) > 0:
+            io_utils.write_embeddings_hdf5(hdf5_file, embeddings, frames_batch, box_indices_batch)
     cap.release()
 
-    return frame_data
+    return frame_data, embeddings
 
 
 if __name__ == '__main__':

@@ -7,11 +7,13 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
 
+        
         self.title('Multi-Page Application')
 
         self.geometry(self._geometry_string())
         self.container = self._setup_container()
 
+        self.api_key = '7gTrE4FBVSDq3x9Lpf0000CijUf'
         self.access_token = None
         self.refresh_token = None
         self.shop_data = {}

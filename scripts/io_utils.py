@@ -3,8 +3,9 @@ import csv
 import matplotlib.pyplot as plt
 import os
 import sqlite3
-
-
+import torch
+import numpy as np
+import utilities
 
 
 def get_config():
@@ -41,13 +42,39 @@ def get_config():
 
 
 def write_detection_csv(frame_data, clip):
-    new_csv_path = f'../intermediate_output/{clip.split('.')[0]}_detections.csv'
+    new_csv_path = f'../intermediate_output/{clip.split(".")[0]}_detections.csv'
     with open(new_csv_path, 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',')
         csvwriter.writerow(['Frame', 'X', 'Y', 'W', 'H', 'Conf'])
         for frame in sorted(frame_data.keys()):
             for det in frame_data[frame]:
                 csvwriter.writerow([frame] + det)
+
+
+def write_embeddings_hdf5(hdf5_file, embeddings, frames, box_indices):
+    frames = np.array(frames)
+    box_indices = np.array(box_indices)
+
+    # Stack the embeddings into a numpy array for saving
+    embeddings_array = np.stack(embeddings)
+
+    # Retrieve existing datasets from the file
+    embeddings_dataset = hdf5_file['embeddings']
+    frames_dataset = hdf5_file['frames']
+    box_indices_dataset = hdf5_file['box_indices']
+
+    # Calculate new size after appending
+    new_size = embeddings_dataset.shape[0] + embeddings_array.shape[0]
+
+    # Resize the datasets to accommodate new data
+    embeddings_dataset.resize(new_size, axis=0)
+    frames_dataset.resize(new_size, axis=0)
+    box_indices_dataset.resize(new_size, axis=0)
+
+    # Append new data
+    embeddings_dataset[-embeddings_array.shape[0]:] = embeddings_array
+    frames_dataset[-frames.shape[0]:] = frames
+    box_indices_dataset[-box_indices.shape[0]:] = box_indices
 
 
 def read_detection_csv(csv_path):
@@ -120,9 +147,12 @@ def get_entryway_events(file_path):
     return entryway_events
 
 
-def write_trk_data(location, timestamp, cam, all_trks, span, stride=1):
+def write_trk_data(filename, all_trks, span):
+    name = filename.rsplit('_', 1)[0]
+    cam = filename.rsplit('_', 1)[1].split('.')[0]
+    print(f'CAM: {cam}')
     file_path = ('../intermediate_output/' +
-                 f's{stride}_{location}_{timestamp}_trk_data.hdf5')
+                 f'{name}_trk_data.hdf5')
 
     with h5py.File(file_path, 'a') as file:
 
@@ -151,6 +181,48 @@ def write_trk_data(location, timestamp, cam, all_trks, span, stride=1):
             trk_span = [trk.first_detection_frame, trk.last_detection_frame]
             trk_group.create_dataset('trk_span', data=trk_span)
 
+
+def save_trk_data(filename, end, trk_data, db_path='../appdata/data.db'):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS track_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id TEXT NOT NULL,
+            camera TEXT NOT NULL,
+
+            clip_start_time DATETIME NOT NULL,
+            clip_end_frame INTEGER NOT NULL,
+
+            identity TEXT NOT NULL,
+
+            d_start_frame INTEGER NOT NULL,
+            d_start_time DATETIME NOT NULL,
+            
+            kf_end_frame INTEGER NOT NULL,
+            kf_end_time DATETIME NOT NULL,
+            kf_end_box TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+   
+    clip_timestamp = filename.rsplit('_', 1)[0]
+    clip_start_time = utilities.frame_timestamp(clip_timestamp, 0)
+    camera = filename.rsplit('_', 1)[1].split('.')[0]
+
+    for id, data in trk_data.items():
+
+        d_start_f = min(data.detections.keys())
+        d_start_t = utilities.frame_timestamp(clip_timestamp, d_start_f)
+
+        kf_end_f = max(data.states.keys())
+        kf_end_t = utilities.frame_timestamp(clip_timestamp, d_start_f)
+        kf_end_b = str(data.states[kf_end_f])
+
+        cursor.execute()
+
+
+    conn.close()
 
 def get_trk_data(file_path, cameras, min_span=0):
     metadata = {}
@@ -185,8 +257,8 @@ def get_trk_data(file_path, cameras, min_span=0):
     return metadata, all_trks 
 
 
-def write_track_ids(location, timestamp, all_trks):
-    path = f'../intermediate_output/{location}_{timestamp}_identified.csv'
+def write_track_ids(file, all_trks):
+    path = f'../intermediate_output/{file}_identified.csv'
     with open(path, 'w', newline='') as file:
         csvwriter = csv.writer(file, delimiter=',')
         csvwriter.writerow(['track', 'identity'])
@@ -194,10 +266,10 @@ def write_track_ids(location, timestamp, all_trks):
             csvwriter.writerow([trk, data.get('identity', None)])
 
 
-def write_trackspans(location, timestamp, all_frames, headcounts, all_trks,
+def write_trackspans(file, all_frames, headcounts, all_trks,
                      granularity=1):
 
-    path = f'../intermediate_output/{location}_{timestamp}_track_spans.csv'
+    path = f'../intermediate_output/{file}_track_spans.csv'
 
     trks = [trk for trk in sorted(all_trks.keys(), key=lambda x:
                                   (int(x.split('_')[0].strip('c')) * 100)
@@ -261,7 +333,7 @@ def get_queue_block(db_path, designation='primary'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT q.* FROM queue q
+        SELECT DISTINCT q.* FROM queue q
         JOIN camera_designations cd ON q.camera = cd.camera
         WHERE cd.designation = ?
         AND q.file_timestamp = (
@@ -294,7 +366,7 @@ def update_queue(db_path, file, time=None, cam=None, action='add'):
     if action == 'add':
         cursor.execute('''
             INSERT INTO queue (file_name, camera, file_timestamp)
-            VALUES (?, ?)
+            VALUES (?, ?, ?)
         ''', (file, cam, time))
     elif action == 'remove':
         cursor.execute('''
@@ -304,3 +376,15 @@ def update_queue(db_path, file, time=None, cam=None, action='add'):
 
     conn.commit()
     conn.close()
+
+
+def get_shop(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT * FROM shop
+        LIMIT 1
+    ''')
+    results = cursor.fetchall()[0]
+    conn.close()
+    return results

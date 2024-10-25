@@ -3,6 +3,9 @@ from tkinter import messagebox
 import requests
 
 
+CUSTOM_API_KEY = '7gTrE4FBVSDq3x9Lpf0000CijUf'
+
+
 class LoginPage(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
@@ -28,12 +31,18 @@ class LoginPage(tk.Frame):
         email = self.entry_username.get()
         password = self.entry_password.get()
 
-        base_url = 'https://ivaktvision-api-dev-4776e754665f.herokuapp.com/'
+        headers = {
+            'x-custom-api-key': CUSTOM_API_KEY,
+            'Content-Type': 'application/json'
+        }
+
+        base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
         auth_endpoint = ('accounts/login/')
         
 
         r = requests.post(base_url + auth_endpoint,
-                          data={'email': email, 'password': password})
+                          json={'email': email, 'password': password},
+                          headers=headers)
 
         if r.status_code == 200:
             data = r.json()
@@ -42,13 +51,15 @@ class LoginPage(tk.Frame):
             self.get_shopdata()
             self.controller.show_frame("SelectWorkspace")
         else:
+            print(r.status_code)
+            print(r.json())
             messagebox.showerror("Login Failed", "Invalid Username or Password")
 
     def update_data(self):
         return None
     
     def get_shopdata(self):
-        base_url = 'https://ivaktvision-api-dev-4776e754665f.herokuapp.com/'
+        base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
         shops_endpoint = ('shops/')
         r = requests.get(base_url + shops_endpoint,
                         headers={"Authorization":
