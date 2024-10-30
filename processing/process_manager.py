@@ -82,11 +82,11 @@ def main(stride=3):
             identification_pipeline(time_prefix)
 
             io_utils.post_events_to_webapp(time_prefix)
-            io_utils.update_queue(action='clear_section', time=timestamp)
+            io_utils.update_queue(action='clear_section', datetime=timestamp)
             delete_files(time_prefix)
 
         else:
-            io_utils.update_queue(action='clear_section', time=timestamp)
+            io_utils.update_queue(action='clear_section', datetime=timestamp)
             delete_files(time_prefix)            
 
 

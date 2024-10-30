@@ -177,10 +177,11 @@ def flag_entryway_events(all_trks, entryways, threshold=.4):
                     trk['detections'][end][:4]]
         keys = ['entry', 'exit']
         for i in range(2):
+            trk[keys[i]] = None
             for points in entryways[cam].values():
                 pcnt_in_entryway = percent_in_polygon(detections[i], points)
                 if pcnt_in_entryway > threshold:
                     trk[keys[i]] = trk['trk_span'][i]
-                else:
-                    trk[keys[i]] = None
+                    break
+
     return all_trks

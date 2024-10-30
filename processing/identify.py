@@ -113,7 +113,7 @@ def secondary():
     return None
 
 
-def identification_pipeline(time_prefix, min_span=210):
+def identification_pipeline(time_prefix, min_span=120):
     def _setup(time_prefix):
         physical_devices = tf.config.list_physical_devices('GPU')
         if physical_devices:
