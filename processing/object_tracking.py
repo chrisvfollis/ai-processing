@@ -198,7 +198,7 @@ def track(video_file, stride=1):
                                         ewh=[5, 5], mvar=[500, 500, 500, 500],
                                         evel=[5, 5, 0, 0], dt=0.5)
 
-            active_trks[trk_id] = Track(box, embeddings[i], f_num, *kf_args)
+            active_trks[trk_id] = Track(box[:4], embeddings[i], f_num, *kf_args)
             trk_id += 1
         return active_trks, trk_id
 

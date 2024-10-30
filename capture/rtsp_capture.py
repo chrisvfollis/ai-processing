@@ -25,6 +25,7 @@ def update_camera_info():
                     addresses = [line.strip() for line in camfile]
                 return addresses
             except Exception:
+                print('Network scan failed')
                 time.sleep(30)
 
     def _get_current_info(cursor):
@@ -33,7 +34,10 @@ def update_camera_info():
                 SELECT * FROM cameras
             ''')
             results = cursor.fetchall()
-            return results
+            if results and len(results) > 0:
+                return results
+            else:
+                return None
         except sqlite3.OperationalError:
             return None
 
@@ -100,7 +104,7 @@ def get_stream_info(fps={'primary': 15, 'secondary': 10}, db_path='../appdata/da
         try:
             frame_rate = fps[result[2]]
         except KeyError:
-            frame_rate = fps['secondary']
+            frame_rate = 30
         url = _create_rtsp_url(result[3])
 
         stream_info[camera] = {'url': url, 'frame_rate': frame_rate}
