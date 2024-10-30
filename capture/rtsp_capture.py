@@ -1,99 +1,184 @@
-import datetime
+from datetime import datetime
 import multiprocessing
 import subprocess
 import shlex
-from edge_logs import dispatch_logger
 import time
 import ffmpeg
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
-import input_output as io_utils
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'processing'))
+import io_utils
+import sqlite3
 
 
-def get_config():
-    with open('./config/cameras.txt', 'r') as camfile:
-        addresses = [line.strip() for line in camfile]
-    urls = [f'rtsp://admin:abcd1234@{address}:554/rtsp/streaming?channel=01&subtype=0'
-            for address in addresses[1:]]
+def update_camera_info():
+    def _scan_network():
+        while True:
+            try:
+                process = subprocess.Popen(
+                    '/home/ivaktvision/Documents/edgesoftware/utilities/network_scanner.sh',
+                    shell=True,
+                    cwd='/home/ivaktvision/Documents/edgesoftware/utilities'
+                )
+                process.wait()
+                with open('./config/cameras.txt', 'r') as camfile:
+                    addresses = [line.strip() for line in camfile]
+                return addresses
+            except Exception:
+                time.sleep(30)
+
+    def _get_current_info(cursor):
+        try:
+            cursor.execute('''
+                SELECT * FROM cameras
+            ''')
+            results = cursor.fetchall()
+            return results
+        except sqlite3.OperationalError:
+            return None
+
+    def _compare_info(prior_data, new_addresses):
+        old_addresses = [row[2] for row in prior_data]
+
+        matched = [address for address in new_addresses if address in
+                   old_addresses]
     
-    with open('./config/location.txt', 'r') as locfile:
-        location = locfile.read().strip()
-    return urls, location
+    def _add_new_cameras(conn, cursor, addresses):
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cameras (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                camera TEXT,
+                designation TEXT,
+                ip_address TEXT,
+                reference_img TEXT
+            )
+        ''')
+        conn.commit()
+
+        for i, address in enumerate(addresses):
+            camera = f'c{i}'
+            cursor.execute('''
+                INSERT INTO cameras (
+                    camera, ip_address
+                )
+                VALUES (?, ?)
+            ''', (camera, address))
+
+    conn = sqlite3.connect('../appdata/data.db')
+    cursor = conn.cursor()
+
+    new_ip_addresses = _scan_network()
+    if not _get_current_info(cursor):
+        _add_new_cameras(conn, cursor, new_ip_addresses)
 
 
-def capture_video(rtsp_url, duration, cam, location, origin):
+def get_stream_info(fps={'primary': 15, 'secondary': 10}, db_path='../appdata/data.db'):
+    def _create_rtsp_url(ip_address, format=0, default_creds=0, credentials=None):
+        default_credentials = [('admin', 'abcd1234'), ('admin', 'admin')]
+        if credentials:
+            user, passwd = credentials
+        else:
+            user, passwd = default_credentials[default_creds]
+        formats = [f'rtsp://{user}:{passwd}@{ip_address}:554/rtsp/streaming?channel=01&subtype=0',
+                f'rtsp://{user}:{passwd}@{ip_address}:554/ch01/0']
+        return formats[format]
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     try:
-        time = datetime.datetime.now()
-        t_formatted = time.strftime("%Y-%m-%d_%H:%M:%S")
+        cursor.execute('SELECT * FROM cameras')
+
+        results = cursor.fetchall()
+        conn.close()
+    except sqlite3.OperationalError:
+        conn.close()
+        return None
+    
+    stream_info = {}
+    for result in results:
+        camera = result[1]
+        try:
+            frame_rate = fps[result[2]]
+        except KeyError:
+            frame_rate = fps['secondary']
+        url = _create_rtsp_url(result[3])
+
+        stream_info[camera] = {'url': url, 'frame_rate': frame_rate}
+
+    return stream_info
+
+
+def rtsp_capture(rtsp_url, duration, cam, frame_rate):
+    try:
+        time = datetime.now()
+        t_formatted = time.strftime("%Y-%m-%d_%H-%M-%S")
         file = f'{t_formatted}_{str(cam)}.mp4'
-        output_path = f'footage/{file}'
+        output_path = f'../input_files/{file}'
         (
             ffmpeg
             .input(rtsp_url, rtsp_transport='tcp', t=duration)
-            .output(output_path, vcodec='copy', format='mp4')
+            .output(output_path, vcodec='copy', format='mp4', r=frame_rate)
             .run()
         )
 
-        io_utils.update_queue('../appdata/data.db', file, time=time, cam=f'c{cam}')
+        io_utils.update_queue(action='add', file=file, time=time, cam=f'c{cam}')
 
     except Exception as e:
-        dispatch_logger('error', origin, f'{e}')
+        # to do: create function to save logs to local database and
+        # periodically send to remote
         return False
     return True
 
 
-def multi_capture(duration, origin):
-    try:
-        urls, location = get_config()
-        streams, i = [], 0
-        for url in urls:
-            streams.append({"url": url, "duration": duration, "cam": i,
-                            "location": location, "origin": origin})
-            i += 1
-        
-        num_processes = len(urls)
-
-        pool = multiprocessing.Pool(processes=num_processes)
-        pool.starmap(capture_video, ((stream["url"], stream["duration"],
-                                    stream["cam"], stream["location"],
-                                    stream["origin"]) for stream in
-                                    streams))
-        pool.close()
-        pool.join()
-    except Exception as e:
-        dispatch_logger('error', origin, f'{e}')
-        return False
-    return True
-
-
-def rtsp_cap():
-    origin = 'rtsp_capture'
-    closing_time = datetime.time(18)
-    dispatch_logger('activity', origin, f'process started. closing time: {closing_time}')
-    now = datetime.datetime.now().time()
-
-    while now < closing_time:
-        print('New loop')
+def run_capture_cycle(stream_info, interval=5, min_seconds=3):
+    def _multi_capture(stream_info, duration):
         try:
-            if (datetime.datetime.now().time().minute % 5) == 0:
-                multi_capture(300, origin)
-            else:
-                now = datetime.datetime.now()
-                next_5_min = (((now.minute//5)+1)*5)
-                if next_5_min >= 60:
-                    record_until = datetime.datetime(
-                        now.year, now.month, now.day,
-                        now.hour + 1, 0, 0)
-                else:
-                    record_until = datetime.datetime(
-                        now.year, now.month, now.day, 
-                        now.hour, next_5_min, 0)
-                delta = (record_until - now).total_seconds() + 1
-                multi_capture(delta, origin)
+            streams = []
+            for cam, data in stream_info:
+                url = data['url']
+                frame_rate = data['frame_rate']
+                streams.append({"url": url, "duration": duration, "cam": cam,
+                                "frame_rate": frame_rate})
+            
+            num_processes = len(stream_info.keys())
+
+            pool = multiprocessing.Pool(processes=num_processes)
+            pool.starmap(rtsp_capture, ((stream["url"], stream["duration"],
+                                        stream["cam"], stream["frame_rate"])
+                                        for stream in streams))
+            pool.close()
+            pool.join()
         except Exception as e:
-            dispatch_logger('error', origin, f'{e}')
-            time.sleep(60)
-        now = datetime.datetime.now().time()
+            # to do: create function to save logs to local database and
+            # periodically send to remote
+            return False
+        return True
     
-    dispatch_logger('activity', origin, 'past closing time.')
+    duration = interval * 60
+    while True:
+        now = datetime.now()
+        if now.minute % interval == 0:
+            _multi_capture(stream_info, duration)
+        else:
+            next_interval = (((now.minute//interval)+1)*interval)
+            if next_interval >= 60:
+                record_until = datetime(now.year, now.month, now.day,
+                                        now.hour + 1, 0, 0)
+            else:
+                record_until = datetime(now.year, now.month, now.day, 
+                                        now.hour, next_interval, 0)
+            now = datetime.now()
+            delta = (record_until - now).total_seconds() + 1
+            if delta > min_seconds:
+                _multi_capture(stream_info, delta)
+
+
+if __name__ == '__main__':
+    while True:
+        update_camera_info()
+        stream_info = get_stream_info()
+        if not stream_info:
+            time.sleep(30)
+            continue
+        else:
+            run_capture_cycle(stream_info, interval=5)

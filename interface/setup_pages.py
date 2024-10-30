@@ -46,7 +46,7 @@ class SelectWorkspace(tk.Frame):
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS shop (
                     uuid TEXT PRIMARY KEY,
-                    shop_name TEXT NOT NULL
+                    shop_name TEXT
                 )
             ''')
             cursor.execute('DELETE FROM shop')
@@ -107,16 +107,15 @@ class SelectWorkspace(tk.Frame):
             return employee_data
 
         def _save_employee_data(db_path, employee_data):
-            """Inserts employee data into the employees table."""
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS employees (
                     uuid TEXT PRIMARY KEY,
-                    first_name TEXT NOT NULL,
-                    last_name TEXT NOT NULL,
-                    shop_uuid TEXT NOT NULL,
+                    first_name TEXT,
+                    last_name TEXT,
+                    shop_uuid TEXT,
                     front_image TEXT
                 )
             ''')
@@ -433,16 +432,16 @@ class SelectPrimary(tk.Frame):
         conn = sqlite3.connect('../appdata/data.db')
         cursor = conn.cursor()
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS camera_designations (
+            CREATE TABLE IF NOT EXISTS cameras (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                camera TEXT NOT NULL,
-                designation TEXT NOT NULL
+                camera TEXT,
+                designation TEXT,
+                ip_address,
+                reference_img TEXT
             )
         ''')
 
-        cursor.execute('DELETE FROM camera_designations')
         conn.commit()
-
 
         for file in self.image_files:
             i = self.image_files.index(file)
@@ -455,8 +454,9 @@ class SelectPrimary(tk.Frame):
                 designation_str = 'primary'
             
             cursor.execute('''
-                INSERT INTO camera_designations (camera, designation)
+                INSERT INTO cameras (camera, designation)
                 VALUES (?, ?)
+                ON CONFLICT(camera) DO UPDATE SET designation=excluded.designation
             ''', (cam, designation_str))
 
         conn.commit()

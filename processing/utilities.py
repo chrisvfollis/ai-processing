@@ -2,6 +2,7 @@ import csv
 from shapely.geometry import Polygon, box
 from datetime import datetime, timedelta
 import torch
+import torch.nn.functional as F
 import math
 
 
@@ -137,35 +138,49 @@ def percent_in_polygon(bbox, polygon_points):
     return intersection / area
 
 
-def read_detection_csv(csv_path):
-    frame_data = {}
-    with open(csv_path, 'r') as csvfile:
-        csvreader = csv.reader(csvfile, delimiter=',')
-        next(csvreader)
-
-        for row in csvreader:
-            frame = int(row[0])
-            x, y, w, h = map(int, row[1:5])
-
-            if frame not in frame_data:
-                frame_data[frame] = []
-            
-            frame_data[frame].append([x, y, w, h])
-
-    return frame_data
-
-
 def is_coincident(span1, span2):
     '''
-    Checks whether a span is coincident with another at any point.
+    Checks whether a span is coincident to another at any point.
     '''
     return not (span1[1] < span2[0] or span2[1] < span1[0])
 
 
-def frame_timestamp(clip_timestamp, frame, fps=30):
+def frame_timestamp(clip_timestamp, frame=0, fps=30):
     if isinstance(clip_timestamp, str):
-        clip_timestamp = clip_timestamp.replace('_', ':', 2).replace('_', ' ')
-        clip_timestamp = datetime.strptime(clip_timestamp, '%Y-%m-%d %H:%M:%S')
+        clip_timestamp = datetime.strptime(clip_timestamp, '%Y-%m-%d_%H-%M-%S')
 
     seconds = frame / fps
     return clip_timestamp + timedelta(seconds=seconds)
+
+
+def parse_clip_filename(video_file, data='all'):
+    if not video_file.endswith('.mp4'):
+        return video_file
+
+    sections = video_file.rsplit('_', 1)
+    time_prefix = sections[0]
+    camera = sections[1].split('.')[0]
+
+    if data == 'all':
+        return time_prefix, camera
+    elif data == 'time':
+        return time_prefix
+    elif data == 'camera':
+        return camera
+
+
+def flag_entryway_events(all_trks, entryways, threshold=.4):
+    for id, trk in all_trks.items():
+        cam = id.split('_')[0]
+        start, end = trk['trk_span']
+        detections = [trk['detections'][start][:4],
+                    trk['detections'][end][:4]]
+        keys = ['entry', 'exit']
+        for i in range(2):
+            for points in entryways[cam].values():
+                pcnt_in_entryway = percent_in_polygon(detections[i], points)
+                if pcnt_in_entryway > threshold:
+                    trk[keys[i]] = trk['trk_span'][i]
+                else:
+                    trk[keys[i]] = None
+    return all_trks

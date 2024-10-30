@@ -1,9 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
 import requests
-
-
-CUSTOM_API_KEY = '7gTrE4FBVSDq3x9Lpf0000CijUf'
+from dotenv import load_dotenv
+import os
 
 
 class LoginPage(tk.Frame):
@@ -31,8 +30,10 @@ class LoginPage(tk.Frame):
         email = self.entry_username.get()
         password = self.entry_password.get()
 
+        load_dotenv()
+        WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
         headers = {
-            'x-custom-api-key': CUSTOM_API_KEY,
+            'x-custom-api-key': WEBAPP_API_KEY,
             'Content-Type': 'application/json'
         }
 

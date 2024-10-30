@@ -29,6 +29,7 @@ def load_extractor(weights_path, device):
     model.eval()
     return model
 
+
 def load_yolov4(weights_path, device):
     model = Yolov4(inference=True)
     weights = torch.load(weights_path, map_location=device)
@@ -87,10 +88,11 @@ def detect_yolov4(img, class_num, model, device, conf_thresh=0.65,
     return filtered_detections
 
 
-def process_clip(file, detector, extractor, stride=1, start=0, batch_size=100):
+def detect_embed_pipeline(video_file, detector, extractor, stride=1, start=0,
+                          batch_size=100):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     base_path = '../input_files/'
-    cap = cv2.VideoCapture(base_path + file)
+    cap = cv2.VideoCapture(base_path + video_file)
 
     frame_data = {}
     embeddings = []
@@ -98,10 +100,10 @@ def process_clip(file, detector, extractor, stride=1, start=0, batch_size=100):
     box_indices_batch = []
     frame_number = start
 
-    with h5py.File(f'../intermediate_output/{file.split(".")[0]}_embeddings.hdf5', 'a') as hdf5_file:
-        embeddings_dataset = hdf5_file.create_dataset('embeddings', (0, 512), maxshape=(None, 512))
-        frames_dataset = hdf5_file.create_dataset('frames', (0,), maxshape=(None,), dtype='i')
-        box_indices_dataset = hdf5_file.create_dataset('box_indices', (0,), maxshape=(None,), dtype='i')
+    with h5py.File(f'../intermediate_output/{video_file.split(".")[0]}_embeddings.hdf5', 'a') as hdf5_file:
+        hdf5_file.create_dataset('embeddings', (0, 512), maxshape=(None, 512))
+        hdf5_file.create_dataset('frames', (0,), maxshape=(None,), dtype='i')
+        hdf5_file.create_dataset('box_indices', (0,), maxshape=(None,), dtype='i')
 
         cap.set(cv2.CAP_PROP_POS_FRAMES, start)
         while True:
@@ -136,31 +138,20 @@ def process_clip(file, detector, extractor, stride=1, start=0, batch_size=100):
                             embeddings.append([])
                             print(f"Error processing bounding box at {x},{y},{w},{h}")
             if len(embeddings) >= batch_size:
-                io_utils.write_embeddings_hdf5(hdf5_file, embeddings, frames_batch, box_indices_batch)
+                io_utils.write_embeddings(hdf5_file, embeddings, frames_batch, box_indices_batch)
                 embeddings.clear()
                 frames_batch.clear()
                 box_indices_batch.clear()
 
-            if (stride == None) or (stride <= 15):
+            if stride <= 15:
                 frame_number += 1
             else:
                 frame_number += stride
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
 
+        cap.release()
+
         if len(embeddings) > 0:
-            io_utils.write_embeddings_hdf5(hdf5_file, embeddings, frames_batch, box_indices_batch)
-    cap.release()
+            io_utils.write_embeddings(hdf5_file, embeddings, frames_batch, box_indices_batch)
 
-    return frame_data, embeddings
-
-
-if __name__ == '__main__':
-    file = 'CP_Sacramento_2024-08-12_08_35_57_0.mp4'
-    stride = 3
-
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    yolov4 = load_yolov4('YOLOv4.pth', device)
-    
-    frame_data = process_clip(file, yolov4, stride=stride)
-
-
+    return frame_data
