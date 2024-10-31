@@ -9,7 +9,7 @@ import warnings
 import torchreid
 import h5py
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'YOLOV4'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'YOLOv4'))
 from models import Yolov4
 from YOLOv4.tool.torch_utils import do_detect
 
