@@ -53,7 +53,7 @@ def update_camera_info():
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS cameras (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                camera TEXT,
+                camera TEXT UNIQUE,
                 designation TEXT,
                 ip_address TEXT,
                 reference_img TEXT
