@@ -22,7 +22,7 @@ def update_camera_info():
                 )
                 process.wait()
                 with open('./config/cameras.txt', 'r') as camfile:
-                    addresses = [line.strip() for line in camfile]
+                    addresses = [line.strip() for line in camfile[1:]]
                 return addresses
             except Exception as e:
                 print('Network scan failed')
@@ -73,6 +73,7 @@ def update_camera_info():
     cursor = conn.cursor()
 
     new_ip_addresses = _scan_network()
+    print(new_ip_addresses)
     # if not _get_current_info(cursor):
     #     _add_new_cameras(conn, cursor, new_ip_addresses)
     _add_new_cameras(conn, cursor, new_ip_addresses)
