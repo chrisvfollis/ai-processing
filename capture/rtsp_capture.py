@@ -141,7 +141,7 @@ def run_capture_cycle(stream_info, interval=5, min_seconds=3):
     def _multi_capture(stream_info, duration):
         try:
             streams = []
-            for cam, data in stream_info:
+            for cam, data in stream_info.items():
                 url = data['url']
                 frame_rate = data['frame_rate']
                 streams.append({"url": url, "duration": duration, "cam": cam,
