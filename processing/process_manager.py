@@ -51,12 +51,12 @@ def main(stride=3):
 
     while True:
         primary = io_utils.get_queue_block(designation='primary')
-        time_prefix = utilities.parse_clip_filename(primary[0][1], data='time')
-        timestamp = utilities.frame_timestamp(time_prefix)
-        
         if len(primary) == 0:
+            print('No clips in the queue')
             time.sleep(60)
             continue
+        time_prefix = utilities.parse_clip_filename(primary[0][1], data='time')
+        timestamp = utilities.frame_timestamp(time_prefix)
 
         detections = False
         for row in primary:
