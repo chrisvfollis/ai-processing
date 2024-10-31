@@ -52,7 +52,7 @@ def main(stride=3):
     while True:
         primary = io_utils.get_queue_block(designation='primary')
         time_prefix = utilities.parse_clip_filename(primary[0][1], data='time')
-        timestamp = primary[0][3]
+        timestamp = utilities.frame_timestamp(time_prefix)
         
         if len(primary) == 0:
             time.sleep(60)

@@ -129,11 +129,10 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
             .run()
         )
 
-        io_utils.update_queue(action='add', file=file, time=time, cam=f'c{cam}')
+        io_utils.update_queue(action='add', file=file, datetime=time, cam=f'c{cam}')
 
     except Exception as e:
-        # to do: create function to save logs to local database and
-        # periodically send to remote
+        print(e)
         return False
     return True
 
@@ -157,8 +156,7 @@ def run_capture_cycle(stream_info, interval=5, min_seconds=3):
             pool.close()
             pool.join()
         except Exception as e:
-            # to do: create function to save logs to local database and
-            # periodically send to remote
+            print(e)
             return False
         return True
     
