@@ -120,6 +120,7 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
     try:
         time = datetime.now()
         t_formatted = time.strftime("%Y-%m-%d_%H-%M-%S")
+        timestamp = datetime.strptime(t_formatted, "%Y-%m-%d_%H-%M-%S")
         file = f'{t_formatted}_{str(cam)}.mp4'
         output_path = f'../input_files/{file}'
         (
