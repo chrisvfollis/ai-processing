@@ -16,9 +16,9 @@ def update_camera_info():
         while True:
             try:
                 process = subprocess.Popen(
-                    '/home/ivaktvision/Documents/timemanager/utilities/network_scanner.sh',
+                    '/home/ivaktvision/Documents/timemanager/capture/utilities/network_scanner.sh',
                     shell=True,
-                    cwd='/home/ivaktvision/Documents/timemanager/utilities'
+                    cwd='/home/ivaktvision/Documents/timemanager/capture/utilities'
                 )
                 process.wait()
                 with open('./config/cameras.txt', 'r') as camfile:
