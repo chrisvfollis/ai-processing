@@ -11,9 +11,9 @@ from deepface import DeepFace
 import os
 
 
-def facial_recognition(video_file, track_data, stride=20, max_distance=0.7,
-                       min_area=3000):
-    def _world_model_filters(output, box, fraction=3):
+def facial_recognition(video_file, track_data, stride=3, max_distance=0.6,
+                       min_area=25600):
+    def _world_model_filters(output, box, fraction=1.5):
         '''
         This function incorporates innate human knowledge about the world
         to help filter out unlikely output.
@@ -23,16 +23,11 @@ def facial_recognition(video_file, track_data, stride=20, max_distance=0.7,
         the bottom of the box is probably from another person crossing
         between them and the camera.
         '''
-        
-        face_cntr_y = output["source_y"] + box[1] + (output["source_h"] / 2)
-        box_upper_fraction = box[1] + box[3] / fraction
 
-        output = output.loc[face_cntr_y <= box_upper_fraction]
-        
-        if len(output) == 0:
-            return None
-        else:
-            return output
+        output = output.loc[(output["source_y"] + box[1] + (output["source_h"] / 2))
+                            <= (box[1] + (box[3] / fraction))]
+
+        return output
     
     detection_data = track_data['detections']
     vid_path = os.path.join('../input_files/', video_file)
@@ -41,11 +36,14 @@ def facial_recognition(video_file, track_data, stride=20, max_distance=0.7,
     f_num = start - 1
     face_detected = False
 
+    num_checked = 0
+
     cap.set(cv2.CAP_PROP_POS_FRAMES, start)
     while face_detected == False:
         f_num += 1
         ret, frame = cap.read()
         if not ret:
+            print(num_checked)
             return None, None, None
         if (f_num - start) % stride == 0:
             if f_num not in detection_data:
@@ -59,13 +57,20 @@ def facial_recognition(video_file, track_data, stride=20, max_distance=0.7,
             x2, y2 = box[0] + box[2], box[1] + box[3]
             cropped = frame[y1:y2, x1:x2]
             try:
+                num_checked += 1
                 dfs = DeepFace.find(
                     img_path = cropped, db_path = '../input_files/faces',
                     model_name = 'Facenet', threshold = max_distance,
                     enforce_detection = True, silent = True
                 )
+                if len(dfs[0]['identity']) > 0:
+                    print('Face detected')
                 dfs[0] = _world_model_filters(dfs[0], box)
-                if dfs[0]:
+                if dfs[0].empty:
+                    print('Face in low section of bounding box')
+                    continue
+                else:
+                    print('Valid face location')
                     face_detected = True
             except (KeyError, ValueError):
                 face_detected = False
@@ -74,9 +79,10 @@ def facial_recognition(video_file, track_data, stride=20, max_distance=0.7,
     min_index = dfs[0]['distance'].idxmin()
     min_row = dfs[0].loc[min_index]
 
-    image_match, distance = min_row['identity'].split('/')[-1]
+    image_match = min_row['identity'].split('/')[-1]
     distance = min_row['distance']
     event_img = io_utils.save_event_image(cropped)
+    print('Face image saved')
 
     return image_match, distance, event_img
 
@@ -140,8 +146,8 @@ def identification_pipeline(time_prefix, min_span=120):
 
         return all_trks, all_frames, entryways
 
-    def _event_identification(all_trks, time_prefix, entryways):
-        def _filter_entryway_stay_events(all_trks, entryways, stride=20, threshold=.3):
+    def _handle_events(all_trks, time_prefix, entryways):
+        def _filter_entryway_stay_events(all_trks, entryways, stride=6, threshold=.3):
             remove = []
             for id, trk in all_trks.items():
                 if (not trk['entry']) or (not trk['exit']):
@@ -233,6 +239,7 @@ def identification_pipeline(time_prefix, min_span=120):
         else:
             headcounts = _global_headcounts(all_trks, all_frames)
         sections = _headcount_sections(all_trks, headcounts)
+        print(sections)
         io_utils.save_clip_headcounts(time_prefix, sections)
 
         all_trks = _calculate_avg_box_sizes(all_trks)
@@ -358,33 +365,33 @@ def identification_pipeline(time_prefix, min_span=120):
             # print(possibilities)
 
             candidates = {}
-            for id, trks in identities.items():
+            for identity, trks in identities.items():
                 for k, v in possibilities.items():
                     if set(v) == set(v + trks):
-                        candidates.setdefault(id, []).append(k)
+                        candidates.setdefault(identity, []).append(k)
 
             newly_identified = []
-            for id, trks in candidates.items():
+            for identity, trks in candidates.items():
                 for trk in trks:
                     i = trks.index(trk)
                     filtered = [x for i2, x in enumerate(trks) if i2 != i]
                     if set(possibilities[trk]) == set(possibilities[trk] + filtered):
                         newly_identified.append(trk)
-                        all_trks[trk]['identity'] = id
+                        all_trks[trk]['identity'] = identity
                         all_trks[trk]['id_method'] = 'elimination'
-                        print(f'{trk} ID by elimination: {id}')
+                        print(f'{trk} ID by elimination: {identity}')
             
-            # returns c1_trk5 instead of c0_trk10:
-            for id, trks in candidates.items():
-                candidates[id] = [trk for trk in trks if trk not in newly_identified]
-            for id, trks in candidates.items():
+            
+            for identity, trks in candidates.items():
+                candidates[identity] = [trk for trk in trks if trk not in newly_identified]
+            for identity, trks in candidates.items():
                 newly_identified = []
                 for trk in trks:
                     i = trks.index(trk)
                     filtered = [x for i2, x in enumerate(trks) if i2 != i]
                     if set(possibilities[trk]) == set(possibilities[trk] + filtered):
                         newly_identified.append(trk)
-                        all_trks[trk]['identity'] = id
+                        all_trks[trk]['identity'] = identity
                         all_trks[trk]['id_method'] = 'elimination'
                         print(f'{trk} ID by elimination: {id}')
 
@@ -439,8 +446,7 @@ def identification_pipeline(time_prefix, min_span=120):
 
     all_trks, all_frames, entryways = _setup(time_prefix)
     
-    all_trks = _event_identification(all_trks, time_prefix, entryways)
-    io_utils.save_track_info(time_prefix, all_trks)
+    all_trks = _handle_events(all_trks, time_prefix, entryways)
 
     all_trks, headcounts, sections = _expand_scene_data(all_trks, all_frames)
     
@@ -459,32 +465,26 @@ def identification_pipeline(time_prefix, min_span=120):
     all_trks = _process_subset(time_prefix, all_trks, large_box_subset,
                                sections, headcounts, min_span=min_span)
 
-
     all_trks = _get_track_images(time_prefix, all_trks)
 
-    to_update = [id for id, data in all_trks.items() if data.get('entry', False)
-                    or data.get('exit', False) or data.get('identity', False)
-                    or data.get('start_img', False) or data.get('end_img', False)]
-
     updates = {}
-    for id in to_update:
-        identity = all_trks[id].get('identity', None)
-        id_method = all_trks[id].get('id_method', '')
-        id_cost = all_trks[id].get('id_cost', float('inf'))
+    for id, data in all_trks.items():
+        identity = data.get('identity', None)
+        id_method = data.get('id_method', '')
+        id_cost = data.get('id_cost', float('inf'))
 
-        start_img = all_trks[id].get('start_img', '')
-        end_img = all_trks[id].get('end_img', '')
-        id_img = all_trks[id].get('id_img', '')
+        start_img = data.get('start_img', '')
+        end_img = data.get('end_img', '')
+        id_img = data.get('id_img', '')
 
-        entry = 1 if all_trks[id].get('entry', False) else 0
-        exit = 1 if all_trks[id].get('exit', False) else 0
+        entry = 1 if data.get('entry', False) else 0
+        exit = 1 if data.get('exit', False) else 0
         
-        camera, normal_id = id.split('_')[0], id.split('_')[1].strip('trk')
-        updates[normal_id] = {'camera': camera, 'time_prefix': time_prefix,
-                              'identity': identity, 'id_method': id_method,
-                              'id_cost': id_cost, 'start_img': start_img,
-                              'end_img': end_img, 'id_img': id_img,
-                              'entry': entry, 'exit': exit}
+        updates[id] = {'time_prefix': time_prefix, 'identity': identity,
+                           'id_method': id_method, 'id_cost': id_cost,
+                           'start_img': start_img, 'end_img': end_img,
+                           'id_img': id_img, 'entry': entry,
+                           'exit': exit}
 
     io_utils.update_track_info(time_prefix, updates)
 

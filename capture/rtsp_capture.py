@@ -24,8 +24,9 @@ def update_camera_info():
                 with open('./config/cameras.txt', 'r') as camfile:
                     addresses = [line.strip() for line in camfile]
                 return addresses
-            except Exception:
+            except Exception as e:
                 print('Network scan failed')
+                print(e)
                 time.sleep(30)
 
     def _get_current_info(cursor):
@@ -76,7 +77,7 @@ def update_camera_info():
         _add_new_cameras(conn, cursor, new_ip_addresses)
 
 
-def get_stream_info(fps={'primary': 15, 'secondary': 10}, db_path='../appdata/data.db'):
+def get_stream_info(fps={'primary': 30, 'secondary': 15}, db_path='../appdata/data.db'):
     def _create_rtsp_url(ip_address, format=0, default_creds=0, credentials=None):
         default_credentials = [('admin', 'abcd1234'), ('admin', 'admin')]
         if credentials:
