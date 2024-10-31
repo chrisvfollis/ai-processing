@@ -104,7 +104,7 @@ def get_stream_info(fps={'primary': 30, 'secondary': 15}, db_path='../appdata/da
     
     stream_info = {}
     for result in results:
-        camera = result[1]
+        camera = result[1].strip('c')
         try:
             frame_rate = fps[result[2]]
         except KeyError:
@@ -184,6 +184,7 @@ if __name__ == '__main__':
         update_camera_info()
         stream_info = get_stream_info()
         if not stream_info:
+            print('No stream info')
             time.sleep(30)
             continue
         else:
