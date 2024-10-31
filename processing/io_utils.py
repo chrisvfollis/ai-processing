@@ -303,7 +303,7 @@ def update_queue(action='add', video_file=None, datetime=None, cam=None,
         cursor.execute('''
             DELETE FROM queue
             WHERE timestamp = ?
-        ''', (datetime + '%',))
+        ''', (datetime,))
 
     conn.commit()
     conn.close()
