@@ -148,7 +148,7 @@ def track(video_file, stride=1):
         if (not continuations) or (len(continuations) == 0):
             return None
         
-        prev_end_time = continuations[0][4]
+        prev_end_time = datetime.strptime(continuations[0][4], "%Y-%m-%d %H:%M:%S")
 
         time_prefix = utilities.parse_clip_filename(video_file, data='time')
         clip_start_time = utilities.frame_timestamp(time_prefix)

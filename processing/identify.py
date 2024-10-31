@@ -127,8 +127,10 @@ def identification_pipeline(time_prefix, min_span=120):
                 tf.config.experimental.set_visible_devices(physical_devices[0], 'GPU')
                 print("Using GPU: ", physical_devices[0], flush=True)
             except RuntimeError as e:
+                tf.config.experimental.set_visible_devices([], 'GPU')
                 print(e, flush=True)
         else:
+            tf.config.experimental.set_visible_devices([], 'GPU')
             print("No GPU available", flush=True)
 
         base_path = f'../intermediate_output/{time_prefix}'
