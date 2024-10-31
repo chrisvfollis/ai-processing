@@ -63,18 +63,19 @@ def update_camera_info():
         for i, address in enumerate(addresses):
             camera = f'c{i}'
             cursor.execute('''
-                INSERT INTO cameras (
-                    camera, ip_address
-                )
+                INSERT INTO cameras (camera, ip_address)
                 VALUES (?, ?)
+                ON CONFLICT(camera) DO UPDATE SET ip_address = excluded.ip_address
             ''', (camera, address))
+        conn.commit()
 
     conn = sqlite3.connect('../appdata/data.db')
     cursor = conn.cursor()
 
     new_ip_addresses = _scan_network()
-    if not _get_current_info(cursor):
-        _add_new_cameras(conn, cursor, new_ip_addresses)
+    # if not _get_current_info(cursor):
+    #     _add_new_cameras(conn, cursor, new_ip_addresses)
+    _add_new_cameras(conn, cursor, new_ip_addresses)
 
 
 def get_stream_info(fps={'primary': 30, 'secondary': 15}, db_path='../appdata/data.db'):

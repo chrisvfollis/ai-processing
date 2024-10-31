@@ -478,18 +478,18 @@ def save_event_image(img, img_dir='../output_files/event_imgs/'):
     file_name = f'{uuid.uuid4()}.jpg'
     file_path = os.path.join(img_dir, file_name)
     cv2.imwrite(file_path, img)
-    # try:
-    #     load_dotenv()
-    #     s3_client = boto3.client(
-    #         's3',
-    #         aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
-    #         aws_secret_access_key=os.environ.get('AWS_SECRET_KEY'),
-    #         region_name='us-west-1'
-    #     )
-    #     bucket_name = 'timemanager-event-imgs'
-    #     s3_client.upload_file(file_path, bucket_name, file_name)
-    # except (EndpointConnectionError, NoCredentialsError) as e:
-    #     pass
+    try:
+        load_dotenv()
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
+            aws_secret_access_key=os.environ.get('AWS_SECRET_KEY'),
+            region_name='us-west-1'
+        )
+        bucket_name = 'timemanager-event-imgs'
+        s3_client.upload_file(file_path, bucket_name, file_name)
+    except (EndpointConnectionError, NoCredentialsError) as e:
+        pass
 
     return file_name
 
@@ -527,8 +527,8 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
         'image': []
     }
 
-    entries = [r for r in results if (entry[4]) and (r[14] == 1)]
-    exits = [r for r in results if (entry[4]) and (r[15] == 1)]
+    entries = [r for r in results if (r[4]) and (r[14] == 1)]
+    exits = [r for r in results if (r[4]) and (r[15] == 1)]
 
     for entry in entries:
         data['shop_id'].append(shop_uuid)
