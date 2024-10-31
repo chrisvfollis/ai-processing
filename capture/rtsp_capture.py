@@ -129,7 +129,7 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
             .run()
         )
 
-        io_utils.update_queue(action='add', file=file, datetime=time, cam=f'c{cam}')
+        io_utils.update_queue(action='add', video_file=file, datetime=time, cam=f'c{cam}')
 
     except Exception as e:
         print(e)
