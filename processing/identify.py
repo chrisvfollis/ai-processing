@@ -63,9 +63,9 @@ def facial_recognition(video_file, track_data, stride=3, max_distance=0.6,
                     model_name = 'Facenet', threshold = max_distance,
                     enforce_detection = True, silent = True
                 )
-                if len(dfs[0]['identity']) > 0:
-                    print('Face detected')
-                dfs[0] = _world_model_filters(dfs[0], box)
+                # if len(dfs[0]['identity']) > 0:
+                #     print('Face detected')
+                # dfs[0] = _world_model_filters(dfs[0], box)
                 if dfs[0].empty:
                     print('Face in low section of bounding box')
                     continue
