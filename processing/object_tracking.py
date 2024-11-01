@@ -148,7 +148,7 @@ def track(video_file, stride=1):
         if (not continuations) or (len(continuations) == 0):
             return None
         
-        prev_end_time = datetime.strptime(continuations[0][4], "%Y-%m-%d %H:%M:%S")
+        prev_end_time = datetime.strptime(continuations[0][4], "%Y-%m-%d %H:%M:%S.%f")
 
         time_prefix = utilities.parse_clip_filename(video_file, data='time')
         clip_start_time = utilities.frame_timestamp(time_prefix)
@@ -398,7 +398,7 @@ def track(video_file, stride=1):
     detections = io_utils.read_detections(f'{base_path}/{video_file.split(".")[0]}_detections.csv')
     emb_file = f'{base_path}/{video_file.split(".")[0]}_embeddings.hdf5'
 
-    prior_trks = _trk_continuation(video_file, stride=stride)
+    # prior_trks = _trk_continuation(video_file, stride=stride)
     active_trks = {}
     trk_cache = {}
     trk_id = 0
