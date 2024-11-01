@@ -533,7 +533,7 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     for entry in entries:
         data['shop_id'].append(shop_uuid)
         data['employee_id'].append(entry[4])
-        data['event'].append('entry')
+        data['event'].append('workspace_entry')
         data['start_time'].append(str(entry[11]))
         data['duration'].append(0)
         data['image'].append(entry[7])
@@ -541,7 +541,7 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     for exit in exits:
         data['shop_id'].append(shop_uuid)
         data['employee_id'].append(exit[4])
-        data['event'].append('exit')
+        data['event'].append('workspace_exit')
         data['start_time'].append(str(exit[13]))
         data['duration'].append(0)
         data['image'].append(exit[8])
