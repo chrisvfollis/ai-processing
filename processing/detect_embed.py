@@ -111,9 +111,6 @@ def detect_embed_pipeline(video_file, detector, extractor, stride=1, start=0,
             if not ret:
                 break
 
-            # if frame_number % 300 == 0:
-            #     print(f'Frame: {frame_number}')
-
             if (frame_number - start) % stride == 0:
                 det_xywhc = detect_yolov4(frame, 0, detector, device)
                 if len(det_xywhc) > 0:

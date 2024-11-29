@@ -71,23 +71,23 @@ def main(stride=15):
             for row in primary:
                 video_file = row[1]
                 print('detecting and embedding...')
-                frame_data = inference_pipeline(video_file, yolov4,
+                frame_data = detect_embed_pipeline(video_file, yolov4,
                                                 stride=stride)
                 io_utils.write_detections(frame_data, video_file)
 
-        #         print('tracking...')
-        #         trk_data, span = track(video_file, stride=stride)
-        #         io_utils.write_trk_data(video_file, trk_data, span)
+                print('tracking...')
+                trk_data, span = track(video_file, stride=stride)
+                io_utils.write_trk_data(video_file, trk_data, span)
             
-        #     identification_pipeline(time_prefix)
+            identification_pipeline(time_prefix)
 
-        #     io_utils.post_events_to_webapp(time_prefix)
-        #     io_utils.update_queue(action='clear_section', datetime=timestamp)
-        #     delete_files(time_prefix)
+            io_utils.post_events_to_webapp(time_prefix)
+            io_utils.update_queue(action='clear_section', datetime=timestamp)
+            delete_files(time_prefix)
 
-        # else:
-        #     io_utils.update_queue(action='clear_section', datetime=timestamp)
-        #     delete_files(time_prefix)            
+        else:
+            io_utils.update_queue(action='clear_section', datetime=timestamp)
+            delete_files(time_prefix)            
         break
 
 if __name__ == '__main__':
