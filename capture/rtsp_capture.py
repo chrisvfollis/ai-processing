@@ -139,7 +139,7 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
     return True
 
 
-def run_capture_cycle(stream_info, interval=5, min_seconds=3):
+def run_capture_cycle(stream_info, interval=1, min_seconds=3):
     def _multi_capture(stream_info, duration):
         try:
             streams = []
@@ -190,4 +190,4 @@ if __name__ == '__main__':
             time.sleep(30)
             continue
         else:
-            run_capture_cycle(stream_info, interval=5)
+            run_capture_cycle(stream_info, interval=1)

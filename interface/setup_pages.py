@@ -89,17 +89,18 @@ class SelectWorkspace(tk.Frame):
                 employee_data = response.json().get('employees', [])
                 for employee in employee_data:
                     print(employee['first_name'])
-                    link = employee['front_image']
-                    r = requests.get(link)
-                    if response.status_code == 200:
-                        filename = link.rsplit('/', 1)[1]
-                        filename = filename.rsplit('_', 1)[0] + '.' + filename.rsplit('_', 1)[1]
-                        with open(f'../input_files/faces/{filename}', 'wb') as file:
-                            file.write(r.content)
-                        employee['front_image'] = filename
-                    else:
-                        print(response.status_code)
-                        print(response.text)
+                    links = [employee['front_image'], employee['left_image'], employee['right_image']]
+                    for link in links:
+                        r = requests.get(link)
+                        if response.status_code == 200:
+                            filename = link.rsplit('/', 1)[1]
+                            filename = filename.rsplit('_', 1)[0] + '.' + filename.rsplit('_', 1)[1]
+                            with open(f'../input_files/faces/{filename}', 'wb') as file:
+                                file.write(r.content)
+                            employee['front_image'] = filename
+                        else:
+                            print(response.status_code)
+                            print(response.text)
             else:
                 print(response.status_code)
                 print(response.text)
@@ -116,7 +117,9 @@ class SelectWorkspace(tk.Frame):
                     first_name TEXT,
                     last_name TEXT,
                     shop_uuid TEXT,
-                    front_image TEXT
+                    front_image TEXT,
+                    left_image TEXT,
+                    right_image TEXT
                 )
             ''')
             cursor.execute('DELETE FROM employees')

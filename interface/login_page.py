@@ -47,8 +47,8 @@ class LoginPage(tk.Frame):
 
         if r.status_code == 200:
             data = r.json()
-            self.controller.refresh_token = data['token']['refresh']
-            self.controller.access_token = data['token']['access']
+            self.controller.refresh_token = r.cookies.get('refresh_token')
+            self.controller.access_token = data.get('access')
             self.get_shopdata()
             self.controller.show_frame("SelectWorkspace")
         else:

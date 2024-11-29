@@ -56,10 +56,13 @@ def write_detections(frame_data, video_file):
     
     with open(csv_path, 'w', newline='') as file:
         writer = csv.writer(file, delimiter=',')
-        writer.writerow(['Frame', 'X', 'Y', 'W', 'H', 'Conf'])
+        writer.writerow(['Frame', 'X', 'Y', 'W', 'H', 'C', 'identity', 'distance'])
         for frame in sorted(frame_data.keys()):
-            for det in frame_data[frame]:
-                writer.writerow([frame] + det)
+            for record in frame_data[frame]:
+                box = record['detection']
+                identity = record['identity']
+                distance = record['distance']
+                writer.writerow([frame] + box + [identity] + [distance])
 
 
 def read_detections(csv_path):
@@ -255,20 +258,16 @@ def update_identities(trk_path, all_trks, reset=False):
                     pass
 
 
-def get_queue_block(designation='primary', db_path='../appdata/data.db'):
+def get_queue_block(db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT DISTINCT q.* FROM queue q
-        JOIN cameras cd ON q.camera = cd.camera
-        WHERE cd.designation = ?
-        AND q.timestamp = (
+        WHERE q.timestamp = (
             SELECT MIN(timestamp)
             FROM queue q2
-            JOIN cameras cd2 on q2.camera = cd2.camera
-            WHERE cd2.designation = ?
         )
-    ''', (designation, designation))
+    ''')
 
     results = cursor.fetchall()
     conn.close()
@@ -463,8 +462,13 @@ def get_employee(image_path, db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cursor.execute('SELECT uuid FROM employees WHERE front_image = ? LIMIT 1',
-                   (image_path,))
+    cursor.execute('''
+            SELECT uuid FROM employees
+            WHERE front_image = ?
+            OR left_image = ?
+            OR right_image = ?
+            LIMIT 1
+        ''', (image_path, image_path, image_path))
 
     result = cursor.fetchone()
     conn.close()

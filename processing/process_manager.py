@@ -1,7 +1,7 @@
 import torch
 import io_utils
-from detect_embed import (load_extractor, load_yolov4, detect_yolov4,
-                          detect_embed_pipeline)
+from inference import (load_extractor, load_yolov4, detect_yolov4,
+                       inference_pipeline)
 from object_tracking import track
 from identify import identification_pipeline
 import cv2
@@ -10,7 +10,7 @@ import utilities
 import os
 
 
-def detection_skim(video_file, model, device, stride=60):
+def detection_skim(video_file, model, device, stride=120):
     f_num = 0
     footage_path = '../input_files/'
     cap = cv2.VideoCapture(footage_path + video_file)
@@ -44,13 +44,13 @@ def delete_files(time_prefix, footage_path='../input_files/',
             os.remove(intermediate_output + file)
 
 
-def main(stride=3):
+def main(stride=15):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     extractor = load_extractor('model.pth.tar-250', device)
     yolov4 = load_yolov4('YOLOv4.pth', device)
 
     while True:
-        primary = io_utils.get_queue_block(designation='primary')
+        primary = io_utils.get_queue_block()
         if len(primary) == 0:
             print('No clips in the queue')
             time.sleep(60)
@@ -71,24 +71,24 @@ def main(stride=3):
             for row in primary:
                 video_file = row[1]
                 print('detecting and embedding...')
-                frame_data = detect_embed_pipeline(video_file, yolov4, extractor,
-                                                    stride=stride)
+                frame_data = inference_pipeline(video_file, yolov4,
+                                                stride=stride)
                 io_utils.write_detections(frame_data, video_file)
 
-                print('tracking...')
-                trk_data, span = track(video_file, stride=stride)
-                io_utils.write_trk_data(video_file, trk_data, span)
+        #         print('tracking...')
+        #         trk_data, span = track(video_file, stride=stride)
+        #         io_utils.write_trk_data(video_file, trk_data, span)
             
-            identification_pipeline(time_prefix)
+        #     identification_pipeline(time_prefix)
 
-            io_utils.post_events_to_webapp(time_prefix)
-            io_utils.update_queue(action='clear_section', datetime=timestamp)
-            delete_files(time_prefix)
+        #     io_utils.post_events_to_webapp(time_prefix)
+        #     io_utils.update_queue(action='clear_section', datetime=timestamp)
+        #     delete_files(time_prefix)
 
-        else:
-            io_utils.update_queue(action='clear_section', datetime=timestamp)
-            delete_files(time_prefix)            
-
+        # else:
+        #     io_utils.update_queue(action='clear_section', datetime=timestamp)
+        #     delete_files(time_prefix)            
+        break
 
 if __name__ == '__main__':
-    main(stride=3)
+    main(stride=30)
