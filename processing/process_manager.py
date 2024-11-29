@@ -1,7 +1,7 @@
 import torch
 import io_utils
-from inference import (load_extractor, load_yolov4, detect_yolov4,
-                       inference_pipeline)
+from detect_embed import (load_extractor, load_yolov4, detect_yolov4,
+                          detect_embed_pipeline)
 from object_tracking import track
 from identify import identification_pipeline
 import cv2
