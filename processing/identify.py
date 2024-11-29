@@ -59,18 +59,17 @@ def facial_recognition(video_file, track_data, stride=3, max_distance=0.6,
             try:
                 num_checked += 1
                 dfs = DeepFace.find(
-                    img_path = cropped, db_path = '../input_files/faces',
-                    model_name = 'Facenet', threshold = max_distance,
-                    enforce_detection = True, silent = True
+                    img_path=cropped, db_path='../input_files/faces',
+                    model_name='Facenet512', threshold=max_distance,
+                    detector_backend='retinaface', enforce_detection=True,
+                    silent = True
                 )
-                # if len(dfs[0]['identity']) > 0:
-                #     print('Face detected')
-                # dfs[0] = _world_model_filters(dfs[0], box)
+                dfs[0] = _world_model_filters(dfs[0], box)
                 if dfs[0].empty:
-                    print('Face in low section of bounding box')
+                    print('No valid face detections')
                     continue
                 else:
-                    print('Valid face location')
+                    print('Valid face detected')
                     face_detected = True
             except (KeyError, ValueError):
                 face_detected = False
@@ -86,37 +85,6 @@ def facial_recognition(video_file, track_data, stride=3, max_distance=0.6,
 
     return image_match, distance, event_img
 
-
-def secondary():
-    # Attempt to identify secondary tracks
-    # secondary_subset = []
-    # for k, v in all_trks.items():
-    #     if ((k.split('_')[0] == primary_cams[0]) and (v['exit'] or v['entry'])
-    #         and (not v.get('identity', None))):
-    #         for k2, v2 in secondary_trks.items():
-    #             if utilities.is_coincident(v['trk_span'], v2['trk_span']):
-    #                 secondary_subset.append(k2)
-    # for k in secondary_subset:
-    #     all_trks[k] = secondary_trks[k]    
-    # all_trks = identify_tracks(file, all_trks, secondary_subset, min_span=min_span)
-    # for trk in secondary_subset:
-    #     if not all_trks[trk].get('identity', False):
-    #         del all_trks[trk]
-    # sections = headcount_sections(all_trks, headcounts)
-
-    # for section in sorted(sections.keys()):
-    #     headcount = headcounts[sections[section]['span'][0]]
-    #     all_trks = logical_identification(all_trks, sections[section], headcount)
-    
-
-    # Attempt to identify remaining tracks
-    # prior_subsets += secondary_subset
-    # all_trks = _calculate_avg_box_sizes(all_trks)
-    # final_subset = _largest_remaining_tracks(all_trks)
-    
-    # all_trks = _process_subset(time_prefix, all_trks, final_subset, sections,
-    #                            headcounts, min_span=min_span)
-    return None
 
 
 def identification_pipeline(time_prefix, min_span=120):

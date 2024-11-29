@@ -91,4 +91,4 @@ def main(stride=15):
         break
 
 if __name__ == '__main__':
-    main(stride=30)
+    main(stride=3)
