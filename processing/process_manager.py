@@ -1,6 +1,6 @@
 import torch
 import io_utils
-from detect_embed import (load_extractor, load_yolov4, detect_yolov4,
+from processing.inference import (load_extractor, load_yolov4, detect_yolov4,
                           detect_embed_pipeline)
 from object_tracking import track
 from identify import identification_pipeline
@@ -76,7 +76,7 @@ def main(stride=15):
                 io_utils.write_detections(frame_data, video_file)
 
                 print('tracking...')
-                trk_data, span = track(video_file, stride=stride)
+                trk_data, span = track(video_file)
                 io_utils.write_trk_data(video_file, trk_data, span)
             
             identification_pipeline(time_prefix)

@@ -13,6 +13,7 @@ from botocore.exceptions import EndpointConnectionError, NoCredentialsError
 from dotenv import load_dotenv
 from datetime import datetime
 import requests
+import pandas as pd
 
 
 
@@ -49,23 +50,26 @@ def get_config():
     return config
 
 
-def write_detections(frame_data, video_file):
+def write_detection_csv(object_data, video_file):
     base_path = '../intermediate_output/'
     csv_file = f'{video_file.split(".")[0]}_detections.csv'
     csv_path = os.path.join(base_path, csv_file)
     
-    with open(csv_path, 'w', newline='') as file:
-        writer = csv.writer(file, delimiter=',')
-        writer.writerow(['Frame', 'X', 'Y', 'W', 'H', 'C', 'identity', 'distance'])
-        for frame in sorted(frame_data.keys()):
-            for record in frame_data[frame]:
-                box = record['detection']
-                identity = record['identity']
-                distance = record['distance']
-                writer.writerow([frame] + box + [identity] + [distance])
+    file = open(csv_path, 'w', newline='')
+    writer = csv.writer(file, delimiter=',')
+    writer.writerow(['Frame', 'X', 'Y', 'W', 'H', 'C', 'identity', 'distance'])
+
+    for frame in sorted(object_data.keys()):
+        for record in object_data[frame]:
+            box = record['detection']
+            identity = record['identity']
+            distance = record['distance']
+            writer.writerow([frame] + box + [identity] + [distance])
+
+    file.close()
 
 
-def read_detections(csv_path):
+def read_detection_csv(csv_path):
     frame_data = {}
     with open(csv_path, 'r') as file:
         csvreader = csv.reader(file, delimiter=',')
@@ -80,6 +84,24 @@ def read_detections(csv_path):
             frame_data[f].append([x, y, w, h, c])
 
     return frame_data
+
+
+def write_face_csv(face_data, video_file):
+    base_path = '../intermediate_output/'
+    csv_file = f'{video_file.split(".")[0]}_faces.csv'
+    csv_path = os.path.join(base_path, csv_file)
+
+    merged_dfs = []
+    for frame, dfs in face_data.keys():
+        merged_df = pd.concat(dfs, ignore_index=True)
+        merged_df['frame'] = frame
+        merged_dfs.append(merged_df)
+    
+    full_df = pd.concat(merged_dfs, ignore_index=True)
+    full_df = full_df.drop(['target_x', 'target_y', 'target_w', 'target_h',
+                            'threshold'])
+    
+    full_df.to_csv(csv_path)
 
 
 def write_embeddings(hdf5_file, embeddings, frames, box_indices):
@@ -103,7 +125,7 @@ def write_embeddings(hdf5_file, embeddings, frames, box_indices):
     box_indices_dataset[-box_indices.shape[0]:] = box_indices
 
 
-def get_embeddings(hdf5_file, target_frame):
+def read_embeddings(hdf5_file, target_frame):
     with h5py.File(hdf5_file, 'r') as file:
         frames = file['frames']
         indices = np.where(frames[:] == target_frame)[0]
@@ -462,13 +484,15 @@ def get_employee(image_path, db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
+    image = image_path.split('/')[-1]
+
     cursor.execute('''
             SELECT uuid FROM employees
             WHERE front_image = ?
             OR left_image = ?
             OR right_image = ?
             LIMIT 1
-        ''', (image_path, image_path, image_path))
+        ''', (image, image, image))
 
     result = cursor.fetchone()
     conn.close()
