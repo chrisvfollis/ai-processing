@@ -49,6 +49,93 @@ class KalmanFilter:
         self.states[frame_number] = new_state
 
 
+def kf_matrix_fmt(measurement, m_noise, p_noise, e_uncertainty,
+                  xy_vel=[0, 0], wh_vel=[0, 0], dt=1.0):
+    
+    '''
+    Formats the necessary matrices for the Kalman filter.
+
+    -------------- ARGUMENTS --------------
+
+    measurement — the bounding box of the object, formatted as a list with the
+                  values [center x, center y, width, height].
+
+    m_noise — the values along the diagonal of the measurement noise covariance
+              matrix, R. Higher magnitudes = greater measurement noise, meaning
+              more weight is given to predictions relative to the incoming
+              measurements. The values of m_noise represent what you expect the
+              squared measurement error (in terms of pixels) to be on average.
+
+    p_noise — these values are used to create the process noise covariance
+              matrix, Q. Higher magnitudes = greater process noise, meaning
+              incoming measurements are given more weight relative to
+              predictions. The result is that new measurements have a larger
+              impact on updating the trajectory of subsequent predictions.
+
+    e_uncertainty — the initial values of the estimate uncertainty matrix, P.
+
+    xy_vel — the expected initial velocity of the object.
+
+    wh_vel — the expected initial velocity of the bounding box dimensions.
+    
+    dt —
+    
+    ---------------------------------------
+    '''
+    
+    F = np.array([
+        [1.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, dt/8, 0.0],
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, dt/8],
+        [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        ])
+
+    # Q values:
+    position_var = (dt**4)/4 # Position variance
+    velocity_var = (dt**2) # Velocity variance
+
+    x_noise, y_noise, w_noise, h_noise = p_noise
+
+    x_pvar = position_var * x_noise
+    y_pvar = position_var * y_noise
+    w_pvar = position_var * w_noise
+    h_pvar = position_var * h_noise
+
+    x_vvar = velocity_var * x_noise
+    y_vvar = velocity_var * y_noise
+    w_vvar = velocity_var * w_noise
+    h_vvar = velocity_var * h_noise
+
+    Q = np.array([
+        [x_pvar, 0, 0, 0, 0, 0, 0, 0],
+        [0, y_pvar, 0, 0, 0, 0, 0, 0],
+        [0, 0, w_pvar, 0, 0, 0, 0, 0],
+        [0, 0, 0, h_pvar, 0, 0, 0, 0],
+        [0, 0, 0, 0, x_vvar, 0, 0, 0],
+        [0, 0, 0, 0, 0, y_vvar, 0, 0],
+        [0, 0, 0, 0, 0, 0, w_vvar, 0],
+        [0, 0, 0, 0, 0, 0, 0, h_vvar]
+        ])
+
+    H = np.array([
+        [1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0, 0, 0]
+        ])
+
+    R = np.diag(m_noise)
+
+    x_init = np.array(measurement + xy_vel + wh_vel)
+    P_init = np.diag(e_uncertainty)
+
+    return F, Q, H, R, x_init, P_init
+
+
 class Track(KalmanFilter):
     def __init__(self, detection, embedding, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -68,8 +155,9 @@ class Track(KalmanFilter):
         self.last_detection_frame = frame_number
 
 
-class Tracker:
-    def __init__(self, start, end, detection_data, face_data, embedding_path):
+class GlobalTracker:
+    def __init__(self, video_file, start, end, detection_data, face_data, embedding_path):
+        self.video_file = video_file
         self.f_num = start
         self.end = end
 
@@ -85,17 +173,21 @@ class Tracker:
 
     def _create_new_tracks(self):
         detections, embeddings = self.unmatched
+
+        m_noise = [500, 500, 500, 500]
+        p_noise = [50, 50, 50, 50]
+        e_uncertainty = [5, 5, 5, 5, 5, 5, 5, 5]
+        dt = 0.5
+
         for i, box in enumerate(detections):
-            x, y = utilities.centroid(box[:4])
-            w, h = box[2:4]
-            kf_args = construct_kf_args(cntr=[x, y], wh=[w, h],
-                                        vel=[5, 5, 0, 0],
-                                        accvar=[50, 50, 50, 50],
-                                        ewh=[5, 5], mvar=[500, 500, 500, 500],
-                                        evel=[5, 5, 0, 0], dt=0.5)
+            measurement = [utilities.centroid(box[:4])] + box[2:4]
+            kf_args = kf_matrix_fmt(measurement, m_noise, p_noise,
+                                    e_uncertainty, dt=dt)
             new_track = Track(box[:4], embeddings[i], self.f_num, *kf_args)
             self.active_trks[self.trk_id] = new_track
             self.trk_id += 1
+
+        self.unmatched = []
 
     def _predict_or_cache(self, threshold=90):
         cached = []
@@ -279,12 +371,30 @@ class Tracker:
             trk.add_detection(box[:4], self.f_num)
             trk.add_embedding(embeddings[measurement_index])
 
-        self.unmatched_det = [detections[j] for j in range(len(detections))
-                              if j not in matched]
-        self.unmatched_emb = [embeddings[j] for j in range(len(embeddings))
-                              if j not in matched]
+        unmatched_detections = [detections[j] for j in range(len(detections))
+                                if j not in matched]
+        unmatched_embeddings = [embeddings[j] for j in range(len(embeddings))
+                                if j not in matched]
+        
+        self.unmatched = [unmatched_detections, unmatched_embeddings]
+
+    def _associate_faces():
+        return True
 
     def run(self):
+        def _save_and_cleanup():
+            if self.active_trks:
+                io_utils.save_track_continuations(
+                    self.video_file, self.end - 1, self.active_trks
+                )
+            all_trks = {**self.active_trks, **self.trk_cache}
+            del self.active_trks
+            del self.trk_cache
+            span = [start, self.end - 1]
+    
+            return all_trks, span
+
+        start = self.f_num
         while self.f_num < self.end:
             if self.active_trks:
                 self._predict_or_cache()
@@ -292,115 +402,24 @@ class Tracker:
             try:
                 detections = self.detection_data[self.f_num]
                 embeddings = io_utils.read_embeddings(self.embedding_path, self.f_num)
-                measurements = (detections, embeddings)
+                measurements = [detections, embeddings]
             except KeyError:
                 measurements = None
 
             if measurements and self.active_trks:
                 self._match_and_update(measurements)
             elif measurements and (not self.active_trks):
-                self.unmatched_det = detections
-                self.unmatched_emb = embeddings
+                self.unmatched = [detections, embeddings]
             
-            self._init_trks()
+            self._create_new_tracks()
+            self._associate_faces()
 
             self.f_num += 1
 
-
-        if measurements:
-            if active_trks:
-                match_output = _match_and_update([d_bxs, embeddings],
-                                                 active_trks, f_num)
-                active_trks, unmatched, embeddings = match_output
-            else:
-                unmatched = d_bxs
-
-            active_trks, trk_id = _init_trks(active_trks, trk_id, unmatched,
-                                            embeddings, f_num)
+        return _save_and_cleanup()
 
 
-def kf_matrix_fmt(measurement, xy_vel=[0, 0], wh_vel=[0, 0],
-                 accvar=[10, 10, 20, 20], mvar=[5, 5, 5, 5],
-                 evel=[25, 25, 25, 25], ewh=[30, 30], dt=1.0):
-    
-    '''
-    Formats 
-
-    -------------- MODEL PARAMETERS --------------
-    p_noise — these values are used to compute the process noise covariance.
-              Higher magnitudes = greater process noise, meaning incoming
-              measurements are given more weight relative to model predictions.
-              The result is that new measurements have a larger impact on
-              updating the trajectory of subsequent predictions.
-    m_noise — the measurement noise covariance values. Higher magnitudes = greater measurement
-           noise (the R matrix), so more weight on the filter's predictions
-           relative to the incoming measurements. mvar essentially
-           represents what you expect the typical measurement error in pixels to be is, squared.
-    
-    --------------- INITIAL VALUES ---------------
-    measurement — the bounding box of the object, formatted as:
-                  [center x, center y, width, height]
-    xy_vel — the expected initial velocity of the object.
-    wh_vel — the expected initial velocity of the bounding box dimensions.
-    evel — initial estimate velocity uncertainty
-    ewh — initial estimate width and height uncertainty
-    '''
-    
-    F = np.array([
-        [1.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, dt/8, 0.0],
-        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, dt/8],
-        [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-        ])
-
-    # Q values:
-    position_var = (dt**4)/4 # Position variance
-    velocity_var = (dt**2) # Velocity variance
-
-    x_var, y_var, w_var, h_var = accvar
-
-    x_pvar = position_var * x_var
-    y_pvar = position_var * y_var
-    w_pvar = position_var * w_var
-    h_pvar = position_var * h_var
-
-    x_vvar = velocity_var * x_var
-    y_vvar = velocity_var * y_var
-    w_vvar = velocity_var * w_var
-    h_vvar = velocity_var * h_var
-
-    Q = np.array([
-        [x_pvar, 0, 0, 0, 0, 0, 0, 0],
-        [0, y_pvar, 0, 0, 0, 0, 0, 0],
-        [0, 0, w_pvar, 0, 0, 0, 0, 0],
-        [0, 0, 0, h_pvar, 0, 0, 0, 0],
-        [0, 0, 0, 0, x_vvar, 0, 0, 0],
-        [0, 0, 0, 0, 0, y_vvar, 0, 0],
-        [0, 0, 0, 0, 0, 0, w_vvar, 0],
-        [0, 0, 0, 0, 0, 0, 0, h_vvar]
-        ])
-
-    H = np.array([
-        [1, 0, 0, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0, 0, 0]
-        ])
-
-    R = np.diag(mvar)
-
-    x_init = np.array(measurement + xy_vel + wh_vel)
-    P_init = np.diag([mvar[0], mvar[1], ewh[0], ewh[1], evel[0], evel[1],
-                      evel[2], evel[3]])
-
-    return F, Q, H, R, x_init, P_init
-
-
-def track(video_file):
+def tracking_pipeline(video_file):
     def _trk_continuation(video_file, stride, threshold=90, fps=30):
         continuations = io_utils.load_track_continuations(video_file)
         if (not continuations) or (len(continuations) == 0):
@@ -446,20 +465,6 @@ def track(video_file):
     
         return active_trks
 
-    def _init_trks(active_trks, trk_id, detections, embeddings, f_num):
-        for i, box in enumerate(detections):
-            x, y = utilities.centroid(box[:4])
-            w, h = box[2:4]
-            kf_args = construct_kf_args(cntr=[x, y], wh=[w, h],
-                                        vel=[5, 5, 0, 0],
-                                        accvar=[50, 50, 50, 50],
-                                        ewh=[5, 5], mvar=[500, 500, 500, 500],
-                                        evel=[5, 5, 0, 0], dt=0.5)
-
-            active_trks[trk_id] = Track(box[:4], embeddings[i], f_num, *kf_args)
-            trk_id += 1
-        return active_trks, trk_id
-
     start = 0
     end = int(cv2.VideoCapture(f'../input_files/{video_file}')
               .get(cv2.CAP_PROP_FRAME_COUNT)) + 1
@@ -468,44 +473,14 @@ def track(video_file):
     video_name = video_file.split('.')[0]
     detection_data = io_utils.read_detection_csv(f'{base_path}/{video_name}'
                                                  + '_detections.csv')
-    face_df = pd.read_csv(f'{base_path}/{video_name}_faces.csv')
+    face_data = pd.read_csv(f'{base_path}/{video_name}_faces.csv')
     embedding_path = f'{base_path}/{video_file.split(".")[0]}_embeddings.hdf5'
 
-    # prior_trks = _trk_continuation(video_file, stride=stride)
-    active_trks = {}
-    trk_cache = {}
-    trk_id = 0
-
-    for f_num in range(start, end):
-        if active_trks:
-            _predict_or_cache(active_trks, trk_cache, f_num)
-
-        try:
-            detections = detection_data[f_num]
-            embeddings = io_utils.read_embeddings(embedding_path, f_num)
-            measurements = (detections, embeddings)
-        except KeyError:
-            measurements = None
-
-        if measurements:
-            if active_trks:
-                match_output = _match_and_update([d_bxs, embeddings],
-                                                 active_trks, f_num)
-                active_trks, unmatched, embeddings = match_output
-            else:
-                unmatched = d_bxs
-
-            active_trks, trk_id = _init_trks(active_trks, trk_id, unmatched,
-                                            embeddings, f_num)
+    tracker = GlobalTracker(video_file, start, end, detection_data, face_data,
+                            embedding_path)
+    
+    return tracker.run()
         
 
 
-    if len(active_trks.keys()) > 0:
-        io_utils.save_track_continuations(video_file, end - 1, active_trks)
 
-    all_trks = {**active_trks, **trk_cache}
-    del active_trks
-    del trk_cache
-    span = [start, end - 1]
-
-    return all_trks, span
