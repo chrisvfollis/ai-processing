@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import cv2
 import cv2.legacy as cv2l
 import numpy as np
-import utilities
+import utilities as utils
 import math
 import sqlite3
 import json
@@ -34,7 +34,7 @@ class KalmanFilter:
     def predict(self):
         self.x = self.F @ self.x
         self.P = self.F @ self.P @ self.F.T + self.Q
-        self.x = utilities.restrain_boxes(self.x)
+        self.x = utils.restrain_boxes(self.x)
 
     def update(self, Z):
         Y = Z - self.H @ self.x
@@ -49,102 +49,18 @@ class KalmanFilter:
         self.states[frame_number] = new_state
 
 
-def kf_matrix_fmt(measurement, m_noise, p_noise, e_uncertainty,
-                  xy_vel=[0, 0], wh_vel=[0, 0], dt=1.0):
-    
-    '''
-    Formats the necessary matrices for the Kalman filter.
-
-    -------------- ARGUMENTS --------------
-
-    measurement — the bounding box of the object, formatted as a list with the
-                  values [center x, center y, width, height].
-
-    m_noise — the values along the diagonal of the measurement noise covariance
-              matrix, R. Higher magnitudes = greater measurement noise, meaning
-              more weight is given to predictions relative to the incoming
-              measurements. The values of m_noise represent what you expect the
-              squared measurement error (in terms of pixels) to be on average.
-
-    p_noise — these values are used to create the process noise covariance
-              matrix, Q. Higher magnitudes = greater process noise, meaning
-              incoming measurements are given more weight relative to
-              predictions. The result is that new measurements have a larger
-              impact on updating the trajectory of subsequent predictions.
-
-    e_uncertainty — the initial values of the estimate uncertainty matrix, P.
-
-    xy_vel — the expected initial velocity of the object.
-
-    wh_vel — the expected initial velocity of the bounding box dimensions.
-    
-    dt —
-    
-    ---------------------------------------
-    '''
-    
-    F = np.array([
-        [1.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0],
-        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, dt/8, 0.0],
-        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, dt/8],
-        [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
-        ])
-
-    # Q values:
-    position_var = (dt**4)/4 # Position variance
-    velocity_var = (dt**2) # Velocity variance
-
-    x_noise, y_noise, w_noise, h_noise = p_noise
-
-    x_pvar = position_var * x_noise
-    y_pvar = position_var * y_noise
-    w_pvar = position_var * w_noise
-    h_pvar = position_var * h_noise
-
-    x_vvar = velocity_var * x_noise
-    y_vvar = velocity_var * y_noise
-    w_vvar = velocity_var * w_noise
-    h_vvar = velocity_var * h_noise
-
-    Q = np.array([
-        [x_pvar, 0, 0, 0, 0, 0, 0, 0],
-        [0, y_pvar, 0, 0, 0, 0, 0, 0],
-        [0, 0, w_pvar, 0, 0, 0, 0, 0],
-        [0, 0, 0, h_pvar, 0, 0, 0, 0],
-        [0, 0, 0, 0, x_vvar, 0, 0, 0],
-        [0, 0, 0, 0, 0, y_vvar, 0, 0],
-        [0, 0, 0, 0, 0, 0, w_vvar, 0],
-        [0, 0, 0, 0, 0, 0, 0, h_vvar]
-        ])
-
-    H = np.array([
-        [1, 0, 0, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0, 0, 0]
-        ])
-
-    R = np.diag(m_noise)
-
-    x_init = np.array(measurement + xy_vel + wh_vel)
-    P_init = np.diag(e_uncertainty)
-
-    return F, Q, H, R, x_init, P_init
-
-
 class Track(KalmanFilter):
     def __init__(self, detection, embedding, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.face_detections = {}
         self.detections = {args[0]: detection}
         self.embeddings = [embedding]
+
         self.first_detection_frame = args[0]
         self.last_detection_frame = args[0]
-        self.face_data = {}
+
+        self.identity_scores = None
 
     def add_embedding(self, embedding, window=-20):
         self.embeddings.append(embedding)
@@ -153,13 +69,20 @@ class Track(KalmanFilter):
     def add_detection(self, new_detection, frame_number):
         self.detections[frame_number] = new_detection
         self.last_detection_frame = frame_number
+    
+    def add_face_detection(self, possible_matches, frame_number):
+        self.face_detections[frame_number] = possible_matches
 
 
 class GlobalTracker:
-    def __init__(self, video_file, start, end, detection_data, face_data, embedding_path):
-        self.video_file = video_file
-        self.f_num = start
-        self.end = end
+    def __init__(self, video_path, detection_data, face_data, embedding_path):
+        self.vid_path = video_path
+        self.f_num = 0
+        cap = cv2.VideoCapture(video_path)
+        self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.resolution = [cap.get(cv2.CAP_PROP_FRAME_WIDTH),
+                           cap.get(cv2.CAP_PROP_FRAME_HEIGHT)]
+        cap.release()
 
         self.active_trks = {}
         self.trk_cache = {}
@@ -174,17 +97,22 @@ class GlobalTracker:
     def _create_new_tracks(self):
         detections, embeddings = self.unmatched
 
+        initial_uncertainty = [5, 5, 5, 5, 5, 5, 5, 5]
         m_noise = [500, 500, 500, 500]
         p_noise = [50, 50, 50, 50]
-        e_uncertainty = [5, 5, 5, 5, 5, 5, 5, 5]
         dt = 0.5
 
-        for i, box in enumerate(detections):
-            measurement = [utilities.centroid(box[:4])] + box[2:4]
-            kf_args = kf_matrix_fmt(measurement, m_noise, p_noise,
-                                    e_uncertainty, dt=dt)
-            new_track = Track(box[:4], embeddings[i], self.f_num, *kf_args)
+        for i, detection in enumerate(detections):
+            box = detection[:4]
+            measurement = [utils.centroid(box)] + box[2:]
+    
+            kf_args = utils.format_cv2D_kf(
+                measurement, m_noise, p_noise, initial_uncertainty, dt=dt
+            )
+
+            new_track = Track(box, embeddings[i], self.f_num, *kf_args)
             self.active_trks[self.trk_id] = new_track
+    
             self.trk_id += 1
 
         self.unmatched = []
@@ -204,18 +132,29 @@ class GlobalTracker:
     def _match_and_update(self, measurements, min_lifespan=15):
         def _construct_cost_matrix(detections, embeddings, weights=[1, 0.1]):
             '''
-            Creates a cost matrix based on a weighted sum of geometric costs and
-            embedding similarity costs.
+            Creates a cost matrix based on a weighted sum of geometric
+            distances and embedding distances.
+            
+            Both of the distance metrics are normalized, such that all values
+            for each are scaled within the range [0, 1]. This prevents
+            significant scale differences from unintentionally biasing how
+            each metric is weighted.
             '''
 
-            def _distance_costs(detections, cost_threshold=1000):
-                trk_ids = sorted(self.active_trks.keys())
+            def _distance_costs(detections, cutoff_multiplier=0.5):
+
+                d_cntrs = utils.get_centroids(detections)
                 t_cntrs = []
+
+                trk_ids = sorted(self.active_trks.keys())
                 for id in trk_ids:
                     t_cntrs.append(self.active_trks[id].x.tolist()[:2])
-                d_cntrs = utilities.get_centroids(detections)
+                
+                frame_w = self.resolution[0]
+                frame_h = self.resolution[1]
+                max_distance_in_frame = np.sqrt(frame_w**2 + frame_h**2)
 
-                diagonal = np.sqrt(1920**2 + 1080**2)
+                distance_cutoff = max_distance_in_frame * cutoff_multiplier
 
                 rows = len(t_cntrs)
                 cols = len(d_cntrs)
@@ -223,21 +162,22 @@ class GlobalTracker:
 
                 for i, c2 in enumerate(t_cntrs):
                     for j, c1 in enumerate(d_cntrs):
-                        euc = utilities.euclidean_distance((c1, c2))
-                        if euc < cost_threshold:
-                            normalized = euc / diagonal
+                        distance = utils.euclidean_distance((c1, c2))
+                        if distance < distance_cutoff:
+                            normalized = distance / max_distance_in_frame
                             cost_matrix[i][j] = normalized
 
                 return np.array(cost_matrix)
 
             def _similarity_costs(embeddings):
-                def _highest_similarity(trk, embedding):
-                    highest = -1
+                def _lowest_distance(trk, embedding):
+                    lowest = 1
                     for trk_embedding in trk.embeddings:
-                        sim = utilities.cos_sim(trk_embedding, embedding)
-                        if sim > highest:
-                            highest = sim
-                    return highest
+                        dst = utils.cos_distance(trk_embedding, embedding,
+                                                 normalize=True)
+                        if dst < lowest:
+                            lowest = dst
+                    return lowest
 
                 trk_ids = sorted(self.active_trks.keys())
 
@@ -247,7 +187,7 @@ class GlobalTracker:
 
                 for i, id in enumerate(trk_ids):
                     for j, emb in enumerate(embeddings):
-                        cost = 1 - _highest_similarity(self.active_trks[id], emb)
+                        cost = _lowest_distance(self.active_trks[id], emb)
                         cost_matrix[i][j] = cost
 
                 return np.array(cost_matrix)
@@ -352,7 +292,7 @@ class GlobalTracker:
         detections, embeddings = measurements
 
         cost_matrix = _construct_cost_matrix(detections, embeddings,
-                                            weights=[1, .1])
+                                             weights=[1, 0.1])
         assignments = _assign_matches(cost_matrix)
 
         matched = []
@@ -363,7 +303,7 @@ class GlobalTracker:
             matched.append(measurement_index)
 
             box = detections[measurement_index]
-            c_x, c_y = utilities.centroid(box)
+            c_x, c_y = utils.centroid(box)
             w, h = box[2:4]
             measurement = np.array([c_x, c_y, w, h])
 
@@ -378,24 +318,81 @@ class GlobalTracker:
         
         self.unmatched = [unmatched_detections, unmatched_embeddings]
 
-    def _associate_faces():
+    def _associate_faces(self, cutoff=0.9):
+        def _overlap_costs(face_boxes, person_boxes):
+            rows = len(face_boxes)
+            cols = len(person_boxes)
+            cost_matrix = [[float('inf')] * cols for _ in range(rows)]
+
+            for i, box1 in enumerate(face_boxes):
+                for j, box2 in enumerate(person_boxes):
+                    overlap = utils.percent_overlap(box1, box2)
+                    cost = 1 - overlap
+                    cost_matrix[i][j] = cost
+
+            return np.array(cost_matrix)
+
+        face_boxes = []
+        person_boxes = []
+
+        face_df = self.face_data.loc[self.face_data['frame'] == self.f_num]
+        face_boxes += (face_df[['x', 'y', 'w', 'h']].drop_duplicates()
+                       .values.tolist())
+
+        trk_ids = sorted(self.active_trks.keys())
+        for id in trk_ids:
+            trk = self.active_trks[id]
+            try:
+                box = trk.detections[self.f_num]
+            except KeyError:
+                state = trk.x[:4]
+                x, y = utils.centroid(state, reverse=True)
+                w, h = state[2:4]
+                box = [x, y, w, h]
+            person_boxes.append(box)
+        
+        if (face_df.empty) or (not person_boxes):
+            return False
+
+        cost_matrix = _overlap_costs(face_boxes, person_boxes)
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        assignments = dict(zip(row_ind, col_ind))
+
+        for f_idx, p_idx in assignments.items():
+            if cost_matrix[f_idx][p_idx] >= cutoff:
+                continue
+    
+            id = trk_ids[p_idx]
+            face_box = face_boxes[f_idx]
+
+            f_matches = face_df.loc[
+                (face_df['x'] == face_box[0]) &
+                (face_df['y'] == face_box[1]) &
+                (face_df['w'] == face_box[2]) &
+                (face_df['h'] == face_box[3])
+            ]
+
+            self.active_trks[id].add_face_detection(f_matches, self.f_num)
+
         return True
+
 
     def run(self):
         def _save_and_cleanup():
+            last_frame = self.total_frames - 1
             if self.active_trks:
+                video_file = self.vid_path.split('/')[-1]
                 io_utils.save_track_continuations(
-                    self.video_file, self.end - 1, self.active_trks
+                    video_file, last_frame, self.active_trks
                 )
             all_trks = {**self.active_trks, **self.trk_cache}
             del self.active_trks
             del self.trk_cache
-            span = [start, self.end - 1]
+            span = [0, last_frame]
     
             return all_trks, span
 
-        start = self.f_num
-        while self.f_num < self.end:
+        while self.f_num < self.total_frames:
             if self.active_trks:
                 self._predict_or_cache()
 
@@ -409,7 +406,7 @@ class GlobalTracker:
             if measurements and self.active_trks:
                 self._match_and_update(measurements)
             elif measurements and (not self.active_trks):
-                self.unmatched = [detections, embeddings]
+                self.unmatched = measurements
             
             self._create_new_tracks()
             self._associate_faces()
@@ -427,8 +424,8 @@ def tracking_pipeline(video_file):
         
         prev_end_time = datetime.strptime(continuations[0][4], "%Y-%m-%d %H:%M:%S.%f")
 
-        time_prefix = utilities.parse_clip_filename(video_file, data='time')
-        clip_start_time = utilities.frame_timestamp(time_prefix)
+        time_prefix = utils.parse_clip_filename(video_file, data='time')
+        clip_start_time = utils.frame_timestamp(time_prefix)
 
         interim = round((clip_start_time - prev_end_time).total_seconds(), 0) * fps
 
@@ -466,8 +463,6 @@ def tracking_pipeline(video_file):
         return active_trks
 
     start = 0
-    end = int(cv2.VideoCapture(f'../input_files/{video_file}')
-              .get(cv2.CAP_PROP_FRAME_COUNT)) + 1
 
     base_path = '../intermediate_output'
     video_name = video_file.split('.')[0]

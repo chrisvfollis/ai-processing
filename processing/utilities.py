@@ -4,16 +4,21 @@ from datetime import datetime, timedelta
 import torch
 import torch.nn.functional as F
 import math
+import numpy as np
 
 
-def centroid(coordinates):
+def centroid(coordinates, reverse=False):
     '''
     Returns centroid from [x1, y1, w, h] where (x1, y1) are the
     coordinates of the bounding box's top left corner.
     '''
-    if (coordinates is not None):
-        x = coordinates[0] + coordinates[2] / 2
-        y = coordinates[1] + coordinates[3] / 2
+    if reverse == False:
+        x = coordinates[0] + (coordinates[2] / 2)
+        y = coordinates[1] + (coordinates[3] / 2)
+    elif reverse == True:
+        x = coordinates[0] - (coordinates[2] / 2)
+        y = coordinates[1] - (coordinates[3] / 2)
+
     return x, y
 
 
@@ -28,13 +33,20 @@ def get_centroids(boxes):
     return frame_centroids
 
 
-def cos_sim(embedding1, embedding2):
+def cos_distance(embedding1, embedding2, normalize=False):
     embedding1 = torch.tensor(embedding1)
     embedding2 = torch.tensor(embedding2)
     embedding1 = embedding1.unsqueeze(0) if embedding1.dim() == 1 else embedding1
     embedding2 = embedding2.unsqueeze(0) if embedding2.dim() == 1 else embedding2
     sim_tensor = F.cosine_similarity(embedding1, embedding2, dim=1)
-    return sim_tensor.item()
+
+    cosine_similarity = sim_tensor.item()
+    cosine_distance = 1 - cosine_similarity
+
+    if normalize == True:
+        return cosine_distance / 2
+    elif normalize == False:
+        return cosine_distance
 
 
 def euclidean_distance(xy_centroids):
@@ -67,69 +79,79 @@ def restrain_boxes(coordinates, image_size=[1920, 1080]):
     return coordinates
 
 
-def xywh_to_4corners(lst):
-    lt = (lst[0], lst[1])
-    rt = (lst[0] + lst[2], lst[1])
+def get_intersection(rectangle1, rectangle2, attr='area'):
+    x1, y1, w1, h1 = rectangle1
+    x2, y2, w2, h2 = rectangle2
 
-    lb = (lst[0], lst[1] + lst[3])
-    rb = (lst[0] + lst[2], lst[1] + lst[3])
+    inter_ltx = max(x1, x2)
+    inter_lty = max(y1, y2)
+    inter_rbx = min(x1 + w1, x2 + w2)
+    inter_rby = min(y1 + h1, y2 + h2)
 
-    return [lt, rt, lb, rb]
+    if (inter_ltx >= inter_rbx) or (inter_lty >= inter_rby):
+        return None
 
+    inter_w = inter_rbx - inter_ltx
+    inter_h = inter_rby - inter_lty
 
-def intersection_box(rect1, rect2):
-    lt_1, rt_1, lb_1, rb_1 = xywh_to_4corners(rect1)
-    lt_2, rt_2, lb_2, rb_2 = xywh_to_4corners(rect2)
-
-    inter_ltx, inter_lty = (max([lt_1[0], lt_2[0]]), max([lt_1[1], lt_2[1]]))
-
-    if inter_lty >= min([rb_1[1], rb_2[1]]):
-        return 0
-    elif inter_ltx >= min([rt_1[0], rt_2[0]]):
-        return 0
-
-    inter_w = (min([rt_1[0], rt_2[0]])) - inter_ltx
-    inter_h = (min([lb_1[1], lb_2[1]])) - inter_lty
-
-    return [inter_ltx, inter_lty, inter_w, inter_h]
+    if attr == 'area':
+        return inter_w * inter_h
+    elif attr == 'rectangle':
+        return [inter_ltx, inter_lty, inter_w, inter_h]
 
 
-def i_over_u(rect1, rect2):
+def i_over_u(rectangle1, rectangle2):
     '''
-    Input format — [x1, y1, w, h] 
+    Returns the intersection over union between two rectangles.
+
+    --------------------------------------------------
+    Rectangle format: [x, y, w, h]
+    (x, y) = top left coordinate
     '''
-    try:
-        i_w, i_h = intersection_box(rect1, rect2)[2:]
-        intersection = i_w * i_h
-    except Exception:
-        intersection = intersection_box(rect1, rect2)
 
-    union = (rect1[2] * rect1[3]) + (rect2[2] * rect2[3]) - intersection
+    r1_area = rectangle1[2] * rectangle1[3]
+    r2_area = rectangle2[2] * rectangle2[3]
+    
+    intersection = get_intersection(rectangle1, rectangle2, attr='area')
+    if not intersection:
+        return None
 
-    if union == 0:
-        return 0
+    union = (r1_area + r2_area) - intersection
 
     return intersection / union
 
 
-def percent_in_polygon(bbox, polygon_points):
+def percent_overlap(rectangle1, rectangle2):
     '''
+    Returns what percent of rectangle1's total area is overlapping with
+    rectangle2, i.e. how much of it is "in" rectangle2.
+    '''
+
+    r1_area = rectangle1[2] * rectangle1[3]
+    intersection = get_intersection(rectangle1, rectangle2, attr='area')
+
+    return intersection / r1_area
+
+
+def percent_in_entryway(bbox, entryway_points):
+    '''
+    Returns the percent of a bounding box's total area that is "inside" of
+    an entryway. The percent is represented as a decimal.
+
     --------------------------------------------------
-    bbox format:
-    data — [x1, y1, w, h]
-    order — from top left
+    bbox format: [x, y, w, h]
+    (x, y) — top left coordinate
     --------------------------------------------------
-    polygon format:
-    data — [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
-    order — from top left, clockwise
+    entryway_points format: [(x1, y1), (x2, y2), ... (x_n, y_n)]
+    Order — from top left, clockwise
     --------------------------------------------------               
     '''
 
-    polygon = Polygon(polygon_points)
+    entryway = Polygon(entryway_points)
     
     bbox_polygon = box(bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3])
     
-    intersection = polygon.intersection(bbox_polygon).area
+    intersection = entryway.intersection(bbox_polygon).area
     area = bbox[2] * bbox[3]
     
     if area == 0:
@@ -179,9 +201,100 @@ def flag_entryway_events(all_trks, entryways, threshold=.4):
         for i in range(2):
             trk[keys[i]] = None
             for points in entryways[cam].values():
-                pcnt_in_entryway = percent_in_polygon(detections[i], points)
+                pcnt_in_entryway = percent_in_entryway(detections[i], points)
                 if pcnt_in_entryway > threshold:
                     trk[keys[i]] = trk['trk_span'][i]
                     break
 
     return all_trks
+
+
+def format_cv2D_kf(measurement, m_noise, p_noise, initial_uncertainty,
+                            xy_vel=[0, 0], wh_vel=[0, 0], dt=1.0):
+    
+    '''
+    Formats the necessary matrices for modeling constant velocity in 2D space
+    with a Kalman filter.
+
+    --------------------------------------------------------
+
+    ARGUMENTS:
+
+    measurement — the bounding box of the object, formatted as a list with the
+                  values [center x, center y, width, height].
+
+    m_noise — the values along the diagonal of the measurement noise covariance
+              matrix, R. Higher magnitudes = greater measurement noise, meaning
+              more weight is given to predictions relative to the incoming
+              measurements. The values of m_noise represent what you expect the
+              squared measurement error (in terms of pixels) to be on average.
+
+    p_noise — these values are used to create the process noise covariance
+              matrix, Q. Higher magnitudes = greater process noise, meaning
+              incoming measurements are given more weight relative to
+              predictions. The result is that new measurements have a larger
+              impact on updating the trajectory of subsequent predictions.
+
+    initial_uncertainty — the initial values of the estimate uncertainty
+                          matrix, P.
+
+    xy_vel — the expected initial velocity of the object.
+
+    wh_vel — the expected initial velocity of the bounding box dimensions.
+    
+    dt — the timestep.
+    
+    ---------------------------------------
+    '''
+    
+    F = np.array([
+        [1.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0, 0.0, dt, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, dt/8, 0.0],
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, dt/8],
+        [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        ])
+
+    # Q values:
+    position_var = (dt**4)/4 # Position variance
+    velocity_var = (dt**2) # Velocity variance
+
+    x_noise, y_noise, w_noise, h_noise = p_noise
+
+    x_pvar = position_var * x_noise
+    y_pvar = position_var * y_noise
+    w_pvar = position_var * w_noise
+    h_pvar = position_var * h_noise
+
+    x_vvar = velocity_var * x_noise
+    y_vvar = velocity_var * y_noise
+    w_vvar = velocity_var * w_noise
+    h_vvar = velocity_var * h_noise
+
+    Q = np.array([
+        [x_pvar, 0, 0, 0, 0, 0, 0, 0],
+        [0, y_pvar, 0, 0, 0, 0, 0, 0],
+        [0, 0, w_pvar, 0, 0, 0, 0, 0],
+        [0, 0, 0, h_pvar, 0, 0, 0, 0],
+        [0, 0, 0, 0, x_vvar, 0, 0, 0],
+        [0, 0, 0, 0, 0, y_vvar, 0, 0],
+        [0, 0, 0, 0, 0, 0, w_vvar, 0],
+        [0, 0, 0, 0, 0, 0, 0, h_vvar]
+        ])
+
+    H = np.array([
+        [1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0, 0, 0]
+        ])
+
+    R = np.diag(m_noise)
+
+    x_init = np.array(measurement + xy_vel + wh_vel)
+    P_init = np.diag(initial_uncertainty)
+
+    return F, Q, H, R, x_init, P_init

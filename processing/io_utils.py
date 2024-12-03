@@ -100,6 +100,8 @@ def write_face_csv(face_data, video_file):
     full_df = pd.concat(merged_dfs, ignore_index=True)
     full_df = full_df.drop(['target_x', 'target_y', 'target_w', 'target_h',
                             'threshold'])
+    full_df = full_df.rename({'source_x': 'x', 'source_y': 'y',
+                              'source_w': 'w', 'source_h': 'h'})
     
     full_df.to_csv(csv_path)
 
@@ -342,7 +344,7 @@ def get_shop(db_path):
     return results
 
 
-def save_track_continuations(video_file, clip_end, active_trks, db_path='../appdata/data.db'):
+def save_track_continuations(video_file, last_frame, active_trks, db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
@@ -379,7 +381,7 @@ def save_track_continuations(video_file, clip_end, active_trks, db_path='../appd
     time_prefix, camera = utilities.parse_clip_filename(video_file)
 
     clip_start_time = utilities.frame_timestamp(time_prefix)
-    clip_end_time = utilities.frame_timestamp(time_prefix, frame=clip_end)
+    clip_end_time = utilities.frame_timestamp(time_prefix, frame=last_frame)
 
     for id, data in active_trks.items():
         F = json.dumps(data.F.tolist())
@@ -389,7 +391,7 @@ def save_track_continuations(video_file, clip_end, active_trks, db_path='../appd
         x = json.dumps(data.x.tolist())
         P = json.dumps(data.x.tolist())
         embedding = json.dumps(data.embeddings[-1].tolist())
-        last_detection_delta = data.last_detection_frame - clip_end
+        last_detection_delta = data.last_detection_frame - last_frame
 
         cursor.execute(insert_query, (id, camera, clip_start_time,
                                       clip_end_time, F, Q, H, R, x, P,
