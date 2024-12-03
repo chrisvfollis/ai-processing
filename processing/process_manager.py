@@ -2,7 +2,7 @@ import torch
 import io_utils
 from processing.inference import (load_extractor, load_yolov4, detect_yolov4,
                           detect_embed_pipeline)
-from object_tracking import track
+from processing.tracking import track
 from identify import identification_pipeline
 import cv2
 import time

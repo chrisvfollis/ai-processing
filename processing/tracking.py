@@ -60,8 +60,6 @@ class Track(KalmanFilter):
         self.first_detection_frame = args[0]
         self.last_detection_frame = args[0]
 
-        self.identity_scores = None
-
     def add_embedding(self, embedding, window=-20):
         self.embeddings.append(embedding)
         self.embeddings = self.embeddings[window:]
@@ -72,6 +70,27 @@ class Track(KalmanFilter):
     
     def add_face_detection(self, possible_matches, frame_number):
         self.face_detections[frame_number] = possible_matches
+    
+    def identity_costs(self):
+        costs = {}
+
+        all_dfs = list(self.face_detections.values())
+        merged_df = pd.concat(all_dfs, ignore_index=True)
+
+        grouped = merged_df.groupby('identity')
+        for identity, group in grouped:
+            distances = group['distance']
+            frequency = len(group)
+            
+            avg_distance = sum(distances)/frequency
+            frequency_adjustment = (
+                np.log10(1 + np.exp(frequency)) * (1.025**frequency)
+            )
+            
+            cost = avg_distance / frequency_adjustment
+            costs[identity] = cost
+        
+        return costs
 
 
 class GlobalTracker:
@@ -364,7 +383,6 @@ class GlobalTracker:
     
             id = trk_ids[p_idx]
             face_box = face_boxes[f_idx]
-
             f_matches = face_df.loc[
                 (face_df['x'] == face_box[0]) &
                 (face_df['y'] == face_box[1]) &
@@ -374,24 +392,51 @@ class GlobalTracker:
 
             self.active_trks[id].add_face_detection(f_matches, self.f_num)
 
-        return True
+    def _save_and_cleanup(self):
+        last_frame = self.total_frames - 1
+        if self.active_trks:
+            video_file = self.vid_path.split('/')[-1]
+            io_utils.save_track_continuations(
+                video_file, last_frame, self.active_trks
+            )
 
+        self.span = [0, last_frame]
+        self.all_trks = {**self.active_trks, **self.trk_cache}
+        del self.active_trks
+        del self.trk_cache
+
+    def _assign_identities(self):
+        identities = []
+        all_id_costs = []
+        trk_ids = sorted(self.all_trks.keys())
+        for id in trk_ids:
+            identity_costs = self.all_trks[id].identity_costs()
+            for identity in identity_costs:
+                identities.append(identity)
+            all_id_costs.append(identity_costs)
+        
+        identities = list(set(identities))
+
+        rows = len(identities)
+        cols = len(trk_ids)
+        cost_matrix = [[float('inf')] * cols for _ in range(rows)]
+
+        for i, identity in enumerate(identities):
+            for j, _ in enumerate(trk_ids):
+                try:
+                    cost = all_id_costs[j][identity]
+                    cost_matrix[i][j] = cost
+                except KeyError:
+                    continue
+        cost_matrix = np.array(cost_matrix)
+
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+        assignments = dict(zip(row_ind, col_ind))
+
+        for identity_idx, trk_idx in assignments.items():
+            print(identities[identity_idx], trk_ids[trk_idx])
 
     def run(self):
-        def _save_and_cleanup():
-            last_frame = self.total_frames - 1
-            if self.active_trks:
-                video_file = self.vid_path.split('/')[-1]
-                io_utils.save_track_continuations(
-                    video_file, last_frame, self.active_trks
-                )
-            all_trks = {**self.active_trks, **self.trk_cache}
-            del self.active_trks
-            del self.trk_cache
-            span = [0, last_frame]
-    
-            return all_trks, span
-
         while self.f_num < self.total_frames:
             if self.active_trks:
                 self._predict_or_cache()
@@ -413,7 +458,7 @@ class GlobalTracker:
 
             self.f_num += 1
 
-        return _save_and_cleanup()
+        self._save_and_cleanup()
 
 
 def tracking_pipeline(video_file):
@@ -462,17 +507,14 @@ def tracking_pipeline(video_file):
     
         return active_trks
 
-    start = 0
+    video_path = f'../input_files/{video_file}'
+    imdt_base_path = f"../intermediate_output/{video_file.split('.')[0]}"
 
-    base_path = '../intermediate_output'
-    video_name = video_file.split('.')[0]
-    detection_data = io_utils.read_detection_csv(f'{base_path}/{video_name}'
-                                                 + '_detections.csv')
-    face_data = pd.read_csv(f'{base_path}/{video_name}_faces.csv')
-    embedding_path = f'{base_path}/{video_file.split(".")[0]}_embeddings.hdf5'
+    det_data = io_utils.read_detection_csv(imdt_base_path + '_detections.csv')
+    face_data = pd.read_csv(imdt_base_path + '_faces.csv')
+    embedding_path = imdt_base_path + '_embeddings.hdf5'
 
-    tracker = GlobalTracker(video_file, start, end, detection_data, face_data,
-                            embedding_path)
+    tracker = GlobalTracker(video_path, det_data, face_data, embedding_path)
     
     return tracker.run()
         
