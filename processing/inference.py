@@ -16,7 +16,7 @@ def identify_faces(frame):
         face_dfs = DeepFace.find(
             img_path=frame, db_path='../input_files/faces',
             model_name='Facenet512', detector_backend='retinaface',
-            enforce_detection=True, silent=True
+            threshold = .99, enforce_detection=True, silent=True
         )        
     except ValueError:
         print('No faces detected')
@@ -345,7 +345,6 @@ class InferencePipeline:
             self.f_num += stride
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
 
-
     def run(self):
         def _process_frame(frame):
             if self.f_num % self.track_stride == 0:
@@ -357,7 +356,8 @@ class InferencePipeline:
                     self.person_data[self.f_num] = detections
 
             if self.f_num % self.id_stride == 0:
-                faces = identify_faces(frame)
+                faces = identify_faces(frame, detections)
+                # faces = identify_faces(frame)
                 if faces:
                     self.face_data[self.f_num] = faces
         

@@ -1,5 +1,7 @@
 *.hdf5
 
+*.pkl
+
 *.mp4
 
 *.png
