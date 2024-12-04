@@ -93,7 +93,7 @@ class Track(KalmanFilter):
         return costs
 
 
-class GlobalTracker:
+class Tracker:
     def __init__(self, video_path, detection_data, face_data, embedding_path):
         self.vid_path = video_path
         self.f_num = 0
@@ -114,7 +114,10 @@ class GlobalTracker:
         self.unmatched = []
 
     def _create_new_tracks(self):
-        detections, embeddings = self.unmatched
+        try:
+            detections, embeddings = self.unmatched
+        except ValueError:
+            return None
 
         initial_uncertainty = [5, 5, 5, 5, 5, 5, 5, 5]
         m_noise = [500, 500, 500, 500]
@@ -354,7 +357,7 @@ class GlobalTracker:
         face_boxes = []
         person_boxes = []
 
-        face_df = self.face_data.loc[self.face_data['frame'] == self.f_num]
+        face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
         face_boxes += (face_df[['x', 'y', 'w', 'h']].drop_duplicates()
                        .values.tolist())
 
@@ -508,15 +511,18 @@ def tracking_pipeline(video_file):
         return active_trks
 
     video_path = f'../input_files/{video_file}'
-    imdt_base_path = f"../intermediate_output/{video_file.split('.')[0]}"
+    data_path = f"../intermediate_output/{video_file.split('.')[0]}"
 
-    det_data = io_utils.read_detection_csv(imdt_base_path + '_detections.csv')
-    face_data = pd.read_csv(imdt_base_path + '_faces.csv')
-    embedding_path = imdt_base_path + '_embeddings.hdf5'
+    det_data = io_utils.read_detection_csv(data_path + '_detections.csv')
+    face_data = pd.read_csv(data_path + '_faces.csv')
+    embedding_path = data_path + '_embeddings.hdf5'
 
-    tracker = GlobalTracker(video_path, det_data, face_data, embedding_path)
-    
-    return tracker.run()
+    tracker = Tracker(video_path, det_data, face_data, embedding_path)
+    tracker.run()
+
+    io_utils.write_trk_data(video_file, tracker.all_trks, tracker.span)
+
+    return True
         
 
 

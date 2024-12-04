@@ -1,39 +1,51 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from tool.torch_utils import *
-from tool.yolo_layer import YoloLayer
+import numpy as np
+import sys
 
 
-class Mish(torch.nn.Module):
+class Mish(nn.Module):
     def __init__(self):
         super().__init__()
 
     def forward(self, x):
-        x = x * (torch.tanh(torch.nn.functional.softplus(x)))
+        x = x * (torch.tanh(F.softplus(x)))
         return x
 
 
 class Upsample(nn.Module):
     def __init__(self):
-        super(Upsample, self).__init__()
+        super().__init__()
 
     def forward(self, x, target_size, inference=False):
-        assert (x.data.dim() == 4)
-        # _, _, tH, tW = target_size
+        target_h = target_size[2]
+        target_w = target_size[3]
+
+        input_h = x.size(2)
+        input_w = x.size(3)
+
+        batch_size = x.size(0)
+        num_channels = x.size(1)
 
         if inference:
+            reshaped_tensor = (
+                x.view(batch_size, num_channels, input_h, 1, input_w, 1)
+                .expand(
+                    batch_size, num_channels,
+                    input_h, (target_h // input_h),
+                    input_w, (target_w // input_w)
+                )
+                .contiguous()
+                .view(batch_size, num_channels, target_h, target_w)
+            )
+            return reshaped_tensor
 
-            #B = x.data.size(0)
-            #C = x.data.size(1)
-            #H = x.data.size(2)
-            #W = x.data.size(3)
-
-            return x.view(x.size(0), x.size(1), x.size(2), 1, x.size(3), 1).\
-                    expand(x.size(0), x.size(1), x.size(2), target_size[2] // x.size(2), x.size(3), target_size[3] // x.size(3)).\
-                    contiguous().view(x.size(0), x.size(1), target_size[2], target_size[3])
         else:
-            return F.interpolate(x, size=(target_size[2], target_size[3]), mode='nearest')
+            rescaled_tensor = F.interpolate(
+                x, size=(target_h, target_w), mode='nearest'
+            )
+            return rescaled_tensor
 
 
 class Conv_Bn_Activation(nn.Module):
@@ -237,7 +249,7 @@ class DownSample5(nn.Module):
 
 
 class Neck(nn.Module):
-    def __init__(self, inference=False):
+    def __init__(self, inference=True):
         super().__init__()
         self.inference = inference
 
@@ -277,7 +289,7 @@ class Neck(nn.Module):
         self.conv19 = Conv_Bn_Activation(128, 256, 3, 1, 'leaky')
         self.conv20 = Conv_Bn_Activation(256, 128, 1, 1, 'leaky')
 
-    def forward(self, input, downsample4, downsample3, inference=False):
+    def forward(self, input, downsample4, downsample3, inference=True):
         x1 = self.conv1(input)
         x2 = self.conv2(x1)
         x3 = self.conv3(x2)
@@ -320,8 +332,185 @@ class Neck(nn.Module):
         return x20, x13, x6
 
 
+class YoloLayer(nn.Module):
+    ''' Yolo layer
+    model_out: while inference,is post-processing inside or outside the model
+        true:outside
+    '''
+    def __init__(self, anchor_mask=[], num_classes=0, anchors=[], num_anchors=1, stride=32, model_out=False):
+        super().__init__()
+        self.anchor_mask = anchor_mask
+        self.num_classes = num_classes
+        self.anchors = anchors
+        self.num_anchors = num_anchors
+        self.anchor_step = len(anchors) // num_anchors
+        self.coord_scale = 1
+        self.noobject_scale = 1
+        self.object_scale = 5
+        self.class_scale = 1
+        self.thresh = 0.6
+        self.stride = stride
+        self.seen = 0
+        self.scale_x_y = 1
+
+        self.model_out = model_out
+
+    def forward(self, output):
+        def _dynamic_flexible_fwd(output, anchors):
+            # Output would be invalid if it does not satisfy this assert
+            # assert (output.size(1) == (5 + num_classes) * num_anchors)
+
+            # print(output.size())
+
+            # Slice the second dimension (channel) of output into:
+            # [ 2, 2, 1, num_classes, 2, 2, 1, num_classes, 2, 2, 1, num_classes ]
+            # And then into
+            # bxy = [ 6 ] bwh = [ 6 ] det_conf = [ 3 ] cls_conf = [ num_classes * 3 ]
+            # batch = output.size(0)
+            # H = output.size(2)
+            # W = output.size(3)
+
+            bxy_list = []
+            bwh_list = []
+            det_confs_list = []
+            cls_confs_list = []
+
+            num_anchors = len(self.anchor_mask)
+
+            for i in range(num_anchors):
+                begin = i * (5 + self.num_classes)
+                end = (i + 1) * (5 + self.num_classes)
+                
+                bxy_list.append(output[:, begin : begin + 2])
+                bwh_list.append(output[:, begin + 2 : begin + 4])
+                det_confs_list.append(output[:, begin + 4 : begin + 5])
+                cls_confs_list.append(output[:, begin + 5 : end])
+
+            # Shape: [batch, num_anchors * 2, H, W]
+            bxy = torch.cat(bxy_list, dim=1)
+            # Shape: [batch, num_anchors * 2, H, W]
+            bwh = torch.cat(bwh_list, dim=1)
+
+            # Shape: [batch, num_anchors, H, W]
+            det_confs = torch.cat(det_confs_list, dim=1)
+            # Shape: [batch, num_anchors * H * W]
+            det_confs = det_confs.view(output.size(0), num_anchors * output.size(2) * output.size(3))
+
+            # Shape: [batch, num_anchors * num_classes, H, W]
+            cls_confs = torch.cat(cls_confs_list, dim=1)
+            # Shape: [batch, num_anchors, num_classes, H * W]
+            cls_confs = cls_confs.view(output.size(0), num_anchors, self.num_classes, output.size(2) * output.size(3))
+            # Shape: [batch, num_anchors, num_classes, H * W] --> [batch, num_anchors * H * W, num_classes] 
+            cls_confs = cls_confs.permute(0, 1, 3, 2).reshape(output.size(0), num_anchors * output.size(2) * output.size(3), self.num_classes)
+
+            # Apply sigmoid(), exp() and softmax() to slices
+            #
+            bxy = torch.sigmoid(bxy) * self.scale_x_y - 0.5 * (self.scale_x_y - 1)
+            bwh = torch.exp(bwh)
+            det_confs = torch.sigmoid(det_confs)
+            cls_confs = torch.sigmoid(cls_confs)
+
+            # Prepare C-x, C-y, P-w, P-h (None of them are torch related)
+            grid_x = np.expand_dims(np.expand_dims(np.expand_dims(np.linspace(0, output.size(3) - 1, output.size(3)), axis=0).repeat(output.size(2), 0), axis=0), axis=0)
+            grid_y = np.expand_dims(np.expand_dims(np.expand_dims(np.linspace(0, output.size(2) - 1, output.size(2)), axis=1).repeat(output.size(3), 1), axis=0), axis=0)
+            # grid_x = torch.linspace(0, W - 1, W).reshape(1, 1, 1, W).repeat(1, 1, H, 1)
+            # grid_y = torch.linspace(0, H - 1, H).reshape(1, 1, H, 1).repeat(1, 1, 1, W)
+
+            anchor_w = []
+            anchor_h = []
+            for i in range(num_anchors):
+                anchor_w.append(anchors[i * 2])
+                anchor_h.append(anchors[i * 2 + 1])
+
+            device = None
+            cuda_check = output.is_cuda
+            if cuda_check:
+                device = output.get_device()
+
+            bx_list = []
+            by_list = []
+            bw_list = []
+            bh_list = []
+
+            # Apply C-x, C-y, P-w, P-h
+            for i in range(num_anchors):
+                ii = i * 2
+                # Shape: [batch, 1, H, W]
+                bx = bxy[:, ii : ii + 1] + torch.tensor(grid_x, device=device, dtype=torch.float32) # grid_x.to(device=device, dtype=torch.float32)
+                # Shape: [batch, 1, H, W]
+                by = bxy[:, ii + 1 : ii + 2] + torch.tensor(grid_y, device=device, dtype=torch.float32) # grid_y.to(device=device, dtype=torch.float32)
+                # Shape: [batch, 1, H, W]
+                bw = bwh[:, ii : ii + 1] * anchor_w[i]
+                # Shape: [batch, 1, H, W]
+                bh = bwh[:, ii + 1 : ii + 2] * anchor_h[i]
+
+                bx_list.append(bx)
+                by_list.append(by)
+                bw_list.append(bw)
+                bh_list.append(bh)
+
+
+            ########################################
+            #   Figure out bboxes from slices     #
+            ########################################
+            
+            # Shape: [batch, num_anchors, H, W]
+            bx = torch.cat(bx_list, dim=1)
+            # Shape: [batch, num_anchors, H, W]
+            by = torch.cat(by_list, dim=1)
+            # Shape: [batch, num_anchors, H, W]
+            bw = torch.cat(bw_list, dim=1)
+            # Shape: [batch, num_anchors, H, W]
+            bh = torch.cat(bh_list, dim=1)
+
+            # Shape: [batch, 2 * num_anchors, H, W]
+            bx_bw = torch.cat((bx, bw), dim=1)
+            # Shape: [batch, 2 * num_anchors, H, W]
+            by_bh = torch.cat((by, bh), dim=1)
+
+            # normalize coordinates to [0, 1]
+            bx_bw /= output.size(3)
+            by_bh /= output.size(2)
+
+            # Shape: [batch, num_anchors * H * W, 1]
+            bx = bx_bw[:, :num_anchors].view(output.size(0), num_anchors * output.size(2) * output.size(3), 1)
+            by = by_bh[:, :num_anchors].view(output.size(0), num_anchors * output.size(2) * output.size(3), 1)
+            bw = bx_bw[:, num_anchors:].view(output.size(0), num_anchors * output.size(2) * output.size(3), 1)
+            bh = by_bh[:, num_anchors:].view(output.size(0), num_anchors * output.size(2) * output.size(3), 1)
+
+            bx1 = bx - bw * 0.5
+            by1 = by - bh * 0.5
+            bx2 = bx1 + bw
+            by2 = by1 + bh
+
+            # Shape: [batch, num_anchors * h * w, 4] -> [batch, num_anchors * h * w, 1, 4]
+            boxes = torch.cat((bx1, by1, bx2, by2), dim=2).view(output.size(0), num_anchors * output.size(2) * output.size(3), 1, 4)
+            # boxes = boxes.repeat(1, 1, num_classes, 1)
+
+            # boxes:     [batch, num_anchors * H * W, 1, 4]
+            # cls_confs: [batch, num_anchors * H * W, num_classes]
+            # det_confs: [batch, num_anchors * H * W]
+
+            det_confs = det_confs.view(output.size(0), num_anchors * output.size(2) * output.size(3), 1)
+            confs = cls_confs * det_confs
+
+            # boxes: [batch, num_anchors * H * W, 1, 4]
+            # confs: [batch, num_anchors * H * W, num_classes]
+
+            return  boxes, confs
+
+        if self.training:
+            return output
+        masked_anchors = []
+        for m in self.anchor_mask:
+            masked_anchors += self.anchors[m * self.anchor_step:(m + 1) * self.anchor_step]
+        masked_anchors = [anchor / self.stride for anchor in masked_anchors]
+
+        return _dynamic_flexible_fwd(output, masked_anchors)
+
+
 class Yolov4Head(nn.Module):
-    def __init__(self, output_ch, n_classes, inference=False):
+    def __init__(self, output_ch, n_classes, inference=True):
         super().__init__()
         self.inference = inference
 
@@ -368,6 +557,22 @@ class Yolov4Head(nn.Module):
                                 num_anchors=9, stride=32)
 
     def forward(self, input1, input2, input3):
+        def _get_region_boxes(boxes_and_confs):
+
+            boxes_list = []
+            confs_list = []
+
+            for item in boxes_and_confs:
+                boxes_list.append(item[0])
+                confs_list.append(item[1])
+
+            # boxes: [batch, num1 + num2 + num3, 1, 4]
+            # confs: [batch, num1 + num2 + num3, num_classes]
+            boxes = torch.cat(boxes_list, dim=1)
+            confs = torch.cat(confs_list, dim=1)
+                
+            return [boxes, confs]
+
         x1 = self.conv1(input1)
         x2 = self.conv2(x1)
 
@@ -399,17 +604,16 @@ class Yolov4Head(nn.Module):
             y1 = self.yolo1(x2)
             y2 = self.yolo2(x10)
             y3 = self.yolo3(x18)
-
-            return get_region_boxes([y1, y2, y3])
+    
+            return _get_region_boxes([y1, y2, y3])
         
         else:
             return [x2, x10, x18]
 
 
-class Yolov4(nn.Module):
-    def __init__(self, yolov4conv137weight=None, n_classes=80, inference=False):
+class Yolov4Model(nn.Module):
+    def __init__(self, n_classes=80, inference=True):
         super().__init__()
-
         output_ch = (4 + 1 + n_classes) * 3
 
         # backbone
@@ -418,23 +622,12 @@ class Yolov4(nn.Module):
         self.down3 = DownSample3()
         self.down4 = DownSample4()
         self.down5 = DownSample5()
-        # neck
-        self.neck = Neck(inference)
-        # yolov4conv137
-        if yolov4conv137weight:
-            _model = nn.Sequential(self.down1, self.down2, self.down3, self.down4, self.down5, self.neck)
-            pretrained_dict = torch.load(yolov4conv137weight)
 
-            model_dict = _model.state_dict()
-            # 1. filter out unnecessary keys
-            pretrained_dict = {k1: v for (k, v), k1 in zip(pretrained_dict.items(), model_dict)}
-            # 2. overwrite entries in the existing state dict
-            model_dict.update(pretrained_dict)
-            _model.load_state_dict(model_dict)
+        # neck
+        self.neck = Neck(inference=inference)
         
         # head
-        self.head = Yolov4Head(output_ch, n_classes, inference)
-
+        self.head = Yolov4Head(output_ch, n_classes, inference=inference)
 
     def forward(self, input):
         d1 = self.down1(input)
@@ -447,63 +640,3 @@ class Yolov4(nn.Module):
 
         output = self.head(x20, x13, x6)
         return output
-
-
-if __name__ == "__main__":
-    import sys
-    import cv2
-
-    namesfile = None
-    if len(sys.argv) == 6:
-        n_classes = int(sys.argv[1])
-        weightfile = sys.argv[2]
-        imgfile = sys.argv[3]
-        height = int(sys.argv[4])
-        width = int(sys.argv[5])
-    elif len(sys.argv) == 7:
-        n_classes = int(sys.argv[1])
-        weightfile = sys.argv[2]
-        imgfile = sys.argv[3]
-        height = int(sys.argv[4])
-        width = int(sys.argv[5])
-        namesfile = sys.argv[6]
-    else:
-        print('Usage: ')
-        print('  python models.py num_classes weightfile imgfile namefile')
-
-    model = Yolov4(yolov4conv137weight=None, n_classes=n_classes, inference=True)
-
-    pretrained_dict = torch.load(weightfile, map_location=torch.device('cuda'))
-    model.load_state_dict(pretrained_dict)
-
-    use_cuda = True
-    if use_cuda:
-        model.cuda()
-
-    img = cv2.imread(imgfile)
-
-    # Inference input size is 416*416 does not mean training size is the same
-    # Training size could be 608*608 or even other sizes
-    # Optional inference sizes:
-    #   Hight in {320, 416, 512, 608, ... 320 + 96 * n}
-    #   Width in {320, 416, 512, 608, ... 320 + 96 * m}
-    sized = cv2.resize(img, (width, height))
-    sized = cv2.cvtColor(sized, cv2.COLOR_BGR2RGB)
-
-    from tool.utils import load_class_names, plot_boxes_cv2
-    from tool.torch_utils import do_detect
-
-    for i in range(2):  # This 'for' loop is for speed check
-                        # Because the first iteration is usually longer
-        boxes = do_detect(model, sized, 0.4, 0.6, use_cuda)
-
-    if namesfile == None:
-        if n_classes == 20:
-            namesfile = 'data/voc.names'
-        elif n_classes == 80:
-            namesfile = 'data/coco.names'
-        else:
-            print("please give namefile")
-
-    class_names = load_class_names(namesfile)
-    plot_boxes_cv2(img, boxes[0], 'predictions.jpg', class_names)

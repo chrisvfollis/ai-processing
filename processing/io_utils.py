@@ -50,39 +50,38 @@ def get_config():
     return config
 
 
-def write_detection_csv(object_data, video_file):
+def write_detection_csv(detection_data, video_file):
     base_path = '../intermediate_output/'
     csv_file = f'{video_file.split(".")[0]}_detections.csv'
     csv_path = os.path.join(base_path, csv_file)
     
     file = open(csv_path, 'w', newline='')
     writer = csv.writer(file, delimiter=',')
-    writer.writerow(['Frame', 'X', 'Y', 'W', 'H', 'C', 'identity', 'distance'])
+    writer.writerow(['f', 'x', 'y', 'w', 'h', 'c'])
 
-    for frame in sorted(object_data.keys()):
-        for record in object_data[frame]:
-            box = record['detection']
-            identity = record['identity']
-            distance = record['distance']
-            writer.writerow([frame] + box + [identity] + [distance])
+    for frame in sorted(detection_data.keys()):
+        for detection in detection_data[frame]:
+            writer.writerow([frame] + detection)
 
     file.close()
 
 
 def read_detection_csv(csv_path):
     frame_data = {}
-    with open(csv_path, 'r') as file:
-        csvreader = csv.reader(file, delimiter=',')
-        next(csvreader)
 
-        for row in csvreader:
-            f, x, y, w, h = map(int, row[0:5])
-            c = round(float(row[5]), 3)
+    file = open(csv_path, 'r')
+    csvreader = csv.reader(file, delimiter=',')
+    next(csvreader)
 
-            if f not in frame_data:
-                frame_data[f] = []
-            frame_data[f].append([x, y, w, h, c])
+    for row in csvreader:
+        f, x, y, w, h = map(int, row[0:5])
+        c = round(float(row[5]), 3)
 
+        if f not in frame_data:
+            frame_data[f] = []
+        frame_data[f].append([x, y, w, h, c])
+
+    file.close()
     return frame_data
 
 
@@ -92,17 +91,25 @@ def write_face_csv(face_data, video_file):
     csv_path = os.path.join(base_path, csv_file)
 
     merged_dfs = []
-    for frame, dfs in face_data.keys():
-        merged_df = pd.concat(dfs, ignore_index=True)
-        merged_df['frame'] = frame
-        merged_dfs.append(merged_df)
+    for frame, dfs in face_data.items():
+        valid_dfs = [df for df in dfs if not df.empty]
+        if valid_dfs:
+            merged_df = pd.concat(valid_dfs, ignore_index=True)
+            merged_df['f'] = frame
+            merged_dfs.append(merged_df)
     
     full_df = pd.concat(merged_dfs, ignore_index=True)
-    full_df = full_df.drop(['target_x', 'target_y', 'target_w', 'target_h',
-                            'threshold'])
+
+    print(full_df.columns)
+    print(full_df.head())
+
+    drop_columns = [
+        'target_x', 'target_y', 'target_w', 'target_h', 'threshold'
+    ]
+    full_df = full_df.drop([col for col in drop_columns if col in
+                            full_df.columns], axis=1)
     full_df = full_df.rename({'source_x': 'x', 'source_y': 'y',
                               'source_w': 'w', 'source_h': 'h'})
-    
     full_df.to_csv(csv_path)
 
 
