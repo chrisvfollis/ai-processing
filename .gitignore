@@ -1,4 +1,5 @@
 *.hdf5
+*.db
 
 *.pkl
 
@@ -22,5 +23,3 @@
 
 # Ignore specific files or directories
 capture/utilities/Scan
-
-*.db

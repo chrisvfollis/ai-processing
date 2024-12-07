@@ -54,7 +54,11 @@ def main(stride=15):
             )
 
             print('detecting and embedding...')
-            inference_pipeline.run()
+            result = inference_pipeline.run()
+
+            if not result:
+                print('no detections')
+                continue
 
             print('tracking...')
             all_trks = tracking_pipeline(video_file)
