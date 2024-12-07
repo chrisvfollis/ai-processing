@@ -190,4 +190,4 @@ if __name__ == '__main__':
             time.sleep(30)
             continue
         else:
-            run_capture_cycle(stream_info, interval=1)
+            run_capture_cycle(stream_info, interval=5)

@@ -60,6 +60,8 @@ class Track(KalmanFilter):
         self.first_detection_frame = args[0]
         self.last_detection_frame = args[0]
 
+        self.coincident_trks = []
+
     def add_embedding(self, embedding, window=-20):
         self.embeddings.append(embedding)
         self.embeddings = self.embeddings[window:]
@@ -71,18 +73,22 @@ class Track(KalmanFilter):
     def add_face_detection(self, possible_matches, frame_number):
         self.face_detections[frame_number] = possible_matches
     
-    def identity_costs(self):
+    def calc_id_match_costs(self):
         costs = {}
 
         all_dfs = list(self.face_detections.values())
-        merged_df = pd.concat(all_dfs, ignore_index=True)
+        if not all_dfs:
+            return {}
 
+        merged_df = pd.concat(all_dfs, ignore_index=True)
         grouped = merged_df.groupby('identity')
+
         for identity, group in grouped:
             distances = group['distance']
             frequency = len(group)
             
             avg_distance = sum(distances)/frequency
+    
             frequency_adjustment = (
                 np.log10(1 + np.exp(frequency)) * (1.025**frequency)
             )
@@ -91,18 +97,48 @@ class Track(KalmanFilter):
             costs[identity] = cost
         
         return costs
+    
+    def find_best_id(self):
+        id_costs = self.calc_id_match_costs()
+
+        if not id_costs:
+            self.identity = None
+            self.id_cost = None
+        else:
+            identities, costs = zip(*id_costs.items())
+            min_idx = costs.index(min(costs))
+
+            self.identity = identities[min_idx]
+            self.id_cost = costs[min_idx]
+        
+        return self.identity
+
+    def find_coincident_trks(self, id, all_trks):
+        span = [self.first_detection_frame, self.last_detection_frame]
+        for id2, trk2 in all_trks.items():
+            if (id2 == id) or (id in trk2.coincident_trks):
+                continue
+
+            span2 = [trk2.first_detection_frame, trk2.last_detection_frame]
+ 
+            if utils.is_coincident(span, span2):
+                self.coincident_trks.append(id2)
+                trk2.coincident_trks.append(id)
 
 
 class Tracker:
-    def __init__(self, video_path, detection_data, face_data, embedding_path):
-        self.vid_path = video_path
+    def __init__(self, video_file, detection_data, face_data, embedding_path):
+        self.video_file = video_file
         self.f_num = 0
-        cap = cv2.VideoCapture(video_path)
+
+        cap = cv2.VideoCapture('../input_files/' + video_file)
+        self.fps = int(cap.get(cv2.CAP_PROP_FPS))
         self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.resolution = [cap.get(cv2.CAP_PROP_FRAME_WIDTH),
                            cap.get(cv2.CAP_PROP_FRAME_HEIGHT)]
         cap.release()
 
+        self.all_trks = {}
         self.active_trks = {}
         self.trk_cache = {}
         self.trk_id = 0
@@ -113,376 +149,26 @@ class Tracker:
 
         self.unmatched = []
 
-    def _create_new_tracks(self):
-        try:
-            detections, embeddings = self.unmatched
-        except ValueError:
-            return None
-
-        initial_uncertainty = [5, 5, 5, 5, 5, 5, 5, 5]
-        m_noise = [500, 500, 500, 500]
-        p_noise = [50, 50, 50, 50]
-        dt = 0.5
-
-        for i, detection in enumerate(detections):
-            box = detection[:4]
-            measurement = [utils.centroid(box)] + box[2:]
-    
-            kf_args = utils.format_cv2D_kf(
-                measurement, m_noise, p_noise, initial_uncertainty, dt=dt
-            )
-
-            new_track = Track(box, embeddings[i], self.f_num, *kf_args)
-            self.active_trks[self.trk_id] = new_track
-    
-            self.trk_id += 1
-
-        self.unmatched = []
-
-    def _predict_or_cache(self, threshold=90):
-        cached = []
-        for id, trk in self.active_trks.items():
-            if (self.f_num - trk.last_detection_frame) < threshold:
-                trk.predict()
-                trk.add_state(trk.x, self.f_num)
-            else:
-                self.trk_cache[id] = trk
-                cached.append(id)
-        for id in cached:
-            del self.active_trks[id]
-
-    def _match_and_update(self, measurements, min_lifespan=15):
-        def _construct_cost_matrix(detections, embeddings, weights=[1, 0.1]):
-            '''
-            Creates a cost matrix based on a weighted sum of geometric
-            distances and embedding distances.
-            
-            Both of the distance metrics are normalized, such that all values
-            for each are scaled within the range [0, 1]. This prevents
-            significant scale differences from unintentionally biasing how
-            each metric is weighted.
-            '''
-
-            def _distance_costs(detections, cutoff_multiplier=0.5):
-
-                d_cntrs = utils.get_centroids(detections)
-                t_cntrs = []
-
-                trk_ids = sorted(self.active_trks.keys())
-                for id in trk_ids:
-                    t_cntrs.append(self.active_trks[id].x.tolist()[:2])
-                
-                frame_w = self.resolution[0]
-                frame_h = self.resolution[1]
-                max_distance_in_frame = np.sqrt(frame_w**2 + frame_h**2)
-
-                distance_cutoff = max_distance_in_frame * cutoff_multiplier
-
-                rows = len(t_cntrs)
-                cols = len(d_cntrs)
-                cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-
-                for i, c2 in enumerate(t_cntrs):
-                    for j, c1 in enumerate(d_cntrs):
-                        distance = utils.euclidean_distance((c1, c2))
-                        if distance < distance_cutoff:
-                            normalized = distance / max_distance_in_frame
-                            cost_matrix[i][j] = normalized
-
-                return np.array(cost_matrix)
-
-            def _similarity_costs(embeddings):
-                def _lowest_distance(trk, embedding):
-                    lowest = 1
-                    for trk_embedding in trk.embeddings:
-                        dst = utils.cos_distance(trk_embedding, embedding,
-                                                 normalize=True)
-                        if dst < lowest:
-                            lowest = dst
-                    return lowest
-
-                trk_ids = sorted(self.active_trks.keys())
-
-                rows = len(trk_ids)
-                cols = len(embeddings)
-                cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-
-                for i, id in enumerate(trk_ids):
-                    for j, emb in enumerate(embeddings):
-                        cost = _lowest_distance(self.active_trks[id], emb)
-                        cost_matrix[i][j] = cost
-
-                return np.array(cost_matrix)
-
-            distances = _distance_costs(detections)
-            similarities = _similarity_costs(embeddings)
-            weighted_matrix = (
-                (distances * weights[0]) + (similarities * weights[1])
-            )
-
-            return weighted_matrix
-
-        def _assign_matches(cost_matrix):
-            def _filter_sparse_rows(cost_matrix):
-                '''
-                This function helps ensure linear assignment is feasible on a cost
-                matrix by whittling down problematic sets of sparse rows. These
-                sets are characterized by the following properties:
-
-                - Each row has only one column it could possibly be assigned to. It is
-                the one column with a finite cost value in that row; all the others
-                contain "inf" due to exceeding a cost threshold.
-                - The one viable column in a given row is the one viable column in
-                the entire set. In other words, only one row from each set can
-                ultimately be matched with a column. 
-                
-                Once all such sets have been identified, each is reduced to a single
-                row (whichever has the lowest match cost to the viable volumn). The
-                other rows from each set are filtered from the cost matrix, increasing
-                the number of new tracks to subsequently initialize for this frame.
-                '''
-
-                matrix_coordinates = []
-                unique_cols = set()
-                keep = []
-                filtered_matrix = []
-
-                # For any row containing one finite entry, store the entry's matrix
-                # coordinates and add its column index to unique_cols:
-                for r in range(len(cost_matrix)):
-                    row = cost_matrix[r]
-                    if np.isfinite(row).sum() == 1:
-                        c = int(np.where(row != float('inf'))[0][0])
-                        matrix_coordinates.append((r, c))
-                        unique_cols.add(c)
-
-                # For each column index from the relevant entries identified above,
-                # add the row index of the minimum-value entry in that column:
-                for c in unique_cols:
-                    rows_w_finite_vals = [rc[0] for rc in matrix_coordinates if rc[1] == c]
-                    min_val_row = min(rows_w_finite_vals, key=lambda r: cost_matrix[r, c])
-            
-                    keep.append(min_val_row)
-
-                all_rows = set(range(cost_matrix.shape[0]))
-                used_rows = set(rc[0] for rc in matrix_coordinates)
-
-                unused = list(all_rows - used_rows)
-                keep.extend(unused)
-                keep = sorted(keep)
-
-                for i in keep:
-                    filtered_matrix.append(cost_matrix[i])
-
-                return np.array(filtered_matrix), keep
-
-            assignments_dict = {}
-
-            # Construct boolean arrays denoting which rows/columns from the cost
-            # matrix contain at least one viable entry (finite matching cost):
-            viable_rows = ~np.isinf(cost_matrix).all(axis=1)
-            viable_cols = ~np.isinf(cost_matrix).all(axis=0)
-
-            if viable_rows.any() and viable_cols.any():
-                try:
-                    filtered_matrix = cost_matrix[np.ix_(viable_rows, viable_cols)]
-
-                    if filtered_matrix.size > 0:
-                        row_ind, col_ind = linear_sum_assignment(filtered_matrix)
-
-                        orig_row_ind = np.where(viable_rows)[0]
-                        orig_col_ind = np.where(viable_cols)[0]
-
-                        for i, j in zip(row_ind, col_ind):
-                            orig_row = orig_row_ind[i]
-                            orig_col = orig_col_ind[j]
-                            assignments_dict[orig_row] = orig_col
-
-                # Handle cases where the "cost matrix is infeasible" error is
-                # thrown during the linear_sum_assignment execution:
-                except ValueError:
-                    filtered_matrix, keep = _filter_sparse_rows(cost_matrix)
-                    row_ind, col_ind = linear_sum_assignment(filtered_matrix)
-
-                    orig_row_ind = [keep[i] for i in row_ind]
-                    for i, j in zip(orig_row_ind, col_ind):
-                        assignments_dict[i] = j
-
-            return assignments_dict
-
-        trk_ids = sorted(self.active_trks.keys())
-        detections, embeddings = measurements
-
-        cost_matrix = _construct_cost_matrix(detections, embeddings,
-                                             weights=[1, 0.1])
-        assignments = _assign_matches(cost_matrix)
-
-        matched = []
-        for trk_index, measurement_index in assignments.items():
-            id = trk_ids[trk_index]
-            trk = self.active_trks[id]
-
-            matched.append(measurement_index)
-
-            box = detections[measurement_index]
-            c_x, c_y = utils.centroid(box)
-            w, h = box[2:4]
-            measurement = np.array([c_x, c_y, w, h])
-
-            trk.update(measurement)
-            trk.add_detection(box[:4], self.f_num)
-            trk.add_embedding(embeddings[measurement_index])
-
-        unmatched_detections = [detections[j] for j in range(len(detections))
-                                if j not in matched]
-        unmatched_embeddings = [embeddings[j] for j in range(len(embeddings))
-                                if j not in matched]
-        
-        self.unmatched = [unmatched_detections, unmatched_embeddings]
-
-    def _associate_faces(self, cutoff=0.9):
-        def _overlap_costs(face_boxes, person_boxes):
-            rows = len(face_boxes)
-            cols = len(person_boxes)
-            cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-
-            for i, box1 in enumerate(face_boxes):
-                for j, box2 in enumerate(person_boxes):
-                    overlap = utils.percent_overlap(box1, box2)
-                    cost = 1 - overlap
-                    cost_matrix[i][j] = cost
-
-            return np.array(cost_matrix)
-
-        face_boxes = []
-        person_boxes = []
-
-        face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
-        face_boxes += (face_df[['x', 'y', 'w', 'h']].drop_duplicates()
-                       .values.tolist())
-
-        trk_ids = sorted(self.active_trks.keys())
-        for id in trk_ids:
-            trk = self.active_trks[id]
-            try:
-                box = trk.detections[self.f_num]
-            except KeyError:
-                state = trk.x[:4]
-                x, y = utils.centroid(state, reverse=True)
-                w, h = state[2:4]
-                box = [x, y, w, h]
-            person_boxes.append(box)
-        
-        if (face_df.empty) or (not person_boxes):
-            return False
-
-        cost_matrix = _overlap_costs(face_boxes, person_boxes)
-        row_ind, col_ind = linear_sum_assignment(cost_matrix)
-        assignments = dict(zip(row_ind, col_ind))
-
-        for f_idx, p_idx in assignments.items():
-            if cost_matrix[f_idx][p_idx] >= cutoff:
-                continue
-    
-            id = trk_ids[p_idx]
-            face_box = face_boxes[f_idx]
-            f_matches = face_df.loc[
-                (face_df['x'] == face_box[0]) &
-                (face_df['y'] == face_box[1]) &
-                (face_df['w'] == face_box[2]) &
-                (face_df['h'] == face_box[3])
-            ]
-
-            self.active_trks[id].add_face_detection(f_matches, self.f_num)
-
-    def _save_and_cleanup(self):
-        last_frame = self.total_frames - 1
-        if self.active_trks:
-            video_file = self.vid_path.split('/')[-1]
-            io_utils.save_track_continuations(
-                video_file, last_frame, self.active_trks
-            )
-
-        self.span = [0, last_frame]
-        self.all_trks = {**self.active_trks, **self.trk_cache}
-        del self.active_trks
-        del self.trk_cache
-
-    def _assign_identities(self):
-        identities = []
-        all_id_costs = []
-        trk_ids = sorted(self.all_trks.keys())
-        for id in trk_ids:
-            identity_costs = self.all_trks[id].identity_costs()
-            for identity in identity_costs:
-                identities.append(identity)
-            all_id_costs.append(identity_costs)
-        
-        identities = list(set(identities))
-
-        rows = len(identities)
-        cols = len(trk_ids)
-        cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-
-        for i, identity in enumerate(identities):
-            for j, _ in enumerate(trk_ids):
-                try:
-                    cost = all_id_costs[j][identity]
-                    cost_matrix[i][j] = cost
-                except KeyError:
-                    continue
-        cost_matrix = np.array(cost_matrix)
-
-        row_ind, col_ind = linear_sum_assignment(cost_matrix)
-        assignments = dict(zip(row_ind, col_ind))
-
-        for identity_idx, trk_idx in assignments.items():
-            print(identities[identity_idx], trk_ids[trk_idx])
-
-    def run(self):
-        while self.f_num < self.total_frames:
-            if self.active_trks:
-                self._predict_or_cache()
-
-            try:
-                detections = self.detection_data[self.f_num]
-                embeddings = io_utils.read_embeddings(self.embedding_path, self.f_num)
-                measurements = [detections, embeddings]
-            except KeyError:
-                measurements = None
-
-            if measurements and self.active_trks:
-                self._match_and_update(measurements)
-            elif measurements and (not self.active_trks):
-                self.unmatched = measurements
-            
-            self._create_new_tracks()
-            self._associate_faces()
-
-            self.f_num += 1
-
-        self._save_and_cleanup()
-
-
-def tracking_pipeline(video_file):
-    def _trk_continuation(video_file, stride, threshold=90, fps=30):
-        continuations = io_utils.load_track_continuations(video_file)
+    def load_prior_tracks(self, threshold=90):
+        continuations = io_utils.load_track_continuations(self.video_file)
         if (not continuations) or (len(continuations) == 0):
             return None
         
         prev_end_time = datetime.strptime(continuations[0][4], "%Y-%m-%d %H:%M:%S.%f")
 
-        time_prefix = utils.parse_clip_filename(video_file, data='time')
+        time_prefix = utils.parse_clip_filename(self.video_file, data='time')
         clip_start_time = utils.frame_timestamp(time_prefix)
 
-        interim = round((clip_start_time - prev_end_time).total_seconds(), 0) * fps
+        interim = round((clip_start_time - prev_end_time)
+                        .total_seconds(), 0) * self.fps
 
-        active_trks = {}
         for row in continuations:
             last_detection_delta = row[11]
             if (-1 * (last_detection_delta - interim)) >= threshold:
                 continue
-            trk_id = row[1]
+
+            trk_id = 'a' + str(row[1])
+    
             F = np.array(json.loads(row[5]))
             Q = np.array(json.loads(row[6]))
             H = np.array(json.loads(row[7]))
@@ -495,20 +181,370 @@ def tracking_pipeline(video_file):
             trk = Track(detection, embedding, (0 - interim), F, Q, H, R, x, P)
             trk.last_detection_frame = last_detection_delta
 
-            active_trks[trk_id] = trk
+            self.active_trks[trk_id] = trk
         
-        trk_cache = {}
-        for f in range(interim):
-            if f % stride == 0:
-                if len(active_trks.keys()) == 0:
+        if self.active_trks:
+            self.f_num = 0 - interim
+
+    def run(self):
+        def _create_new_tracks():
+            try:
+                detections, embeddings = self.unmatched
+            except ValueError:
+                return None
+
+            initial_uncertainty = [5, 5, 5, 5, 5, 5, 5, 5]
+            m_noise = [500, 500, 500, 500]
+            p_noise = [50, 50, 50, 50]
+            dt = 0.5
+
+            for i, detection in enumerate(detections):
+                box = detection[:4]
+                c_x, c_y = utils.centroid(box)
+                measurement = [c_x, c_y] + box[2:]
+        
+                kf_args = utils.format_cv2D_kf(
+                    measurement, m_noise, p_noise, initial_uncertainty, dt=dt
+                )
+
+                new_track = Track(box, embeddings[i], self.f_num, *kf_args)
+                self.active_trks[self.trk_id] = new_track
+        
+                self.trk_id += 1
+
+            self.unmatched = []
+
+        def _predict_or_cache(threshold=90):
+            cached = []
+            for id, trk in self.active_trks.items():
+                if (self.f_num - trk.last_detection_frame) < threshold:
+                    trk.predict()
+                    trk.add_state(trk.x, self.f_num)
+                else:
+                    self.trk_cache[id] = trk
+                    cached.append(id)
+            for id in cached:
+                del self.active_trks[id]
+
+        def _match_and_update(measurements, min_lifespan=15):
+            def _construct_cost_matrix(detections, embeddings, weights=[1, 0.1]):
+                '''
+                Creates a cost matrix based on a weighted sum of geometric
+                distances and embedding distances.
+                
+                Both of the distance metrics are normalized, such that all values
+                for each are scaled within the range [0, 1]. This prevents
+                significant scale differences from unintentionally biasing how
+                each metric is weighted.
+                '''
+
+                def _distance_costs(detections, cutoff_multiplier=0.5):
+
+                    d_cntrs = utils.get_centroids(detections)
+                    t_cntrs = []
+
+                    trk_ids = sorted(self.active_trks.keys())
+                    for id in trk_ids:
+                        t_cntrs.append(self.active_trks[id].x.tolist()[:2])
+                    
+                    frame_w = self.resolution[0]
+                    frame_h = self.resolution[1]
+                    max_distance_in_frame = np.sqrt(frame_w**2 + frame_h**2)
+
+                    distance_cutoff = max_distance_in_frame * cutoff_multiplier
+
+                    rows = len(t_cntrs)
+                    cols = len(d_cntrs)
+                    cost_matrix = [[float('inf')] * cols for _ in range(rows)]
+
+                    for i, c2 in enumerate(t_cntrs):
+                        for j, c1 in enumerate(d_cntrs):
+                            distance = utils.euclidean_distance((c1, c2))
+                            if distance < distance_cutoff:
+                                normalized = distance / max_distance_in_frame
+                                cost_matrix[i][j] = normalized
+
+                    return np.array(cost_matrix)
+
+                def _similarity_costs(embeddings):
+                    def _lowest_distance(trk, embedding):
+                        lowest = 1
+                        for trk_embedding in trk.embeddings:
+                            dst = utils.cos_distance(trk_embedding, embedding,
+                                                    normalize=True)
+                            if dst < lowest:
+                                lowest = dst
+                        return lowest
+
+                    trk_ids = sorted(self.active_trks.keys())
+
+                    rows = len(trk_ids)
+                    cols = len(embeddings)
+                    cost_matrix = [[float('inf')] * cols for _ in range(rows)]
+
+                    for i, id in enumerate(trk_ids):
+                        for j, emb in enumerate(embeddings):
+                            cost = _lowest_distance(self.active_trks[id], emb)
+                            cost_matrix[i][j] = cost
+
+                    return np.array(cost_matrix)
+
+                distances = _distance_costs(detections)
+                similarities = _similarity_costs(embeddings)
+                weighted_matrix = (
+                    (distances * weights[0]) + (similarities * weights[1])
+                )
+
+                return weighted_matrix
+
+            def _assign_matches(cost_matrix):
+                def _filter_sparse_rows(cost_matrix):
+                    '''
+                    This function helps ensure linear assignment is feasible on a cost
+                    matrix by whittling down problematic sets of sparse rows. These
+                    sets are characterized by the following properties:
+
+                    - Each row has only one column it could possibly be assigned to. It is
+                    the one column with a finite cost value in that row; all the others
+                    contain "inf" due to exceeding a cost threshold.
+                    - The one viable column in a given row is the one viable column in
+                    the entire set. In other words, only one row from each set can
+                    ultimately be matched with a column. 
+                    
+                    Once all such sets have been identified, each is reduced to a single
+                    row (whichever has the lowest match cost to the viable volumn). The
+                    other rows from each set are filtered from the cost matrix, increasing
+                    the number of new tracks to subsequently initialize for this frame.
+                    '''
+
+                    matrix_coordinates = []
+                    unique_cols = set()
+                    keep = []
+                    filtered_matrix = []
+
+                    # For any row containing one finite entry, store the entry's matrix
+                    # coordinates and add its column index to unique_cols:
+                    for r in range(len(cost_matrix)):
+                        row = cost_matrix[r]
+                        if np.isfinite(row).sum() == 1:
+                            c = int(np.where(row != float('inf'))[0][0])
+                            matrix_coordinates.append((r, c))
+                            unique_cols.add(c)
+
+                    # For each column index from the relevant entries identified above,
+                    # add the row index of the minimum-value entry in that column:
+                    for c in unique_cols:
+                        rows_w_finite_vals = [rc[0] for rc in matrix_coordinates if rc[1] == c]
+                        min_val_row = min(rows_w_finite_vals, key=lambda r: cost_matrix[r, c])
+                
+                        keep.append(min_val_row)
+
+                    all_rows = set(range(cost_matrix.shape[0]))
+                    used_rows = set(rc[0] for rc in matrix_coordinates)
+
+                    unused = list(all_rows - used_rows)
+                    keep.extend(unused)
+                    keep = sorted(keep)
+
+                    for i in keep:
+                        filtered_matrix.append(cost_matrix[i])
+
+                    return np.array(filtered_matrix), keep
+
+                assignments_dict = {}
+
+                # Construct boolean arrays denoting which rows/columns from the cost
+                # matrix contain at least one viable entry (finite matching cost):
+                viable_rows = ~np.isinf(cost_matrix).all(axis=1)
+                viable_cols = ~np.isinf(cost_matrix).all(axis=0)
+
+                if viable_rows.any() and viable_cols.any():
+                    try:
+                        filtered_matrix = cost_matrix[np.ix_(viable_rows, viable_cols)]
+
+                        if filtered_matrix.size > 0:
+                            row_ind, col_ind = linear_sum_assignment(filtered_matrix)
+
+                            orig_row_ind = np.where(viable_rows)[0]
+                            orig_col_ind = np.where(viable_cols)[0]
+
+                            for i, j in zip(row_ind, col_ind):
+                                orig_row = orig_row_ind[i]
+                                orig_col = orig_col_ind[j]
+                                assignments_dict[orig_row] = orig_col
+
+                    # Handle cases where the "cost matrix is infeasible" error is
+                    # thrown during the linear_sum_assignment execution:
+                    except ValueError:
+                        filtered_matrix, keep = _filter_sparse_rows(cost_matrix)
+                        row_ind, col_ind = linear_sum_assignment(filtered_matrix)
+
+                        orig_row_ind = [keep[i] for i in row_ind]
+                        for i, j in zip(orig_row_ind, col_ind):
+                            assignments_dict[i] = j
+
+                return assignments_dict
+
+            trk_ids = sorted(self.active_trks.keys())
+            detections, embeddings = measurements
+
+            cost_matrix = _construct_cost_matrix(detections, embeddings,
+                                                weights=[1, 0.1])
+            assignments = _assign_matches(cost_matrix)
+
+            matched = []
+            for trk_index, measurement_index in assignments.items():
+                id = trk_ids[trk_index]
+                trk = self.active_trks[id]
+
+                matched.append(measurement_index)
+
+                box = detections[measurement_index]
+                c_x, c_y = utils.centroid(box)
+                w, h = box[2:4]
+                measurement = np.array([c_x, c_y, w, h])
+
+                trk.update(measurement)
+                trk.add_detection(box[:4], self.f_num)
+                trk.add_embedding(embeddings[measurement_index])
+
+            unmatched_detections = [detections[j] for j in range(len(detections))
+                                    if j not in matched]
+            unmatched_embeddings = [embeddings[j] for j in range(len(embeddings))
+                                    if j not in matched]
+            
+            self.unmatched = [unmatched_detections, unmatched_embeddings]
+
+        def _associate_faces(cutoff=0.9):
+            def _overlap_costs(face_boxes, person_boxes):
+                rows = len(face_boxes)
+                cols = len(person_boxes)
+                cost_matrix = [[float('inf')] * cols for _ in range(rows)]
+
+                for i, box1 in enumerate(face_boxes):
+                    for j, box2 in enumerate(person_boxes):
+                        overlap = utils.percent_overlap(box1, box2)
+                        cost = 1 - overlap
+                        cost_matrix[i][j] = cost
+
+                return np.array(cost_matrix)
+
+            face_boxes = []
+            person_boxes = []
+
+            face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
+            face_boxes += (face_df[['x', 'y', 'w', 'h']].drop_duplicates()
+                        .values.tolist())
+
+            trk_ids = sorted(self.active_trks.keys())
+            for id in trk_ids:
+                trk = self.active_trks[id]
+                try:
+                    box = trk.detections[self.f_num]
+                except KeyError:
+                    state = trk.x[:4]
+                    x, y = utils.centroid(state, reverse=True)
+                    w, h = state[2:4]
+                    box = [x, y, w, h]
+                person_boxes.append(box)
+            
+            if (face_df.empty) or (not person_boxes):
+                return False
+
+            cost_matrix = _overlap_costs(face_boxes, person_boxes)
+            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            assignments = dict(zip(row_ind, col_ind))
+
+            for f_idx, p_idx in assignments.items():
+                if cost_matrix[f_idx][p_idx] >= cutoff:
+                    continue
+        
+                id = trk_ids[p_idx]
+                face_box = face_boxes[f_idx]
+                f_matches = face_df.loc[
+                    (face_df['x'] == face_box[0]) &
+                    (face_df['y'] == face_box[1]) &
+                    (face_df['w'] == face_box[2]) &
+                    (face_df['h'] == face_box[3])
+                ]
+
+                self.active_trks[id].add_face_detection(f_matches, self.f_num)
+        
+        def _continue_prior_tracks():
+            self.load_prior_tracks()
+            
+            while self.f_num < 0:
+                if not self.active_trks:
                     return None
                 else:
-                    _predict_or_cache(active_trks, trk_cache, f)
-                
-        for trk in active_trks.values():
-            trk.last_detection_frame -= interim
+                    _predict_or_cache()
+        
+        def _save_and_cleanup():
+            def _get_track_images(vid_dir='../input_files/'):
+                vid_path = os.path.join(vid_dir, self.video_file)
+                cap = cv2.VideoCapture(vid_path)
+                if not cap.isOpened():
+                    return None
     
-        return active_trks
+                for trk in self.all_trks.values():
+                    images = []
+                    for f in [trk.first_detection_frame,
+                              trk.last_detection_frame]:
+                        x, y, w, h = trk.detections[f][:4]
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, f)
+                        ret, frame = cap.read()
+                        if not ret:
+                            images.append(None)
+                            continue
+                        cropped = frame[y:y+h, x:x+w]
+                        images.append(cropped)
+
+                    trk.start_img = io_utils.save_event_image(images[0])
+                    trk.end_img = io_utils.save_event_image(images[1])
+
+                cap.release()
+    
+            # last_frame = self.total_frames - 1
+            # if self.active_trks:
+            #     io_utils.save_track_continuations(
+            #         self.video_file, last_frame, self.active_trks
+            #     )
+
+            # self.span = [0, last_frame]
+            self.all_trks = {**self.active_trks, **self.trk_cache}
+            del self.active_trks
+            del self.trk_cache
+
+            for trk in self.all_trks.values():
+                trk.find_best_id()
+
+            _get_track_images()
+
+        while self.f_num < self.total_frames:
+            if self.active_trks:
+                _predict_or_cache()
+
+            try:
+                detections = self.detection_data[self.f_num]
+                embeddings = io_utils.read_embeddings(self.embedding_path, self.f_num)
+                measurements = [detections, embeddings]
+            except KeyError:
+                measurements = None
+
+            if measurements and self.active_trks:
+                _match_and_update(measurements)
+            elif measurements and (not self.active_trks):
+                self.unmatched = measurements
+            
+            _create_new_tracks()
+            _associate_faces()
+
+            self.f_num += 1
+
+        _save_and_cleanup()
+
+
+def tracking_pipeline(video_file):
 
     video_path = f'../input_files/{video_file}'
     data_path = f"../intermediate_output/{video_file.split('.')[0]}"
@@ -520,9 +556,9 @@ def tracking_pipeline(video_file):
     tracker = Tracker(video_path, det_data, face_data, embedding_path)
     tracker.run()
 
-    io_utils.write_trk_data(video_file, tracker.all_trks, tracker.span)
+    # io_utils.write_trk_data(video_file, tracker.all_trks, tracker.span)
 
-    return True
+    return tracker.all_trks
         
 
 

@@ -129,6 +129,8 @@ def percent_overlap(rectangle1, rectangle2):
 
     r1_area = rectangle1[2] * rectangle1[3]
     intersection = get_intersection(rectangle1, rectangle2, attr='area')
+    if not intersection:
+        return 0
 
     return intersection / r1_area
 

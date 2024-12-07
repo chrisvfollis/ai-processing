@@ -100,17 +100,14 @@ def write_face_csv(face_data, video_file):
     
     full_df = pd.concat(merged_dfs, ignore_index=True)
 
-    print(full_df.columns)
-    print(full_df.head())
-
     drop_columns = [
         'target_x', 'target_y', 'target_w', 'target_h', 'threshold'
     ]
     full_df = full_df.drop([col for col in drop_columns if col in
                             full_df.columns], axis=1)
-    full_df = full_df.rename({'source_x': 'x', 'source_y': 'y',
-                              'source_w': 'w', 'source_h': 'h'})
-    full_df.to_csv(csv_path)
+    full_df = full_df.rename(columns={'source_x': 'x', 'source_y': 'y',
+                                      'source_w': 'w', 'source_h': 'h'})
+    full_df.to_csv(csv_path, index=False)
 
 
 def write_embeddings(hdf5_file, embeddings, frames, box_indices):
@@ -173,7 +170,7 @@ def write_trk_data(video_file, all_trks, span):
             trk_group.create_dataset('trk_span', data=trk_span)
 
 
-def save_track_info(time_prefix, all_trks, db_path='../appdata/data.db'):
+def save_track_info(time_prefix, camera, all_trks, db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
@@ -199,21 +196,25 @@ def save_track_info(time_prefix, all_trks, db_path='../appdata/data.db'):
     conn.commit()
    
 
-    for id, data in all_trks.items():
-        camera, track_id = id.split('_')[0], id.split('_')[1].strip('trk')
-        start_frame = int(min(data['detections'].keys()))
+    for id, trk in all_trks.items():
+        track_id = id
+        identity = trk.identity if trk.identity is not None else ""
+        id_cost = trk.id_cost if trk.id_cost is not None else ""
+        start_img = trk.start_img if trk.start_img is not None else ""
+        end_img = trk.end_img if trk.end_img is not None else ""
+        start_frame = trk.first_detection_frame
         start_time = utilities.frame_timestamp(time_prefix, frame=start_frame)
-        end_frame = int(max(data['detections'].keys()))
+        end_frame = trk.last_detection_frame
         end_time = utilities.frame_timestamp(time_prefix, frame=end_frame)
 
         cursor.execute('''
             INSERT INTO track_info (
-                track_id, camera, time_prefix, start_frame,
-                start_time, end_frame, end_time
+                track_id, camera, time_prefix, identity, id_cost, start_img,
+                end_img, start_frame, start_time, end_frame, end_time
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (track_id, camera, time_prefix, start_frame, start_time, end_frame,
-              end_time))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (track_id, camera, time_prefix, identity, id_cost, start_img,
+              end_img, start_frame, start_time, end_frame, end_time))
 
     conn.commit()
     conn.close()
@@ -289,16 +290,20 @@ def update_identities(trk_path, all_trks, reset=False):
                     pass
 
 
-def get_queue_block(db_path='../appdata/data.db'):
+def get_queue_block(designation='primary', db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT DISTINCT q.* FROM queue q
-        WHERE q.timestamp = (
+        JOIN cameras cd ON q.camera = cd.camera
+        WHERE cd.designation = ?
+        AND q.timestamp = (
             SELECT MIN(timestamp)
             FROM queue q2
+            JOIN cameras cd2 on q2.camera = cd2.camera
+            WHERE cd2.designation = ?
         )
-    ''')
+    ''', (designation, designation))
 
     results = cursor.fetchall()
     conn.close()
@@ -512,6 +517,8 @@ def get_employee(image_path, db_path='../appdata/data.db'):
 
 
 def save_event_image(img, img_dir='../output_files/event_imgs/'):
+    if img is None:
+        return None
     file_name = f'{uuid.uuid4()}.jpg'
     file_path = os.path.join(img_dir, file_name)
     cv2.imwrite(file_path, img)
@@ -537,7 +544,6 @@ def get_track_events(time_prefix, db_path='../appdata/data.db'):
     cursor.execute('''
         SELECT * FROM track_info
         WHERE time_prefix = ?
-        AND (entry = 1 OR exit = 1)
     ''', (time_prefix,))
     results = cursor.fetchall()
     conn.close()
@@ -545,6 +551,30 @@ def get_track_events(time_prefix, db_path='../appdata/data.db'):
 
 
 def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
+    def _merge_tracks(df):
+        merged = []
+        for identity, group in df.groupby('identity'):
+            if identity == "":
+                merged.extend(group.to_dict(orient="records"))
+                continue
+
+            group = group.sort_values('start_frame').reset_index(drop=True)
+            current = group.iloc[0].to_dict()
+            for _, row in group.iloc[1:].iterrows():
+                if row['start_frame'] <= current['end_frame']:
+                    current['end_frame'] = max(current['end_frame'],
+                                               row['end_frame'])
+                    current['end_time'] = max(current['end_time'],
+                                              row['end_time'])
+                    current['end_img'] = row['end_img']
+                else:
+                    merged.append(current)
+                    current = row.to_dict()
+
+            merged.append(current)
+
+        return pd.DataFrame(merged)
+
     load_dotenv()
     WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
     url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/save_employee_event_logs/'
@@ -552,6 +582,15 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     results = get_track_events(time_prefix)
     if (not results) or (len(results) == 0):
         return None
+    
+    columns = [
+        'id', 'track_id', 'camera', 'time_prefix', 'identity', 'id_method', 
+        'id_cost', 'start_img', 'end_img', 'id_img', 'start_frame', 
+        'start_time', 'end_frame', 'end_time', 'entry', 'exit'
+    ]
+
+    df = pd.DataFrame(results, columns=columns)
+    df = _merge_tracks(df)
 
     shop_uuid = get_shop(db_path)[0]
 
@@ -564,24 +603,25 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
         'image': []
     }
 
-    entries = [r for r in results if (r[4]) and (r[14] == 1)]
-    exits = [r for r in results if (r[4]) and (r[15] == 1)]
+    for _, row in df.iterrows():
+        if row['identity'] == "":
+            continue
 
-    for entry in entries:
+        # Entry event
         data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(entry[4])
+        data['employee_id'].append(row['identity'])
         data['event'].append('workspace_entry')
-        data['start_time'].append(str(entry[11]))
+        data['start_time'].append(str(row['start_time']))
         data['duration'].append(0)
-        data['image'].append(entry[7])
-    
-    for exit in exits:
+        data['image'].append(row['start_img'])
+
+        # Exit event
         data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(exit[4])
+        data['employee_id'].append(row['identity'])
         data['event'].append('workspace_exit')
-        data['start_time'].append(str(exit[13]))
+        data['start_time'].append(str(row['end_time']))
         data['duration'].append(0)
-        data['image'].append(exit[8])
+        data['image'].append(row['end_img'])
 
     json_data = json.dumps(data)
 

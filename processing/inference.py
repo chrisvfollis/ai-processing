@@ -11,36 +11,6 @@ from deepface import DeepFace
 from models.yolov4_architecture import Yolov4Model
 
 
-def identify_faces(frame):
-    try:
-        face_dfs = DeepFace.find(
-            img_path=frame, db_path='../input_files/faces',
-            model_name='Facenet512', detector_backend='retinaface',
-            threshold = .99, enforce_detection=True, silent=True
-        )        
-    except ValueError:
-        print('No faces detected')
-        return None
-
-    print(f'FACES LENGTH: {len(face_dfs)}')
-    filtered_dfs= []
-    for df in face_dfs:
-
-        print(df)
-
-        df['identity'] = (
-            df['identity'].map(lambda x: io_utils.get_employee(x))
-        )
-        df = df.loc[df.groupby('identity')['distance'].idxmin()]
-
-        print('FILTERED:')
-        print(df)
-
-        filtered_dfs.append(df)
-
-    return filtered_dfs
-
-
 class OSNet:
     def __init__(self, weights_path, device, input_shape=(128, 256),
                  output_shape=(512,), num_classes=751, loss='triplet'):
@@ -89,8 +59,8 @@ class OSNet:
 
     def enable_buffers(self, output_path, buffer_limit=100):
         '''
-        Sets up the necessary elements for the OSNet instance to use bulk
-        processing features like extraction batches and buffers.
+        Sets up buffers and an output file so the OSNet instance can use
+        bulk processing features like extraction batches.
         '''
 
         self.buffer_limit = buffer_limit
@@ -122,7 +92,7 @@ class OSNet:
         if close_file == True:
             self.hdf5_file.close()
 
-    def process_batch(self, img, detections, f_num):
+    def extraction_batch(self, img, detections, f_num):
         def _update_buffers(embedding, f_num, box_idx):
             self.embedding_buffer.append(embedding)
             self.frame_buffer.append(f_num)
@@ -273,10 +243,10 @@ class YOLOv4:
             margin_x = margin * img_w
             margin_y = margin * img_h
 
-            x1 = max(-margin_x, min(x1, img_w + margin_x))
-            y1 = max(-margin_y, min(y1, img_h + margin_y))
-            x2 = max(-margin_x, min(x2, img_w + margin_x))
-            y2 = max(-margin_y, min(y2, img_h + margin_y))
+            x1 = int(max(-margin_x, min(x1, img_w + margin_x)))
+            y1 = int(max(-margin_y, min(y1, img_h + margin_y)))
+            x2 = int(max(-margin_x, min(x2, img_w + margin_x)))
+            y2 = int(max(-margin_y, min(y2, img_h + margin_y)))
 
             w = x2 - x1
             h = y2 - y1
@@ -344,22 +314,42 @@ class InferencePipeline:
 
             self.f_num += stride
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
+    
+    def identify_faces(self, frame):
+        try:
+            face_dfs = DeepFace.find(
+                img_path=frame, db_path='../input_files/faces',
+                model_name='Facenet512', detector_backend='retinaface',
+                threshold = 0.8, enforce_detection=True, silent=True
+            )        
+        except ValueError:
+            return None
+
+        filtered_dfs= []
+        for df in face_dfs:
+            if not df.empty:
+                print('Possible identity match(es) found')
+            df['identity'] = (
+                df['identity'].map(lambda x: io_utils.get_employee(x))
+            )
+            df = df.loc[df.groupby('identity')['distance'].idxmin()]
+            filtered_dfs.append(df)
+        
+        if filtered_dfs:
+            self.face_data[self.f_num] = filtered_dfs
 
     def run(self):
         def _process_frame(frame):
             if self.f_num % self.track_stride == 0:
                 detections = self.yolov4.detect(frame, 0, conf_thresh=0.65,
                                                 resize_dims=(416, 416))
-                self.osnet.process_batch(frame, detections, self.f_num)
+                self.osnet.extraction_batch(frame, detections, self.f_num)
 
                 if detections:
                     self.person_data[self.f_num] = detections
 
             if self.f_num % self.id_stride == 0:
-                faces = identify_faces(frame, detections)
-                # faces = identify_faces(frame)
-                if faces:
-                    self.face_data[self.f_num] = faces
+                self.identify_faces(frame)
         
         def _continue():
             if self.f_num % 600 == 0:
@@ -377,6 +367,7 @@ class InferencePipeline:
 
             if len(self.osnet.embedding_buffer) > 0:
                 self.osnet.flush_buffers(close_file=True)
+
             self.cap.release()
 
         preliminary_detections = self.detection_skim()

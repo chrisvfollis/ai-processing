@@ -44,6 +44,7 @@ def main(stride=15):
         
         for row in primary:
             video_file = row[1]
+            camera = video_file.split('.')[0].split('_')[-1]
 
             hdf5_path = _get_hdf5_path(video_file)
 
@@ -56,13 +57,18 @@ def main(stride=15):
             inference_pipeline.run()
 
             print('tracking...')
-            tracking_pipeline(video_file)
-            
+            all_trks = tracking_pipeline(video_file)
+
+            io_utils.save_track_info(time_prefix, camera, all_trks)
+
+        io_utils.post_events_to_webapp(time_prefix)
+        io_utils.update_queue(action='clear_section', datetime=timestamp)
+        delete_files(time_prefix)
+
         #     identification_pipeline(time_prefix)
 
         #     io_utils.post_events_to_webapp(time_prefix)
-        #     io_utils.update_queue(action='clear_section', datetime=timestamp)
-        #     delete_files(time_prefix)
+
 
         # else:
         #     io_utils.update_queue(action='clear_section', datetime=timestamp)
