@@ -429,7 +429,7 @@ class Tracker:
 
                 return np.array(cost_matrix)
             
-            if not self.face_data:
+            if (self.face_data is None) or (self.face_data.empty):
                 return None
     
             face_boxes = []
