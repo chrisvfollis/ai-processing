@@ -1,0 +1,18 @@
+[Unit]
+Description=Process Manager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ivaktvision
+Group=ivaktvision
+Type=simple
+ExecStart=/home/ivaktvision/.local/share/virtualenvs/timemanager-xodDNVor/bin/python3 /home/ivaktvision/Documents/timemanager/processing/process_manager.py
+Restart=on-failure
+WorkingDirectory=/home/ivaktvision/Documents/timemanager/processing
+Environment="PATH=/usr/bin:/usr/local/bin:/bin:/usr/sbin:/sbin" "PYTHONUNBUFFERED=1"
+LimitFSIZE=infinity
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target
