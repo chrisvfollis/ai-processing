@@ -98,6 +98,9 @@ def write_face_csv(face_data, video_file):
             merged_df['f'] = frame
             merged_dfs.append(merged_df)
     
+    if not merged_dfs:
+        return None
+
     full_df = pd.concat(merged_dfs, ignore_index=True)
 
     drop_columns = [

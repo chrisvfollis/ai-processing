@@ -428,7 +428,10 @@ class Tracker:
                         cost_matrix[i][j] = cost
 
                 return np.array(cost_matrix)
-
+            
+            if not self.face_data:
+                return None
+    
             face_boxes = []
             person_boxes = []
 
@@ -550,8 +553,12 @@ def tracking_pipeline(video_file):
     data_path = f"../intermediate_output/{video_file.split('.')[0]}"
 
     det_data = io_utils.read_detection_csv(data_path + '_detections.csv')
-    face_data = pd.read_csv(data_path + '_faces.csv')
     embedding_path = data_path + '_embeddings.hdf5'
+
+    try:
+        face_data = pd.read_csv(data_path + '_faces.csv')
+    except FileNotFoundError:
+        face_data = None
 
     tracker = Tracker(video_path, det_data, face_data, embedding_path)
     tracker.run()
