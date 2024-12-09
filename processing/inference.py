@@ -228,7 +228,7 @@ class YOLOv4:
 
             return bboxes
 
-        def _translate_detection(box, original_dims, margin=0.05):
+        def _translate_detection(box, original_dims):
             x1, y1, x2, y2 = box
             img_w, img_h = original_dims
 
@@ -240,13 +240,10 @@ class YOLOv4:
             x2 = int(x2 * scale_x)
             y2 = int(y2 * scale_y)
 
-            margin_x = margin * img_w
-            margin_y = margin * img_h
-
-            x1 = int(max(-margin_x, min(x1, img_w + margin_x)))
-            y1 = int(max(-margin_y, min(y1, img_h + margin_y)))
-            x2 = int(max(-margin_x, min(x2, img_w + margin_x)))
-            y2 = int(max(-margin_y, min(y2, img_h + margin_y)))
+            x1 = int(max(0, min(x1, img_w)))
+            y1 = int(max(0, min(y1, img_h)))
+            x2 = int(max(0, min(x2, img_w)))
+            y2 = int(max(0, min(y2, img_h)))
 
             w = x2 - x1
             h = y2 - y1
