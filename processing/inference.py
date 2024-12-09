@@ -265,7 +265,7 @@ class YOLOv4:
 
             if int(class_id) == class_num:
                 x, y, w, h = _translate_detection(
-                    bbox, original_dims, margin=0.05
+                    bbox, original_dims
                 )
                 filtered.append([x, y, w, h, confidence])
 
