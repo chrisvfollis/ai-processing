@@ -554,7 +554,7 @@ def get_track_events(time_prefix, db_path='../appdata/data.db'):
 
 
 def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
-    def _merge_tracks(df):
+    def _merge_tracks(df, max_continuation_gap=60):
         merged = []
         for identity, group in df.groupby('identity'):
             if identity == "":
@@ -564,11 +564,11 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
             group = group.sort_values('start_frame').reset_index(drop=True)
             current = group.iloc[0].to_dict()
             for _, row in group.iloc[1:].iterrows():
-                if row['start_frame'] <= current['end_frame']:
-                    current['end_frame'] = max(current['end_frame'],
-                                               row['end_frame'])
-                    current['end_time'] = max(current['end_time'],
-                                              row['end_time'])
+                gap = (row['start_time'] - current['end_time']).total_seconds()
+
+                if gap <= max_continuation_gap:
+                    current['end_frame'] = max(current['end_frame'], row['end_frame'])
+                    current['end_time'] = max(current['end_time'], row['end_time'])
                     current['end_img'] = row['end_img']
                 else:
                     merged.append(current)
@@ -593,6 +593,8 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     ]
 
     df = pd.DataFrame(results, columns=columns)
+    df['start_time'] = pd.to_datetime(df['start_time'])
+    df['end_time'] = pd.to_datetime(df['end_time'])
     df = _merge_tracks(df)
 
     shop_uuid = get_shop(db_path)[0]
@@ -607,12 +609,10 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     }
 
     for _, row in df.iterrows():
-        if row['identity'] == "":
-            continue
 
         # Entry event
         data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(row['identity'])
+        data['employee_id'].append(row['identity'] if row['identity'] != "" else None)
         data['event'].append('workspace_entry')
         data['start_time'].append(str(row['start_time']))
         data['duration'].append(0)
@@ -620,7 +620,7 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
 
         # Exit event
         data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(row['identity'])
+        data['employee_id'].append(row['identity'] if row['identity'] != "" else None)
         data['event'].append('workspace_exit')
         data['start_time'].append(str(row['end_time']))
         data['duration'].append(0)
