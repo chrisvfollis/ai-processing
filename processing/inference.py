@@ -337,6 +337,7 @@ class InferencePipeline:
 
     def run(self):
         def _process_frame(frame):
+            detections = None
             if self.f_num % self.track_stride == 0:
                 detections = self.yolov4.detect(frame, 0, conf_thresh=0.65,
                                                 resize_dims=(416, 416))
