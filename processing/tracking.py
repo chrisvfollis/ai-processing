@@ -17,6 +17,7 @@ import utilities as utils
 import math
 import sqlite3
 import json
+import uuid
 
 
 class KalmanFilter:
@@ -102,7 +103,7 @@ class Track(KalmanFilter):
         id_costs = self.calc_id_match_costs()
 
         if not id_costs:
-            self.identity = None
+            self.identity = str(uuid.uuid4())
             self.id_cost = None
         else:
             identities, costs = zip(*id_costs.items())

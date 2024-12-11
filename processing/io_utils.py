@@ -627,6 +627,7 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
         data['image'].append(row['end_img'])
 
     json_data = json.dumps(data)
+    print(json_data)
 
     headers = {
         'x-custom-api-key': WEBAPP_API_KEY,
