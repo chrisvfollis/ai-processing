@@ -616,7 +616,7 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
 
         # Entry event
         data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(row['identity'] if row['identity'] != "" else None)
+        data['employee_id'].append(row['identity'])
         data['event'].append('workspace_entry')
         data['start_time'].append(str(row['start_time']))
         data['duration'].append(0)
@@ -624,14 +624,17 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
 
         # Exit event
         data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(row['identity'] if row['identity'] != "" else None)
+        data['employee_id'].append(row['identity'])
         data['event'].append('workspace_exit')
         data['start_time'].append(str(row['end_time']))
         data['duration'].append(0)
         data['image'].append(row['end_img'])
 
+        print(f"EMPLOYEE ID: {row['identity']}")
+        print(f"START: {row['start_time']}")
+        print(f"END: {row['end_time']}")
+
     json_data = json.dumps(data)
-    print(json_data)
 
     headers = {
         'x-custom-api-key': WEBAPP_API_KEY,
