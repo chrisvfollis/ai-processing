@@ -297,10 +297,15 @@ class InferencePipeline:
     def detection_skim(self, stride=120):
         print(f'skimming {self.video_file}...')
 
-        while True:
+        prev_frame = -1
+        total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        while self.f_num < total_frames:
+            current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
             ret, frame = self.cap.read()
-            if not ret:
+            if (not ret) or (current_frame == prev_frame):
                 return None
+            prev_frame = current_frame
 
             if self.f_num % stride == 0:
                 detections = self.yolov4.detect(frame, 0, conf_thresh=0.78)
@@ -375,10 +380,15 @@ class InferencePipeline:
         self.f_num = 0
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
 
-        while True:
+        prev_frame = -1
+        total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        while self.f_num < total_frames:
+            current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
             ret, frame = self.cap.read()
-            if not ret:
+            if (not ret) or (current_frame == prev_frame):
                 break
+            prev_frame = current_frame
 
             _process_frame(frame)
             _continue()

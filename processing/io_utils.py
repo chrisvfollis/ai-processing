@@ -554,7 +554,7 @@ def get_track_events(time_prefix, db_path='../appdata/data.db'):
 
 
 def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
-    def _merge_tracks(df, max_continuation_gap=60):
+    def _merge_tracks(df, max_continuation_gap=75):
         merged = []
         for identity, group in df.groupby('identity'):
             if identity == "":
