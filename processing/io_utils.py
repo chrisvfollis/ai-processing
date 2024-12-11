@@ -173,7 +173,7 @@ def write_trk_data(video_file, all_trks, span):
             trk_group.create_dataset('trk_span', data=trk_span)
 
 
-def save_track_info(time_prefix, camera, all_trks, min_lifespan=60,
+def save_track_info(time_prefix, camera, all_trks, min_lifespan=90,
                     db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
