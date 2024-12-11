@@ -173,7 +173,8 @@ def write_trk_data(video_file, all_trks, span):
             trk_group.create_dataset('trk_span', data=trk_span)
 
 
-def save_track_info(time_prefix, camera, all_trks, db_path='../appdata/data.db'):
+def save_track_info(time_prefix, camera, all_trks, min_lifespan=60,
+                    db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
@@ -200,8 +201,11 @@ def save_track_info(time_prefix, camera, all_trks, db_path='../appdata/data.db')
    
 
     for id, trk in all_trks.items():
+        if ((trk.last_detection_frame - trk.first_detection_frame)
+            < min_lifespan) and (trk.identity is None):
+            continue
         track_id = id
-        identity = trk.identity if trk.identity is not None else ""
+        identity = trk.identity if trk.identity is not None else str(uuid.uuid4())
         id_cost = trk.id_cost if trk.id_cost is not None else ""
         start_img = trk.start_img if trk.start_img is not None else ""
         end_img = trk.end_img if trk.end_img is not None else ""
