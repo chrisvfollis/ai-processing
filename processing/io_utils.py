@@ -593,8 +593,8 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     ]
 
     df = pd.DataFrame(results, columns=columns)
-    df['start_time'] = pd.to_datetime(df['start_time'], errors='coerce')
-    df['end_time'] = pd.to_datetime(df['end_time'], errors='coerce')
+    df['start_time'] = pd.to_datetime(df['start_time'], format='mixed')
+    df['end_time'] = pd.to_datetime(df['end_time'], format='mixed')
     df = _merge_tracks(df)
 
     shop_uuid = get_shop(db_path)[0]

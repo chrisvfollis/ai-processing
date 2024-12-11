@@ -618,7 +618,7 @@ class Yolov4Head(nn.Module):
             y3 = self.yolo3(x18)
     
             return _get_region_boxes([y1, y2, y3])
-        
+
         else:
             return [x2, x10, x18]
 
