@@ -157,13 +157,16 @@ def upload_and_post(cap_info):
         'Content-Type': 'application/json'
     }
 
-    response = requests.post(url, json=data, headers=headers)
-    if response.status_code == 200:
-        print('Success')
-    else:
-        print('Error:')
-        print(response.text)
-        print(response.status_code)
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 200:
+            print('Success')
+        else:
+            print('Error:')
+            print(response.text)
+            print(response.status_code)
+    except Exception as e:
+        print(f'Request failed: {e}')
 
 
 def rtsp_capture(rtsp_url, duration, cam, frame_rate):
