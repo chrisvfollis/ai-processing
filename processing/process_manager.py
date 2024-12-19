@@ -6,6 +6,7 @@ import cv2
 import time
 import utilities
 import os
+import requests
 
 
 def delete_files(time_prefix, footage_path='../input_files/',
@@ -31,18 +32,32 @@ def main(stride=15):
     osnet_weights = 'models/OSNet.pth.tar-250'
     weights_paths = [yolov4_weights, osnet_weights]
 
+    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+
     while True:
-        primary = io_utils.get_queue_block()
-    
-        if len(primary) == 0:
-            print('No clips in the queue')
+        update_queue_url = base_url + 'api/service/update_queue/'
+        try:
+            response = requests.get(update_queue_url)
+            data = response.json()
+
+            rows = data.get('results', [])
+            if len(rows) == 0:
+                print('No clips in the queue')
+                time.sleep(60)
+                continue
+        except requests.exceptions.RequestException as e:
+            print(f'Error making request: {e}')
+            time.sleep(60)
+            continue
+        except Exception as e:
+            print(f'Unexpected error: {e}')
             time.sleep(60)
             continue
 
-        time_prefix = utilities.parse_clip_filename(primary[0][1], data='time')
+        time_prefix = utilities.parse_clip_filename(rows[0][1], data='time')
         timestamp = utilities.frame_timestamp(time_prefix)
         
-        for row in primary:
+        for row in rows:
             video_file = row[1]
             camera = video_file.split('.')[0].split('_')[-1]
 

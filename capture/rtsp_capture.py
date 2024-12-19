@@ -1,15 +1,14 @@
 from datetime import datetime
 import multiprocessing
 import subprocess
-import shlex
 import time
 import ffmpeg
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'processing'))
-import io_utils
+from ..processing import io_utils
 import sqlite3
-
+import json
+import os
+from dotenv import load_dotenv
+import requests
 
 def update_camera_info():
     def _scan_network():
@@ -116,6 +115,34 @@ def get_stream_info(fps={'primary': 30, 'secondary': 15}, db_path='../appdata/da
     return stream_info
 
 
+def post_cap_info(cap_info):
+    load_dotenv()
+    INTERNAL_API_KEY = os.environ.get('INTERNAL_API_KEY')
+    url = ('https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+           + 'api/service/update_queue/')
+
+    data = {'filenames': [], 'timestamps': [], 'cameras': []}
+    for row in cap_info:
+        data['filenames'].append(row[0])
+        data['timestamps'].append(row[1])
+        data['cameras'].append(row[2])
+    
+    json_data = json.dumps(data)
+
+    headers = {
+        'X-Custom-Api-Key': INTERNAL_API_KEY,
+        'Content-Type': 'application/json'
+    }
+
+    response = requests.post(url, data=json_data, headers=headers)
+    if response.status_code == 200:
+        print('Success')
+    else:
+        print(response.text)
+        print(response.status_code)
+
+
+
 def rtsp_capture(rtsp_url, duration, cam, frame_rate):
     try:
         time = datetime.now()
@@ -135,32 +162,32 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
 
     except Exception as e:
         print(e)
-        return False
-    return True
+        return None
+    return (file, timestamp, f'c{cam}')
 
 
 def run_capture_cycle(stream_info, interval=1, min_seconds=3):
     def _multi_capture(stream_info, duration):
         try:
-            streams = []
-            for cam, data in stream_info.items():
-                url = data['url']
-                frame_rate = data['frame_rate']
-                streams.append({"url": url, "duration": duration, "cam": cam,
-                                "frame_rate": frame_rate})
+            streams = [{'url': data['url'], 'duration': duration, 'cam': cam,
+                        'frame_rate': data['frame_rate']} for cam, data in
+                        stream_info.items()]
             
             num_processes = len(stream_info.keys())
 
             pool = multiprocessing.Pool(processes=num_processes)
-            pool.starmap(rtsp_capture, ((stream["url"], stream["duration"],
-                                        stream["cam"], stream["frame_rate"])
-                                        for stream in streams))
+            cap_info = pool.starmap(rtsp_capture, (
+                (stream["url"], stream["duration"], stream["cam"],
+                 stream["frame_rate"]) for stream in streams
+            ))
             pool.close()
             pool.join()
+
+            return [row for row in cap_info if row is not None]
+
         except Exception as e:
             print(e)
-            return False
-        return True
+            return None
     
     duration = interval * 60
     while True:
@@ -178,7 +205,7 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             now = datetime.now()
             delta = (record_until - now).total_seconds() + 1
             if delta > min_seconds:
-                _multi_capture(stream_info, delta)
+                cap_info = _multi_capture(stream_info, delta)
 
 
 if __name__ == '__main__':
