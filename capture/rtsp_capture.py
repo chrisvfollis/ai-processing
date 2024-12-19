@@ -136,6 +136,7 @@ def upload_and_post(cap_info):
     credentials = [os.environ.get('AWS_ACCESS_KEY'),
                    os.environ.get('AWS_SECRET_KEY')]
     INTERNAL_API_KEY = os.environ.get('INTERNAL_API_KEY')
+    print(f'Internal API key: {INTERNAL_API_KEY}')
     url = ('https://ivaktvision-fe27c015e5ff.herokuapp.com/'
            + 'api/service/update_queue/')
 
