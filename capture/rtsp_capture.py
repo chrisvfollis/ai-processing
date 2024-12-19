@@ -1,14 +1,14 @@
 from datetime import datetime
 import multiprocessing
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 import time
 import ffmpeg
-from ..processing import io_utils
 import sqlite3
-import json
 import os
 from dotenv import load_dotenv
 import requests
+import boto3
 
 def update_camera_info():
     def _scan_network():
@@ -115,32 +115,54 @@ def get_stream_info(fps={'primary': 30, 'secondary': 15}, db_path='../appdata/da
     return stream_info
 
 
-def post_cap_info(cap_info):
+def upload_and_post(cap_info):
+    def _upload_to_s3(file_path, s3_key, credentials,
+                      bucket_name='ivakt-footage'):
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=credentials[0],
+            aws_secret_access_key=credentials[1],
+            region_name='us-west-1'
+        )
+        try:
+            s3.upload_file(file_path, bucket_name, s3_key)
+            print(f'Uploaded {s3_key}')
+            return True
+        except Exception as e:
+            print(f'Upload failed for {file_path}: {s3_key}')
+            return False
+        
     load_dotenv()
+    credentials = [os.environ.get('AWS_ACCESS_KEY'),
+                   os.environ.get('AWS_SECRET_KEY')]
     INTERNAL_API_KEY = os.environ.get('INTERNAL_API_KEY')
     url = ('https://ivaktvision-fe27c015e5ff.herokuapp.com/'
            + 'api/service/update_queue/')
 
-    data = {'filenames': [], 'timestamps': [], 'cameras': []}
+    data = {'action': 'add', 'filenames': [], 'timestamps': [], 'cameras': []}
     for row in cap_info:
-        data['filenames'].append(row[0])
-        data['timestamps'].append(row[1])
-        data['cameras'].append(row[2])
-    
-    json_data = json.dumps(data)
+        file_path = f'../input_files/{row[0]}'
+        s3_key = row[0]
+
+        if _upload_to_s3(file_path, s3_key, credentials):
+            data['filenames'].append(row[0])
+            data['timestamps'].append(row[1])
+            data['cameras'].append(row[2])
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
     headers = {
         'X-Custom-Api-Key': INTERNAL_API_KEY,
         'Content-Type': 'application/json'
     }
 
-    response = requests.post(url, data=json_data, headers=headers)
+    response = requests.post(url, json=data, headers=headers)
     if response.status_code == 200:
         print('Success')
     else:
         print(response.text)
         print(response.status_code)
-
 
 
 def rtsp_capture(rtsp_url, duration, cam, frame_rate):
@@ -156,9 +178,6 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
             .output(output_path, vcodec='copy', format='mp4', r=frame_rate)
             .run()
         )
-
-        io_utils.update_queue(action='add', video_file=file,
-                              datetime=timestamp, cam=f'c{cam}')
 
     except Exception as e:
         print(e)
@@ -189,11 +208,13 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             print(e)
             return None
     
+    upload_queue = ThreadPoolExecutor(max_workers=1)
+
     duration = interval * 60
     while True:
         now = datetime.now()
         if now.minute % interval == 0:
-            _multi_capture(stream_info, duration)
+            cap_info = _multi_capture(stream_info, duration)
         else:
             next_interval = (((now.minute//interval)+1)*interval)
             if next_interval >= 60:
@@ -206,6 +227,11 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             delta = (record_until - now).total_seconds() + 1
             if delta > min_seconds:
                 cap_info = _multi_capture(stream_info, delta)
+        
+        if cap_info:
+            upload_queue.submit(upload_and_post, cap_info)
+        else:
+            print("No valid captures to upload")
 
 
 if __name__ == '__main__':

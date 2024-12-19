@@ -634,14 +634,12 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
         print(f"START: {row['start_time']}")
         print(f"END: {row['end_time']}")
 
-    json_data = json.dumps(data)
-
     headers = {
         'x-custom-api-key': WEBAPP_API_KEY,
         'Content-Type': 'application/json'
     }
     
-    response = requests.post(url, data=json_data, headers=headers)
+    response = requests.post(url, json=data, headers=headers)
     if response.status_code == 200:
         print("Success")
     else:

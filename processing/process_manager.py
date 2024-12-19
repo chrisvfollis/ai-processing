@@ -7,6 +7,8 @@ import time
 import utilities
 import os
 import requests
+from dotenv import load_dotenv
+import boto3
 
 
 def delete_files(time_prefix, footage_path='../input_files/',
@@ -26,22 +28,47 @@ def main(stride=15):
         return ('../intermediate_output/' + video_file.split('.')[0]
                 + '_embeddings.hdf5')
 
+    def _download_from_s3(s3_key, credentials, bucket_name='ivakt-footage'):
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=credentials[0],
+            aws_secret_access_key=credentials[1],
+            region_name='us-west-1'
+        )
+
+        try:
+            local_path = '../input_files/' + s3_key 
+            s3.download_file(bucket_name, s3_key, local_path)
+            print(f'Downloaded {s3_key}')
+        except Exception as e:
+            print(f"Failed to download {s3_key}: {e}")
+            return False
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     yolov4_weights = 'models/YOLOv4.pth'
     osnet_weights = 'models/OSNet.pth.tar-250'
     weights_paths = [yolov4_weights, osnet_weights]
 
+    load_dotenv()
+    credentials = [os.environ.get('AWS_ACCESS_KEY'),
+                   os.environ.get('AWS_SECRET_KEY')]
+    INTERNAL_API_KEY = os.environ.get('INTERNAL_API_KEY')
+    headers = {
+        'X-Custom-Api-Key': INTERNAL_API_KEY,
+        'Content-Type': 'application/json'
+    }
     base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+    queue_block_url = base_url + 'api/service/get_queue_block/'
+    update_queue_url = base_url + 'api/service/update_queue/'
 
     while True:
-        update_queue_url = base_url + 'api/service/update_queue/'
         try:
-            response = requests.get(update_queue_url)
+            response = requests.get(queue_block_url, headers=headers)
             data = response.json()
 
-            rows = data.get('results', [])
-            if len(rows) == 0:
+            queue_block = data.get('results', [])
+            if len(queue_block) == 0:
                 print('No clips in the queue')
                 time.sleep(60)
                 continue
@@ -54,12 +81,17 @@ def main(stride=15):
             time.sleep(60)
             continue
 
-        time_prefix = utilities.parse_clip_filename(rows[0][1], data='time')
+        time_prefix = utilities.parse_clip_filename(queue_block[0][1], data='time')
         timestamp = utilities.frame_timestamp(time_prefix)
         
-        for row in rows:
+        for row in queue_block:
             video_file = row[1]
             camera = video_file.split('.')[0].split('_')[-1]
+
+            if not _download_from_s3(video_file, credentials):
+                if os.path.exists('../input_files/' + video_file):
+                    os.remove('../input_files/' + video_file)
+                continue
 
             hdf5_path = _get_hdf5_path(video_file)
 
@@ -81,7 +113,11 @@ def main(stride=15):
             io_utils.save_track_info(time_prefix, camera, all_trks)
 
         io_utils.post_events_to_webapp(time_prefix)
-        io_utils.update_queue(action='clear_section', datetime=timestamp)
+        response = requests.post(
+            update_queue_url, json={
+                'action': 'clear_section', 'timestamp': timestamp},
+            headers=headers
+        )
         delete_files(time_prefix)
 
         #     identification_pipeline(time_prefix)
