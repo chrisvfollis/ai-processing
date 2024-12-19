@@ -161,6 +161,7 @@ def upload_and_post(cap_info):
     if response.status_code == 200:
         print('Success')
     else:
+        print('Error:')
         print(response.text)
         print(response.status_code)
 
@@ -180,7 +181,7 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
         )
 
     except Exception as e:
-        print(e)
+        print(f'Error: {e}')
         return None
     return (file, timestamp, f'c{cam}')
 
@@ -205,7 +206,7 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             return [row for row in cap_info if row is not None]
 
         except Exception as e:
-            print(e)
+            print(f'Error: {e}')
             return None
     
     upload_queue = ThreadPoolExecutor(max_workers=1)
