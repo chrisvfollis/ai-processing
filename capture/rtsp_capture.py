@@ -146,7 +146,7 @@ def upload_and_post(cap_info):
 
         if _upload_to_s3(file_path, s3_key, credentials):
             data['filenames'].append(row[0])
-            data['timestamps'].append(row[1])
+            data['timestamps'].append(row[1].isoformat())
             data['cameras'].append(row[2])
 
         if os.path.exists(file_path):
