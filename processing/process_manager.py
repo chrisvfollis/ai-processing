@@ -8,7 +8,7 @@ import requests
 from dotenv import load_dotenv
 import boto3
 import sys
-
+import tensorflow as tf
 
 def delete_files(time_prefix, footage_path='../input_files/',
                  intermediate_output='../intermediate_output/'):
@@ -62,6 +62,19 @@ def process_row(row, credentials, weights_paths, device, stride, time_prefix):
 
     print("Subprocess PYTHONPATH:", os.environ.get("PYTHONPATH"))
     print("Subprocess sys.path:", sys.path)
+
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            tf.config.experimental.set_virtual_device_configuration(
+                gpus[0],
+                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=4096)]
+            )
+            print("TensorFlow GPU memory configured.")
+        except RuntimeError as e:
+            print(f"Error configuring TensorFlow GPU memory: {e}")
 
     from inference import InferencePipeline
     from tracking import tracking_pipeline
