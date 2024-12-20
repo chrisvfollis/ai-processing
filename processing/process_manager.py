@@ -1,9 +1,6 @@
 import torch
 import io_utils
-from inference import InferencePipeline
 import multiprocessing
-from tracking import tracking_pipeline
-import cv2
 import time
 import utilities
 import os
@@ -63,7 +60,11 @@ def process_row(row, credentials, weights_paths, device, stride, time_prefix):
             print(f"Failed to delete {s3_key} from S3: {e}")
             return False
 
-    print("PYTHONPATH:", sys.path)
+    print("Subprocess PYTHONPATH:", os.environ.get("PYTHONPATH"))
+    print("Subprocess sys.path:", sys.path)
+
+    from inference import InferencePipeline
+    from tracking import tracking_pipeline
 
     video_file = row[0]
     camera = video_file.split('.')[0].split('_')[-1]
@@ -139,19 +140,12 @@ def main(stride=15):
         time_prefix = utilities.parse_clip_filename(queue_block[0][0], data='time')
         timestamp = utilities.frame_timestamp(time_prefix)
         
-        # with multiprocessing.Pool(processes=4) as pool:
-        #     tasks = [
-        #         (row, credentials, weights_paths, device, stride, time_prefix)
-        #         for row in queue_block
-        #     ]
-        #     pool.starmap(process_row, tasks)
-
-        tasks = [
-            (row, credentials, weights_paths, device, stride, time_prefix)
-            for row in queue_block
-        ]
-        for task in tasks:
-            process_row(*task)
+        with multiprocessing.Pool(processes=4) as pool:
+            tasks = [
+                (row, credentials, weights_paths, device, stride, time_prefix)
+                for row in queue_block
+            ]
+            pool.starmap(process_row, tasks)
 
         io_utils.post_events_to_webapp(time_prefix)
         response = requests.post(
