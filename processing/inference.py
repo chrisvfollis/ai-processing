@@ -126,7 +126,7 @@ class YOLOv4:
 
         self.nms_thresh = nms_thresh
         
-    def detect(self, img, class_num, conf_thresh=0.65, resize_dims=(416, 416)):
+    def detect(self, img, class_num, conf_thresh=0.70, resize_dims=(416, 416)):
         def _preprocess_img(img, resize_dims):
             '''
             resize_dims — the width and height to resize the image to. YOLOv4
