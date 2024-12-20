@@ -10,6 +10,7 @@ import os
 import requests
 from dotenv import load_dotenv
 import boto3
+import sys
 
 
 def delete_files(time_prefix, footage_path='../input_files/',
@@ -61,6 +62,8 @@ def process_row(row, credentials, weights_paths, device, stride, time_prefix):
         except Exception as e:
             print(f"Failed to delete {s3_key} from S3: {e}")
             return False
+
+    print("PYTHONPATH:", sys.path)
 
     video_file = row[0]
     camera = video_file.split('.')[0].split('_')[-1]
