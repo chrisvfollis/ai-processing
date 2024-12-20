@@ -40,6 +40,7 @@ def main(stride=15):
             local_path = '../input_files/' + s3_key 
             s3.download_file(bucket_name, s3_key, local_path)
             print(f'Downloaded {s3_key}')
+            return True
         except Exception as e:
             print(f"Failed to download {s3_key}: {e}")
             return False
