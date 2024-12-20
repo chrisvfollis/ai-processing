@@ -9,6 +9,7 @@ import torchreid
 import h5py
 from deepface import DeepFace
 from models.yolov4_architecture import Yolov4Model
+import tensorflow as tf
 
 
 class OSNet:
@@ -275,6 +276,19 @@ class YOLOv4:
 class InferencePipeline:
     def __init__(self, video_file, weights_paths, hdf5_path, device,
                  track_stride=1, id_stride=30, buffer_limit=100):
+        
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            try:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                tf.config.experimental.set_virtual_device_configuration(
+                    gpus[0],
+                    [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=4096)]
+                )
+                print("TensorFlow GPU memory configured.")
+            except RuntimeError as e:
+                print(f"Error configuring TensorFlow GPU memory: {e}")
 
         self.yolov4 = YOLOv4(weights_paths[0], device, nms_thresh=0.5)
         self.osnet = OSNet(weights_paths[1], device)
