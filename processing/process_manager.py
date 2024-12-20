@@ -95,6 +95,7 @@ def process_row(row, credentials, weights_paths, device, stride, time_prefix):
 
 
 def main(stride=15):
+    multiprocessing.set_start_method("spawn")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     yolov4_weights = 'models/YOLOv4.pth'
