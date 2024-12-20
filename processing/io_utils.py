@@ -539,6 +539,7 @@ def save_event_image(img, img_dir='../output_files/event_imgs/'):
         )
         bucket_name = 'timemanager-event-imgs'
         s3_client.upload_file(file_path, bucket_name, file_name)
+        os.remove(file_path)
     except (EndpointConnectionError, NoCredentialsError) as e:
         pass
 
