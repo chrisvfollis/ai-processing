@@ -81,11 +81,11 @@ def main(stride=15):
             time.sleep(60)
             continue
 
-        time_prefix = utilities.parse_clip_filename(queue_block[0][1], data='time')
+        time_prefix = utilities.parse_clip_filename(queue_block[0][0], data='time')
         timestamp = utilities.frame_timestamp(time_prefix)
         
         for row in queue_block:
-            video_file = row[1]
+            video_file = row[0]
             camera = video_file.split('.')[0].split('_')[-1]
 
             if not _download_from_s3(video_file, credentials):
