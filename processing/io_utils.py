@@ -643,5 +643,5 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     if response.status_code == 200:
         print("Success")
     else:
-        print(response.text)
+        print(f"Failed posting to webapp: {response.text}")
         print(response.status_code)

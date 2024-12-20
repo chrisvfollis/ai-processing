@@ -66,8 +66,6 @@ def process_row(row, credentials, weights_paths, device, stride, time_prefix):
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
             tf.config.experimental.set_virtual_device_configuration(
                 gpus[0],
                 [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=2048)]
@@ -153,12 +151,14 @@ def main(stride=15):
         time_prefix = utilities.parse_clip_filename(queue_block[0][0], data='time')
         timestamp = utilities.frame_timestamp(time_prefix)
         
-        with multiprocessing.Pool(processes=4) as pool:
+        with multiprocessing.Pool(processes=3) as pool:
             tasks = [
                 (row, credentials, weights_paths, device, stride, time_prefix)
                 for row in queue_block
             ]
             pool.starmap(process_row, tasks)
+        
+        print("Processed queue block")
 
         io_utils.post_events_to_webapp(time_prefix)
         response = requests.post(
@@ -166,6 +166,13 @@ def main(stride=15):
                 'action': 'clear_section', 'timestamp': timestamp.isoformat()},
             headers=headers
         )
+        if response.status_code == 200:
+            print("Success")
+        else:
+            print(f"Failed posting to internal API: {response.text}")
+            print(response.status_code)
+
+
         delete_files(time_prefix)
 
         #     identification_pipeline(time_prefix)
