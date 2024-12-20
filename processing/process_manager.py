@@ -115,7 +115,7 @@ def main(stride=15):
         io_utils.post_events_to_webapp(time_prefix)
         response = requests.post(
             update_queue_url, json={
-                'action': 'clear_section', 'timestamp': timestamp},
+                'action': 'clear_section', 'timestamp': timestamp.isoformat()},
             headers=headers
         )
         delete_files(time_prefix)
