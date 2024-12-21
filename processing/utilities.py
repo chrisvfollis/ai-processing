@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 import math
 import numpy as np
+import cv2
 
 
 def centroid(coordinates, reverse=False):
@@ -300,3 +301,17 @@ def format_cv2D_kf(measurement, m_noise, p_noise, initial_uncertainty,
     P_init = np.diag(initial_uncertainty)
 
     return F, Q, H, R, x_init, P_init
+
+
+def is_grayscale(frame, threshold=10):
+    b, g, r = cv2.split(frame)
+    
+    # Calculate absolute differences between channels
+    diff_rg = np.abs(r - g)
+    diff_rb = np.abs(r - b)
+    diff_gb = np.abs(g - b)
+    
+    # Compute mean of differences
+    mean_diff = np.mean([np.mean(diff_rg), np.mean(diff_rb), np.mean(diff_gb)])
+    
+    return mean_diff < threshold

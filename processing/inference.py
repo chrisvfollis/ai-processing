@@ -9,6 +9,7 @@ import torchreid
 import h5py
 from deepface import DeepFace
 from models.yolov4_architecture import Yolov4Model
+import utilities
 
 
 class OSNet:
@@ -303,7 +304,11 @@ class InferencePipeline:
         while self.f_num < total_frames:
             current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
             ret, frame = self.cap.read()
-            if (not ret) or (current_frame == prev_frame):
+            if (
+                (not ret) or
+                (current_frame == prev_frame) or
+                (utilities.is_grayscale(frame, threshold=10))
+            ):
                 return None
             prev_frame = current_frame
 
