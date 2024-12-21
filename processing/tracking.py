@@ -376,12 +376,17 @@ class Tracker:
                     # Handle cases where the "cost matrix is infeasible" error is
                     # thrown during the linear_sum_assignment execution:
                     except ValueError:
-                        filtered_matrix, keep = _filter_sparse_rows(cost_matrix)
-                        row_ind, col_ind = linear_sum_assignment(filtered_matrix)
+                        filtered_matrix, keep = _filter_sparse_rows(filtered_matrix)
+                        keep_to_orig_row_map = np.where(viable_rows)[0][keep]
 
-                        orig_row_ind = [keep[i] for i in row_ind]
-                        for i, j in zip(orig_row_ind, col_ind):
-                            assignments_dict[i] = j
+                        if filtered_matrix.size > 0:
+                            row_ind, col_ind = linear_sum_assignment(filtered_matrix)
+
+                            orig_row_ind = [keep[i] for i in row_ind]
+                            for i, j in zip(row_ind, col_ind):
+                                orig_row = keep_to_orig_row_map[i]
+                                orig_col = np.where(viable_cols)[0][j]
+                                assignments_dict[orig_row] = orig_col
 
                 return assignments_dict
 
