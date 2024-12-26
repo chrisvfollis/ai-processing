@@ -380,13 +380,16 @@ class Tracker:
                         keep_to_orig_row_map = np.where(viable_rows)[0][keep]
 
                         if filtered_matrix.size > 0:
-                            row_ind, col_ind = linear_sum_assignment(filtered_matrix)
+                            try:
+                                row_ind, col_ind = linear_sum_assignment(filtered_matrix)
 
-                            orig_row_ind = [keep[i] for i in row_ind]
-                            for i, j in zip(row_ind, col_ind):
-                                orig_row = keep_to_orig_row_map[i]
-                                orig_col = np.where(viable_cols)[0][j]
-                                assignments_dict[orig_row] = orig_col
+                                orig_row_ind = [keep[i] for i in row_ind]
+                                for i, j in zip(row_ind, col_ind):
+                                    orig_row = keep_to_orig_row_map[i]
+                                    orig_col = np.where(viable_cols)[0][j]
+                                    assignments_dict[orig_row] = orig_col
+                            except ValueError:
+                                print('No feasible assignments')
 
                 return assignments_dict
 

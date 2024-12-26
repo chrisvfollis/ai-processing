@@ -70,6 +70,9 @@ class OSNet:
         self.frame_buffer = []
         self.box_index_buffer = []
 
+        if os.path.exists(output_path):
+            os.remove(output_path)
+
         self.hdf5_file = h5py.File(output_path, 'a')
 
         n_features = self.output_shape[0]
