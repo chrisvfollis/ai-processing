@@ -331,14 +331,18 @@ class MoveNet:
             detection_array = (
                 output['output_0'].numpy()[:, :, :51].reshape((6, 17, 3))
             )
+            print(f'detection_array shape: {detection_array.shape}')
             detections = detection_array[~np.all(detection_array == 0,
                                                  axis=(1, 2))]
+            print(f'detections shape: {detections.shape}')
             filtered_detections = np.where(
                 detections[:, :, 2] > self.conf_thresh, detections, 0
             )
+            print(f'filtered_detections shape: {filtered_detections.shape}')
             valid_detections = filtered_detections[
                 ~np.all(filtered_detections[:, :, 2] == 0, axis=1)
             ]
+            print(f'valid_detections shape: {valid_detections.shape}')
 
             if max_only:
                 if valid_detections.size > 0:
@@ -371,9 +375,14 @@ class MoveNet:
             img_cropped = img[y:y+h, x:x+w]
             try:
                 keypoints = self.detect(img_cropped, max_only=True)
+                assert keypoints.shape == (17, 3)
                 if not np.all(keypoints == 0):
                     keypoints[:, 0] += x
                     keypoints[:, 1] += y
+            
+            except AssertionError:
+                print('Keypoint detection returned an invalid shape: ' +
+                      f'{keypoints.shape}. Expected (17, 3) ')
     
             except Exception as e:
                 print(f"Error processing bounding box: {e}")
