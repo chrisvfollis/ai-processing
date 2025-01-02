@@ -13,7 +13,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 
-def delete_files(identifier, file_types='any',
+def delete_local_files(identifier, file_types='any',
                  paths=['../input_files', '../intermediate_output',
                         '../output_files/event_imgs']):
     def _parse_name_and_extension(file):
@@ -51,6 +51,23 @@ def delete_files(identifier, file_types='any',
     return True
 
 
+def delete_from_s3(s3_key, credentials, bucket_name='ivakt-footage'):
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=credentials[0],
+        aws_secret_access_key=credentials[1],
+        region_name='us-west-1'
+    )
+
+    try:
+        s3.delete_object(Bucket=bucket_name, Key=s3_key)
+        print(f'Deleted {s3_key} from S3')
+        return True
+    except Exception as e:
+        print(f"Failed to delete {s3_key} from S3: {e}")
+        return False
+
+
 def process_row(row, credentials, model_paths, device, stride, time_prefix):
     def _get_hdf5_path(video_file):
         return ('../intermediate_output/' + video_file.split('.')[0]
@@ -73,22 +90,6 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
             print(f"Failed to download {s3_key}: {e}")
             return False
 
-    def _delete_from_s3(s3_key, credentials, bucket_name='ivakt-footage'):
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=credentials[0],
-            aws_secret_access_key=credentials[1],
-            region_name='us-west-1'
-        )
-
-        try:
-            s3.delete_object(Bucket=bucket_name, Key=s3_key)
-            print(f'Deleted {s3_key} from S3')
-            return True
-        except Exception as e:
-            print(f"Failed to delete {s3_key} from S3: {e}")
-            return False
-
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
@@ -96,7 +97,6 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
                 gpus[0],
                 [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=2048)]
             )
-            print("TensorFlow GPU memory configured.")
         except RuntimeError as e:
             print(f"Error configuring TensorFlow GPU memory: {e}")
 
@@ -127,10 +127,7 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
 
     print(f"Tracking for {video_file}...")
     all_trks = tracking_pipeline(video_file)
-
     io_utils.save_track_info(time_prefix, camera, all_trks)
-
-    _delete_from_s3(video_file, credentials)
 
     print(f"Processed {video_file} successfully")
     return True
@@ -157,7 +154,8 @@ def main(stride=15):
     queue_block_url = base_url + 'api/service/get_queue_block/'
     update_queue_url = base_url + 'api/service/update_queue/'
 
-    delete_files('all')
+    io_utils.clear_track_info('all')
+    delete_local_files('all')
 
     while True:
         try:
@@ -190,20 +188,23 @@ def main(stride=15):
         
         print("Processed queue block")
 
-        io_utils.post_events_to_webapp(time_prefix)
-        response = requests.post(
-            update_queue_url, json={
-                'action': 'clear_section', 'timestamp': timestamp.isoformat()},
-            headers=headers
-        )
-        if response.status_code == 200:
-            print("Success")
-        else:
-            print(f"Failed posting to internal API: {response.text}")
-            print(response.status_code)
+        if io_utils.post_events_to_webapp(time_prefix):
+            video_files = [row[0] for row in queue_block]
+            for video_file in video_files:
+                delete_from_s3(video_file, credentials)
 
+            response = requests.post(
+                update_queue_url, json={
+                    'action': 'clear_section', 'timestamp': timestamp.isoformat()},
+                headers=headers
+            )
+            if response.status_code == 200:
+                print("Success")
+            else:
+                print(f"Failed posting to internal API: {response.text}")
+                print(response.status_code)
 
-        delete_files(time_prefix)
+        delete_local_files(time_prefix)
 
         #     identification_pipeline(time_prefix)
 
@@ -212,7 +213,7 @@ def main(stride=15):
 
         # else:
         #     io_utils.update_queue(action='clear_section', datetime=timestamp)
-        #     delete_files(time_prefix)            
+        #     delete_local_files(time_prefix)            
         # break
 
 if __name__ == '__main__':

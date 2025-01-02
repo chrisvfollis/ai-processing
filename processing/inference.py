@@ -419,7 +419,7 @@ class InferencePipeline:
             self.kp_stride = keypoint_stride - (keypoint_stride % track_stride)
 
     def detection_skim(self, stride=120):
-        print(f'skimming {self.video_file}...')
+        print(f'skimming...')
 
         prev_frame = -1
         total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -468,7 +468,7 @@ class InferencePipeline:
         if filtered_dfs:
             self.face_data[self.f_num] = filtered_dfs
 
-    def run(self):
+    def run(self, checkpoint_frequency=600):
         def _process_frame(frame):
             if self.f_num % self.track_stride == 0:
                 bboxes = self.yolov4.detect(frame, 0, conf_thresh=0.65,
@@ -488,7 +488,7 @@ class InferencePipeline:
             return True
     
         def _continue():
-            if self.f_num % 600 == 0:
+            if self.f_num % checkpoint_frequency == 0:
                 print(self.f_num)
     
             if self.track_stride <= 15:
@@ -510,10 +510,11 @@ class InferencePipeline:
         preliminary_detections = self.detection_skim()
         if not preliminary_detections:
             return False
+        
+        self.checkpoint_frequency = checkpoint_frequency
 
         self.f_num = 0
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
-
         prev_frame = -1
         total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 

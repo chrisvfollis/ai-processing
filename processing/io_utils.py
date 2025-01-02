@@ -115,8 +115,8 @@ def read_keypoint_csv(csv_path):
 
     for row in csvreader:
         f = int(row[0])
-        row[1::3] = list(map(int, row[1::3]))
-        row[2::3] = list(map(int, row[2::3]))
+        row[1::3] = list(map(lambda x: int(float(x)), row[1::3]))
+        row[2::3] = list(map(lambda x: int(float(x)), row[2::3]))
         row[3::3] = list(map(float, row[3::3]))
 
         detection = np.array([row[i:i+3] for i in range(1,18,3)])
@@ -240,7 +240,6 @@ def save_track_info(time_prefix, camera, all_trks, min_lifespan=450,
     ''')
     conn.commit()
    
-
     for id, trk in all_trks.items():
         if ((trk.last_detection_frame - trk.first_detection_frame)
             < min_lifespan) and (trk.identity is None):
@@ -599,6 +598,24 @@ def get_track_events(time_prefix, db_path='../appdata/data.db'):
     return results
 
 
+def clear_track_info(identifier, db_path='../appdata/data.db'):
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        if identifier == 'all':
+            cursor.execute('DELETE FROM track_info')
+        else:
+            cursor.execute('''
+                DELETE FROM track_info
+                WHERE time_prefix = ?
+            ''', (identifier,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f'Unable to clear track_info: {e}')
+
+
 def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     def _merge_tracks(df, max_continuation_gap=75):
         merged = []
@@ -684,6 +701,9 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
     response = requests.post(url, json=data, headers=headers)
     if response.status_code == 200:
         print("Success")
+        clear_track_info(time_prefix)
+        return True
     else:
         print(f"Failed posting to webapp: {response.text}")
         print(response.status_code)
+        return False
