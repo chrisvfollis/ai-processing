@@ -8,6 +8,8 @@ import requests
 from dotenv import load_dotenv
 import boto3
 import sys
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 def delete_files(time_prefix, footage_path='../input_files/',

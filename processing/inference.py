@@ -313,12 +313,18 @@ class MoveNet:
                 pad_w, pad_h = mapping['pad_dims']
                 target_w, target_h = mapping['target_dims']
 
+                print(f'keypoints shape: {keypoints.shape}')
+
                 keypoints[:, 0] = (keypoints[:, 0] * target_w) - (pad_w / 2)
                 keypoints[:, 1] = (keypoints[:, 1] * target_h) - (pad_h / 2)
+
+                print(f'keypoints shape: {keypoints.shape}')
 
                 keypoints[:, :2] = (
                     np.rint(keypoints[:, :2] / (scale * pad_scale)).astype(int)
                 )
+
+                print(f'_map_keypoints output shape: {keypoints.shape}')
 
                 return keypoints
 
