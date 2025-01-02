@@ -4,11 +4,18 @@ import torch
 import tensorflow as tf
 import cv2
 import io_utils
-import torchreid
 import h5py
 from deepface import DeepFace
 from models.yolov4_architecture import Yolov4Model
 import utilities
+
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="Cython evaluation",
+    module="torchreid.reid.metrics.rank"
+)
+import torchreid
 
 
 class OSNet:
@@ -313,42 +320,32 @@ class MoveNet:
                 pad_w, pad_h = mapping['pad_dims']
                 target_w, target_h = mapping['target_dims']
 
-                print(f'keypoints shape: {keypoints.shape}')
-
                 keypoints[:, 0] = (keypoints[:, 0] * target_w) - (pad_w / 2)
                 keypoints[:, 1] = (keypoints[:, 1] * target_h) - (pad_h / 2)
-
-                print(f'keypoints shape: {keypoints.shape}')
 
                 keypoints[:, :2] = (
                     np.rint(keypoints[:, :2] / (scale * pad_scale)).astype(int)
                 )
-
-                print(f'_map_keypoints output shape: {keypoints.shape}')
 
                 return keypoints
 
             detection_array = (
                 output['output_0'].numpy()[:, :, :51].reshape((6, 17, 3))
             )
-            print(f'detection_array shape: {detection_array.shape}')
             detections = detection_array[~np.all(detection_array == 0,
                                                  axis=(1, 2))]
-            print(f'detections shape: {detections.shape}')
             filtered_detections = np.where(
                 (detections[:, :, 2] > self.conf_thresh)[..., None], detections, 0
             )
-            print(f'filtered_detections shape: {filtered_detections.shape}')
             valid_detections = filtered_detections[
                 ~np.all(filtered_detections[:, :, 2] == 0, axis=1)
             ]
-            print(f'valid_detections shape: {valid_detections.shape}')
 
             if max_only:
                 if valid_detections.size > 0:
                     confidence_sums = valid_detections[:, :, 2].sum(axis=1)
                     max_index = np.argmax(confidence_sums)
-                    return _map_keypoints(valid_detections[max_index])
+                    return _map_keypoints(valid_detections[max_index], mapping)
                 else:
                     return np.zeros((17, 3))
             else:
