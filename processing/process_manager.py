@@ -22,7 +22,7 @@ def delete_files(time_prefix, footage_path='../input_files/',
             os.remove(intermediate_output + file)
 
 
-def process_row(row, credentials, weights_paths, device, stride, time_prefix):
+def process_row(row, credentials, model_paths, device, stride, time_prefix):
     def _get_hdf5_path(video_file):
         return ('../intermediate_output/' + video_file.split('.')[0]
                 + '_embeddings.hdf5')
@@ -88,7 +88,7 @@ def process_row(row, credentials, weights_paths, device, stride, time_prefix):
     hdf5_path = _get_hdf5_path(video_file)
 
     inference_pipeline = InferencePipeline(
-        video_file, weights_paths, hdf5_path, device,
+        video_file, model_paths, hdf5_path, device,
         track_stride=stride, id_stride=30
     )
 
@@ -115,7 +115,8 @@ def main(stride=15):
 
     yolov4_weights = 'models/YOLOv4.pth'
     osnet_weights = 'models/OSNet.pth.tar-250'
-    weights_paths = [yolov4_weights, osnet_weights]
+    movenet_dir = 'models/movenet'
+    model_paths = [yolov4_weights, osnet_weights, movenet_dir]
 
     load_dotenv()
     credentials = [os.environ.get('AWS_ACCESS_KEY'),
@@ -153,7 +154,7 @@ def main(stride=15):
         
         with multiprocessing.Pool(processes=3) as pool:
             tasks = [
-                (row, credentials, weights_paths, device, stride, time_prefix)
+                (row, credentials, model_paths, device, stride, time_prefix)
                 for row in queue_block
             ]
             pool.starmap(process_row, tasks)

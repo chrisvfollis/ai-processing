@@ -333,17 +333,21 @@ class MoveNet:
                 ~np.all(filtered_detections[:, :, 2] == 0, axis=1)
             ]
 
-            if (max_only == True) and (valid_detections.size > 0):
-                confidence_sums = valid_detections[:, :, 2].sum(axis=1)
-                max_index = np.argmax(confidence_sums)
-                return _map_keypoints(valid_detections[max_index])
-            elif (max_only == True) and (valid_detections.size > 0):
-                valid_detections = np.array([
-                    _map_keypoints(x, mapping) for x in valid_detections
-                ])
-                return valid_detections
+            if max_only:
+                if valid_detections.size > 0:
+                    confidence_sums = valid_detections[:, :, 2].sum(axis=1)
+                    max_index = np.argmax(confidence_sums)
+                    return _map_keypoints(valid_detections[max_index])
+                else:
+                    return np.zeros((17, 3))
             else:
-                return None
+                if valid_detections.size > 0:
+                    valid_detections = np.array([
+                        _map_keypoints(x, mapping) for x in valid_detections
+                    ])
+                    return valid_detections
+                else:
+                    return np.zeros((6, 17, 3))
     
         self.conf_thresh = conf_thresh
 
@@ -360,14 +364,15 @@ class MoveNet:
             img_cropped = img[y:y+h, x:x+w]
             try:
                 keypoints = self.detect(img_cropped, max_only=True)
-                if keypoints is not None:
+                if not np.all(keypoints == 0):
                     keypoints[:, 0] += x
                     keypoints[:, 1] += y
-        
-                all_keypoints.append(keypoints)
+    
             except Exception as e:
                 print(f"Error processing bounding box: {e}")
-                all_keypoints.append(None)
+                keypoints = np.zeros((17, 3))
+            
+            all_keypoints.append(keypoints)
 
         return all_keypoints
 

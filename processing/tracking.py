@@ -509,10 +509,6 @@ class Tracker:
                     _predict_or_cache()
         
         def _save_and_cleanup():
-            def _assess_keypoints():
-                for trk in self.all_trks.values():
-                    return None
-
             def _get_track_images(vid_dir='../input_files/'):
                 vid_path = os.path.join(vid_dir, self.video_file)
                 cap = cv2.VideoCapture(vid_path)
@@ -536,6 +532,33 @@ class Tracker:
                     trk.end_img = io_utils.save_event_image(images[1])
 
                 cap.release()
+            
+            def _filter_by_keypoints(expected_kps=5, expected_conf=.5):
+                filtered_out = []
+                for id, trk in self.all_trks.items():
+                    n_frames = len(trk.keypoints.keys())
+                    if n_frames == 0:
+                        filtered_out.append(id)
+                        continue
+    
+                    expected_value = (
+                        (expected_kps * expected_conf) / (n_frames * 17)
+                    )
+    
+                    total_kp_conf = sum(trk.keypoints[f][:, 2].sum()
+                                        for f in trk.keypoints.keys())
+                    
+                    avg_value = total_kp_conf / (n_frames * 17)
+
+                    if avg_value < expected_value:
+                        filtered_out.append(id)
+                        print(f'TRACK {id} REMOVED: avg_val={avg_value:.2f}, ' +
+                              f'expected_value={expected_value:.2f}')
+                        print(f'start img: {trk.start_img}')
+                        print(f'end img: {trk.end_img}')
+                
+                for id in filtered_out:
+                    del self.all_trks[id]
     
             # last_frame = self.total_frames - 1
             # if self.active_trks:
@@ -548,10 +571,11 @@ class Tracker:
             del self.active_trks
             del self.trk_cache
 
+            _get_track_images()
+            _filter_by_keypoints(expected_kps=5, expected_conf=.5)
+
             for trk in self.all_trks.values():
                 trk.find_best_id()
-
-            _get_track_images()
 
         while self.f_num < self.total_frames:
             if self.active_trks:
