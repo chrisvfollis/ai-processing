@@ -12,16 +12,42 @@ import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
-def delete_files(time_prefix, footage_path='../input_files/',
-                 intermediate_output='../intermediate_output/'):
 
-    for file in os.listdir(footage_path):
-        if file.startswith(time_prefix):
-            os.remove(footage_path + file)
+def delete_files(identifier, file_types='any',
+                 paths=['../input_files', '../intermediate_output',
+                        '../output_files/event_imgs']):
+    def _parse_name_and_extension(file):
+        file_parts = [x for x in file.rsplit('.', 1)]
 
-    for file in os.listdir(intermediate_output):
-        if file.startswith(time_prefix):
-            os.remove(intermediate_output + file)
+        name = file_parts[0]
+        extension = (
+            file_parts[-1] if len(file_parts) == 2 else ''
+        )
+    
+        return name, extension
+
+    n_deleted = 0
+    for path in paths:
+        if not os.path.exists(path):
+            print(f'Skipping non-existent path: {path}')
+            continue
+        for result in os.listdir(path):
+            full_path = os.path.join(path, result)
+            if not os.path.isfile(full_path):
+                continue
+            
+            file_name, file_extension = _parse_name_and_extension(result)
+            if (
+                ((identifier == 'all') or (file_name.startswith(identifier))) and
+                ((file_types == 'any') or (file_extension in file_types))
+            ):
+                try:
+                    os.remove(full_path)
+                    n_deleted += 1
+                except Exception as e:
+                    print(f'Error deleting {full_path}: {e}')
+
+    return f'Deleted {n_deleted} files'
 
 
 def process_row(row, credentials, model_paths, device, stride, time_prefix):
@@ -131,6 +157,8 @@ def main(stride=15):
     base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
     queue_block_url = base_url + 'api/service/get_queue_block/'
     update_queue_url = base_url + 'api/service/update_queue/'
+
+    delete_files('all')
 
     while True:
         try:
