@@ -55,6 +55,7 @@ class Track(KalmanFilter):
 
         self.face_detections = {}
         self.detections = {args[0]: detection}
+        self.keypoints = {}
         self.embeddings = [embedding]
 
         self.first_detection_frame = args[0]
@@ -70,6 +71,9 @@ class Track(KalmanFilter):
         self.detections[frame_number] = new_detection
         self.last_detection_frame = frame_number
     
+    def add_keypoints(self, new_keypoints, frame_number):
+        self.keypoints[frame_number] = new_keypoints
+
     def add_face_detection(self, possible_matches, frame_number):
         self.face_detections[frame_number] = possible_matches
     
@@ -127,7 +131,8 @@ class Track(KalmanFilter):
 
 
 class Tracker:
-    def __init__(self, video_file, detection_data, face_data, embedding_path):
+    def __init__(self, video_file, detection_data, keypoint_data, face_data,
+                 embedding_path):
         self.video_file = video_file
         self.f_num = 0
 
@@ -144,6 +149,7 @@ class Tracker:
         self.trk_id = 0
 
         self.detection_data = detection_data
+        self.keypoint_data = keypoint_data
         self.face_data = face_data
         self.embedding_path = embedding_path
 
@@ -189,7 +195,7 @@ class Tracker:
     def run(self):
         def _create_new_tracks():
             try:
-                detections, embeddings = self.unmatched
+                detections, embeddings, keypoints = self.unmatched
             except ValueError:
                 return None
 
@@ -208,8 +214,10 @@ class Tracker:
                 )
 
                 new_track = Track(box, embeddings[i], self.f_num, *kf_args)
+                if keypoints:
+                    new_track.add_keypoints(keypoints[i], self.f_num)
+    
                 self.active_trks[self.trk_id] = new_track
-        
                 self.trk_id += 1
 
             self.unmatched = []
@@ -394,7 +402,7 @@ class Tracker:
                 return assignments_dict
 
             trk_ids = sorted(self.active_trks.keys())
-            detections, embeddings = measurements
+            detections, embeddings, keypoints = measurements
 
             cost_matrix = _construct_cost_matrix(detections, embeddings,
                                                 weights=[1, 0.1])
@@ -415,13 +423,23 @@ class Tracker:
                 trk.update(measurement)
                 trk.add_detection(box[:4], self.f_num)
                 trk.add_embedding(embeddings[measurement_index])
+    
+                if (keypoints is not None) and (keypoints.size > 0):
+                    trk.add_keypoints(keypoints[measurement_index])
 
             unmatched_detections = [detections[j] for j in range(len(detections))
                                     if j not in matched]
             unmatched_embeddings = [embeddings[j] for j in range(len(embeddings))
                                     if j not in matched]
+            if (keypoints is not None) and (keypoints.size > 0):
+                unmatched_keypoints = [
+                    keypoints[j] for j in range(len(keypoints)) if j not in matched
+                ]
+            else:
+                unmatched_keypoints = []
             
-            self.unmatched = [unmatched_detections, unmatched_embeddings]
+            self.unmatched = [unmatched_detections, unmatched_embeddings,
+                              unmatched_keypoints]
 
         def _associate_faces(cutoff=0.9):
             def _overlap_costs(face_boxes, person_boxes):
@@ -479,8 +497,8 @@ class Tracker:
                     (face_df['h'] == face_box[3])
                 ]
 
-                self.active_trks[id].add_face_detection(f_matches, self.f_num)
-        
+                self.active_trks[id].add_face_detection(f_matches, self.f_num)     
+
         def _continue_prior_tracks():
             self.load_prior_tracks()
             
@@ -491,6 +509,10 @@ class Tracker:
                     _predict_or_cache()
         
         def _save_and_cleanup():
+            def _assess_keypoints():
+                for trk in self.all_trks.values():
+                    return None
+
             def _get_track_images(vid_dir='../input_files/'):
                 vid_path = os.path.join(vid_dir, self.video_file)
                 cap = cv2.VideoCapture(vid_path)
@@ -538,7 +560,8 @@ class Tracker:
             try:
                 detections = self.detection_data[self.f_num]
                 embeddings = io_utils.read_embeddings(self.embedding_path, self.f_num)
-                measurements = [detections, embeddings]
+                keypoints = self.keypoint_data.get(self.f_num, None)
+                measurements = [detections, embeddings, keypoints]
             except KeyError:
                 measurements = None
 
@@ -561,6 +584,7 @@ def tracking_pipeline(video_file):
     data_path = f"../intermediate_output/{video_file.split('.')[0]}"
 
     det_data = io_utils.read_detection_csv(data_path + '_detections.csv')
+    kp_data = io_utils.read_keypoint_csv(data_path + '_keypoints.csv')
     embedding_path = data_path + '_embeddings.hdf5'
 
     try:
@@ -568,7 +592,7 @@ def tracking_pipeline(video_file):
     except FileNotFoundError:
         face_data = None
 
-    tracker = Tracker(video_path, det_data, face_data, embedding_path)
+    tracker = Tracker(video_path, det_data, kp_data, face_data, embedding_path)
     tracker.run()
 
     # io_utils.write_trk_data(video_file, tracker.all_trks, tracker.span)

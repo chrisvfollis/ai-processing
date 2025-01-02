@@ -85,6 +85,47 @@ def read_detection_csv(csv_path):
     return frame_data
 
 
+def write_keypoint_csv(keypoint_data, video_file):
+    base_path = '../intermediate_output/'
+    csv_file = f'{video_file.split(".")[0]}_keypoints.csv'
+    csv_path = os.path.join(base_path, csv_file)
+
+    file = open(csv_path, 'w', newline='')
+    writer = csv.writer(file, delimiter=',')
+
+    standard_cols = ['x', 'y', 'c']
+
+    writer.writerow(['f'] + [f'{x}{i}' for i in range(17)
+                             for x in standard_cols])
+    
+    for frame in sorted(keypoint_data.keys()):
+        for detection in keypoint_data[frame]:
+            writer.writerow([frame] + [x for keypoint in detection
+                                       for x in keypoint])
+
+    file.close()
+
+
+def read_keypoint_csv(csv_path):
+    frame_data = {}
+
+    file = open(csv_path, 'r')
+    csvreader = csv.reader(file, delimiter=',')
+    next(csvreader)
+
+    for row in csvreader:
+        f = int(row[0])
+        row[1::3] = list(map(int, row[1::3]))
+        row[2::3] = list(map(int, row[2::3]))
+        row[3::3] = list(map(float, row[3::3]))
+
+        detection = np.array([row[i:i+3] for i in range(1,18,3)])
+        frame_data.setdefault(f, []).append(detection)
+
+    file.close()
+    return frame_data
+
+
 def write_face_csv(face_data, video_file):
     base_path = '../intermediate_output/'
     csv_file = f'{video_file.split(".")[0]}_faces.csv'

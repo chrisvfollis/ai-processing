@@ -1,10 +1,9 @@
 import numpy as np
 import os
 import torch
+import tensorflow as tf
 import cv2
 import io_utils
-import sys
-import datetime
 import torchreid
 import h5py
 from deepface import DeepFace
@@ -239,10 +238,10 @@ class YOLOv4:
             scale_x = img_w
             scale_y = img_h
 
-            x1 = int(x1 * scale_x)
-            y1 = int(y1 * scale_y)
-            x2 = int(x2 * scale_x)
-            y2 = int(y2 * scale_y)
+            x1 = int(round(x1 * scale_x))
+            y1 = int(round(y1 * scale_y))
+            x2 = int(round(x2 * scale_x))
+            y2 = int(round(y2 * scale_y))
 
             x1 = int(max(0, min(x1, img_w)))
             y1 = int(max(0, min(y1, img_h)))
@@ -276,17 +275,117 @@ class YOLOv4:
         return filtered
 
 
-class InferencePipeline:
-    def __init__(self, video_file, weights_paths, hdf5_path, device,
-                 track_stride=1, id_stride=30, buffer_limit=100):
+class MoveNet:
+    def __init__(self, model_path):
+        model = tf.saved_model.load(model_path)
+        self.model = model.signatures['serving_default']
+    
+    def detect(self, img, conf_thresh=0.35, max_only=False):
+        def _preprocess_img(img):
+            original_dims = img.shape[:2][::-1]
+            w, h = original_dims
+            
+            scale = 1
+            if min(original_dims) < 96:
+                scale = 96 / min(original_dims)
+                w, h = [int(round(x * scale)) for x in original_dims]
+                img = cv2.resize(img, (w, h))
+            
+            target_w, target_h = [int((x // 32) * 32) for x in [w, h]]
 
-        self.yolov4 = YOLOv4(weights_paths[0], device, nms_thresh=0.5)
-        self.osnet = OSNet(weights_paths[1], device)
+            img = tf.image.resize_with_pad(tf.expand_dims(img, axis=0),
+                                           target_h, target_w)
+            img = tf.cast(img, dtype=tf.int32)
+
+            pad_scale = min([target_w / w, target_h / h])
+            pad_w = w - (w * pad_scale)
+            pad_h = h - (h * pad_scale)
+
+            mapping = {'scale': scale, 'pad_scale': pad_scale, 'pad_dims':
+                       [pad_w, pad_h], 'target_dims': [target_w, target_h]}
+
+            return img, mapping
         
+        def _postprocess_output(output, mapping, max_only):
+            def _map_keypoints(keypoints, mapping):
+                scale = mapping['scale']
+                pad_scale = mapping['pad_scale']
+                pad_w, pad_h = mapping['pad_dims']
+                target_w, target_h = mapping['target_dims']
+
+                keypoints[:, 0] = (keypoints[:, 0] * target_w) - (pad_w / 2)
+                keypoints[:, 1] = (keypoints[:, 1] * target_h) - (pad_h / 2)
+
+                keypoints[:, :2] = (
+                    np.rint(keypoints[:, :2] / (scale * pad_scale)).astype(int)
+                )
+
+                return keypoints
+
+            detection_array = (
+                output['output_0'].numpy()[:, :, :51].reshape((6, 17, 3))
+            )
+            detections = detection_array[~np.all(detections == 0, axis=(1, 2))]
+            filtered_detections = np.where(
+                detections[:, :, 2] > self.conf_thresh, detections, 0
+            )
+            valid_detections = filtered_detections[
+                ~np.all(filtered_detections[:, :, 2] == 0, axis=1)
+            ]
+
+            if (max_only == True) and (valid_detections.size > 0):
+                confidence_sums = valid_detections[:, :, 2].sum(axis=1)
+                max_index = np.argmax(confidence_sums)
+                return _map_keypoints(valid_detections[max_index])
+            elif (max_only == True) and (valid_detections.size > 0):
+                valid_detections = np.array([
+                    _map_keypoints(x, mapping) for x in valid_detections
+                ])
+                return valid_detections
+            else:
+                return None
+    
+        self.conf_thresh = conf_thresh
+
+        img, mapping = _preprocess_img(img)
+        raw_output = self.model(img)
+
+        return _postprocess_output(raw_output, mapping, max_only)
+
+    def detection_batch(self, img, bboxes):
+        all_keypoints = []
+
+        for box in bboxes:
+            x, y, w, h, = box[:4]
+            img_cropped = img[y:y+h, x:x+w]
+            try:
+                keypoints = self.detect(img_cropped, max_only=True)
+                if keypoints is not None:
+                    keypoints[:, 0] += x
+                    keypoints[:, 1] += y
+        
+                all_keypoints.append(keypoints)
+            except Exception as e:
+                print(f"Error processing bounding box: {e}")
+                all_keypoints.append(None)
+
+        return all_keypoints
+
+
+class InferencePipeline:
+    def __init__(self, video_file, model_paths, hdf5_path, device,
+                 track_stride=1, id_stride=30, keypoint_stride=60,
+                 buffer_limit=100):
+
+        self.yolov4 = YOLOv4(model_paths[0], device, nms_thresh=0.5)
+        self.osnet = OSNet(model_paths[1], device)
+        self.movenet = MoveNet(model_paths[2])
+
         self.osnet.enable_buffers(hdf5_path, buffer_limit=buffer_limit)
 
         self.person_data = {}
         self.face_data = {}
+        self.keypoint_data = {}
 
         self.video_file = video_file
         self.cap = cv2.VideoCapture('../input_files/' + video_file)
@@ -294,9 +393,12 @@ class InferencePipeline:
 
         self.track_stride = track_stride
         self.id_stride = id_stride
+        self.kp_stride = keypoint_stride
         
         if (self.id_stride % self.track_stride) != 0:
             self.id_stride = id_stride - (id_stride % track_stride)
+        if (self.kp_stride % self.track_stride) != 0:
+            self.kp_stride = keypoint_stride - (keypoint_stride % track_stride)
 
     def detection_skim(self, stride=120):
         print(f'skimming {self.video_file}...')
@@ -350,18 +452,23 @@ class InferencePipeline:
 
     def run(self):
         def _process_frame(frame):
-            detections = None
             if self.f_num % self.track_stride == 0:
-                detections = self.yolov4.detect(frame, 0, conf_thresh=0.65,
+                bboxes = self.yolov4.detect(frame, 0, conf_thresh=0.65,
                                                 resize_dims=(416, 416))
-                self.osnet.extraction_batch(frame, detections, self.f_num)
-
-                if detections:
-                    self.person_data[self.f_num] = detections
+                self.osnet.extraction_batch(frame, bboxes, self.f_num)
+                if bboxes:
+                    self.person_data[self.f_num] = bboxes
 
             if self.f_num % self.id_stride == 0:
                 self.identify_faces(frame)
-        
+            
+            if self.f_num % self.kp_stride == 0:
+                all_keypoints = self.movenet.detection_batch(frame, bboxes)
+                if all_keypoints:
+                    self.keypoint_data[self.f_num] = all_keypoints
+
+            return True
+    
         def _continue():
             if self.f_num % 600 == 0:
                 print(self.f_num)
@@ -374,6 +481,7 @@ class InferencePipeline:
         
         def _save_and_cleanup():
             io_utils.write_detection_csv(self.person_data, self.video_file)
+            io_utils.write_keypoint_csv(self.keypoint_data, self.video_file)
             io_utils.write_face_csv(self.face_data, self.video_file)
 
             if len(self.osnet.embedding_buffer) > 0:
