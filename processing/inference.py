@@ -336,7 +336,7 @@ class MoveNet:
                                                  axis=(1, 2))]
             print(f'detections shape: {detections.shape}')
             filtered_detections = np.where(
-                detections[:, :, 2] > self.conf_thresh[..., None], detections, 0
+                (detections[:, :, 2] > self.conf_thresh)[..., None], detections, 0
             )
             print(f'filtered_detections shape: {filtered_detections.shape}')
             valid_detections = filtered_detections[

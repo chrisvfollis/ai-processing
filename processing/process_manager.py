@@ -47,7 +47,8 @@ def delete_files(identifier, file_types='any',
                 except Exception as e:
                     print(f'Error deleting {full_path}: {e}')
 
-    return f'Deleted {n_deleted} files'
+    print(f'Deleted {n_deleted} files')
+    return True
 
 
 def process_row(row, credentials, model_paths, device, stride, time_prefix):
@@ -88,9 +89,6 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
             print(f"Failed to delete {s3_key} from S3: {e}")
             return False
 
-    print("Subprocess PYTHONPATH:", os.environ.get("PYTHONPATH"))
-    print("Subprocess sys.path:", sys.path)
-
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
@@ -107,13 +105,13 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
 
     video_file = row[0]
     camera = video_file.split('.')[0].split('_')[-1]
+    hdf5_path = _get_hdf5_path(video_file)
 
     if not _download_from_s3(video_file, credentials):
         if os.path.exists('../input_files/' + video_file):
             os.remove('../input_files/' + video_file)
-        return f"Failed to download {video_file}"
-
-    hdf5_path = _get_hdf5_path(video_file)
+        print(f"Failed to download {video_file}")
+        return False
 
     inference_pipeline = InferencePipeline(
         video_file, model_paths, hdf5_path, device,
@@ -125,7 +123,7 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
 
     if not result:
         print(f"No detections in {video_file}")
-        return f"No detections in {video_file}"
+        return False
 
     print(f"Tracking for {video_file}...")
     all_trks = tracking_pipeline(video_file)
@@ -134,7 +132,8 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
 
     _delete_from_s3(video_file, credentials)
 
-    return f"Processed {video_file} successfully"
+    print(f"Processed {video_file} successfully")
+    return True
 
 
 def main(stride=15):
