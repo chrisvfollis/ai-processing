@@ -325,7 +325,8 @@ class MoveNet:
             detection_array = (
                 output['output_0'].numpy()[:, :, :51].reshape((6, 17, 3))
             )
-            detections = detection_array[~np.all(detections == 0, axis=(1, 2))]
+            detections = detection_array[~np.all(detection_array == 0,
+                                                 axis=(1, 2))]
             filtered_detections = np.where(
                 detections[:, :, 2] > self.conf_thresh, detections, 0
             )
