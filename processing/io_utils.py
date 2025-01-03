@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import requests
 import pandas as pd
+import time
 
 
 
@@ -337,8 +338,14 @@ def update_identities(trk_path, all_trks, reset=False):
                     pass
 
 
-# def get_queue_block(designation='primary', ):
+# def get_queue_block():
 #     base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+    
+#     load_dotenv()
+#     headers = {
+#         'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
+#         'Content-Type': 'application/json'
+#     }
 
 #     queue_block_url = base_url + 'api/service/get_queue_block/'
 
@@ -349,52 +356,22 @@ def update_identities(trk_path, all_trks, reset=False):
 #         queue_block = data.get('results', [])
 #         if len(queue_block) == 0:
 #             print('No clips in the queue')
-#             time.sleep(60)
-#             continue
+#             return None
+#         else:
+#             return queue_block
+
 #     except requests.exceptions.RequestException as e:
 #         print(f'Error making request: {e}')
-#         time.sleep(60)
-#         continue
+#         return False
 #     except Exception as e:
 #         print(f'Unexpected error: {e}')
-#         time.sleep(60)
-#         continue
-#     return results
+#         return False
 
-    # CONVERT QUEUE FUNCTIONS TO WORK WITH INTERNAL API INSTEAD
+#     # CONVERT QUEUE FUNCTIONS TO WORK WITH INTERNAL API INSTEAD
 
-def update_queue(action='add', video_file=None, datetime=None, cam=None,
-                 db_path='../appdata/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            video_file TEXT,
-            camera TEXT,
-            timestamp DATETIME 
-        )
-    ''')
-    conn.commit()
+# def update_queue(action='add', video_file=None, datetime=None, cam=None,
+#                  db_path='../appdata/data.db'):
 
-    if action == 'add':
-        cursor.execute('''
-            INSERT INTO queue (video_file, camera, timestamp)
-            VALUES (?, ?, ?)
-        ''', (video_file, cam, datetime))
-    elif action == 'remove':
-        cursor.execute('''
-            DELETE FROM queue
-            WHERE video_file = ?
-        ''', (video_file,))
-    elif action == 'clear_section':
-        cursor.execute('''
-            DELETE FROM queue
-            WHERE timestamp = ?
-        ''', (datetime,))
-
-    conn.commit()
-    conn.close()
 
 
 def get_shop(db_path):
@@ -585,7 +562,6 @@ def save_event_image(img, img_dir='../output_files/event_imgs/'):
         )
         bucket_name = 'timemanager-event-imgs'
         s3_client.upload_file(file_path, bucket_name, file_name)
-        os.remove(file_path)
     except (EndpointConnectionError, NoCredentialsError) as e:
         pass
 
