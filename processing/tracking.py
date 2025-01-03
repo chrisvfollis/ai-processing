@@ -424,8 +424,8 @@ class Tracker:
                 trk.add_detection(box[:4], self.f_num)
                 trk.add_embedding(embeddings[measurement_index])
     
-                if keypoints is not None:
-                    trk.add_keypoints(keypoints[measurement_index])
+                if keypoints:
+                    trk.add_keypoints(keypoints[measurement_index], self.f_num)
 
             unmatched_detections = [detections[j] for j in range(len(detections))
                                     if j not in matched]
