@@ -356,6 +356,7 @@ def get_queue_block(designation='primary', db_path='../appdata/data.db'):
     conn.close()
     return results
 
+    # CONVERT QUEUE FUNCTIONS TO WORK WITH INTERNAL API INSTEAD
 
 def update_queue(action='add', video_file=None, datetime=None, cam=None,
                  db_path='../appdata/data.db'):

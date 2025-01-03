@@ -64,22 +64,25 @@ class OSNet:
 
         return embedding
 
-    def enable_buffers(self, output_path, buffer_limit=100):
+    def enable_buffers(self, video_file, output_dir='../intermediate_output',
+                       buffer_limit=100):
         '''
         Sets up buffers and an output file so the OSNet instance can use
         bulk processing features like extraction batches.
         '''
+        
+        hdf5_file = video_file.split('.')[0] + '_embeddings.hdf5'
+        output_path = os.path.join(output_dir, hdf5_file)
+        if os.path.exists(output_path):
+            os.remove(output_path)
 
-        self.buffer_limit = buffer_limit
+        self.hdf5_file = h5py.File(output_path, 'a')
 
         self.embedding_buffer = []
         self.frame_buffer = []
         self.box_index_buffer = []
 
-        if os.path.exists(output_path):
-            os.remove(output_path)
-
-        self.hdf5_file = h5py.File(output_path, 'a')
+        self.buffer_limit = buffer_limit
 
         n_features = self.output_shape[0]
         idx_dataset_kwargs = {'shape': (0,), 'dtype': 'i', 'maxshape': (None,)}
@@ -391,15 +394,14 @@ class MoveNet:
 
 
 class InferencePipeline:
-    def __init__(self, video_file, model_paths, hdf5_path, device,
-                 track_stride=1, id_stride=30, keypoint_stride=60,
+    def __init__(self, video_file, model_paths, device, stride=3,
                  buffer_limit=100):
-
+    
         self.yolov4 = YOLOv4(model_paths[0], device, nms_thresh=0.5)
         self.osnet = OSNet(model_paths[1], device)
         self.movenet = MoveNet(model_paths[2])
 
-        self.osnet.enable_buffers(hdf5_path, buffer_limit=buffer_limit)
+        self.osnet.enable_buffers(video_file, buffer_limit=buffer_limit)
 
         self.person_data = {}
         self.face_data = {}
@@ -409,14 +411,9 @@ class InferencePipeline:
         self.cap = cv2.VideoCapture('../input_files/' + video_file)
         self.f_num = 0
 
-        self.track_stride = track_stride
-        self.id_stride = id_stride
-        self.kp_stride = keypoint_stride
-        
-        if (self.id_stride % self.track_stride) != 0:
-            self.id_stride = id_stride - (id_stride % track_stride)
-        if (self.kp_stride % self.track_stride) != 0:
-            self.kp_stride = keypoint_stride - (keypoint_stride % track_stride)
+        self.track_stride = stride
+        self.id_stride = stride * 10
+        self.kp_stride = stride * 30
 
     def detection_skim(self, stride=120):
         print(f'skimming...')

@@ -69,10 +69,6 @@ def delete_from_s3(s3_key, credentials, bucket_name='ivakt-footage'):
 
 
 def process_row(row, credentials, model_paths, device, stride, time_prefix):
-    def _get_hdf5_path(video_file):
-        return ('../intermediate_output/' + video_file.split('.')[0]
-                + '_embeddings.hdf5')
-
     def _download_from_s3(s3_key, credentials, bucket_name='ivakt-footage'):
         s3 = boto3.client(
             's3',
@@ -105,7 +101,6 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
 
     video_file = row[0]
     camera = video_file.split('.')[0].split('_')[-1]
-    hdf5_path = _get_hdf5_path(video_file)
 
     if not _download_from_s3(video_file, credentials):
         if os.path.exists('../input_files/' + video_file):
@@ -114,18 +109,18 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
         return False
 
     inference_pipeline = InferencePipeline(
-        video_file, model_paths, hdf5_path, device,
+        video_file, model_paths, device,
         track_stride=stride, id_stride=30
     )
 
-    print(f"Detecting and embedding for {video_file}...")
+    print(f"Running inference pipeline for {video_file}...")
     result = inference_pipeline.run()
 
     if not result:
         print(f"No detections in {video_file}")
         return False
 
-    print(f"Tracking for {video_file}...")
+    print(f"Running tracking pipeline for {video_file}...")
     all_trks = tracking_pipeline(video_file)
     io_utils.save_track_info(time_prefix, camera, all_trks)
 
@@ -206,15 +201,6 @@ def main(stride=15):
 
         delete_local_files(time_prefix)
 
-        #     identification_pipeline(time_prefix)
-
-        #     io_utils.post_events_to_webapp(time_prefix)
-
-
-        # else:
-        #     io_utils.update_queue(action='clear_section', datetime=timestamp)
-        #     delete_local_files(time_prefix)            
-        # break
 
 if __name__ == '__main__':
     main(stride=3)
