@@ -127,6 +127,12 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
 
 
 def main(stride=15):
+    def _qb_time_info(queue_block):
+        time_prefix = utilities.parse_clip_filename(queue_block[0][0],
+                                                    data='time')
+        timestamp = utilities.frame_timestamp(time_prefix)
+        return time_prefix, timestamp
+
     multiprocessing.set_start_method("spawn")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -138,64 +144,30 @@ def main(stride=15):
     load_dotenv()
     credentials = [os.environ.get('AWS_ACCESS_KEY'),
                    os.environ.get('AWS_SECRET_KEY')]
-    INTERNAL_API_KEY = os.environ.get('INTERNAL_API_KEY')
-    headers = {
-        'X-Custom-Api-Key': INTERNAL_API_KEY,
-        'Content-Type': 'application/json'
-    }
-    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
-    queue_block_url = base_url + 'api/service/get_queue_block/'
-    update_queue_url = base_url + 'api/service/update_queue/'
 
     io_utils.clear_track_info('all')
     delete_local_files('all')
 
     while True:
-        try:
-            response = requests.get(queue_block_url, headers=headers)
-            data = response.json()
+        queue_block = io_utils.get_queue_block()
 
-            queue_block = data.get('results', [])
-            if len(queue_block) == 0:
-                print('No clips in the queue')
-                time.sleep(60)
-                continue
-        except requests.exceptions.RequestException as e:
-            print(f'Error making request: {e}')
-            time.sleep(60)
-            continue
-        except Exception as e:
-            print(f'Unexpected error: {e}')
+        if not queue_block:
             time.sleep(60)
             continue
 
-        time_prefix = utilities.parse_clip_filename(queue_block[0][0], data='time')
-        timestamp = utilities.frame_timestamp(time_prefix)
+        time_prefix, timestamp = _qb_time_info(queue_block)
+        tasks = [(row, credentials, model_paths, device, stride,
+                  time_prefix) for row in queue_block]
         
         with multiprocessing.Pool(processes=3) as pool:
-            tasks = [
-                (row, credentials, model_paths, device, stride, time_prefix)
-                for row in queue_block
-            ]
             pool.starmap(process_row, tasks)
-        
-        print("Processed queue block")
 
         if io_utils.post_events_to_webapp(time_prefix):
             video_files = [row[0] for row in queue_block]
             for video_file in video_files:
                 delete_from_s3(video_file, credentials)
 
-            response = requests.post(
-                update_queue_url, json={
-                    'action': 'clear_section', 'timestamp': timestamp.isoformat()},
-                headers=headers
-            )
-            if response.status_code == 200:
-                print("Success")
-            else:
-                print(f"Failed posting to internal API: {response.text}")
-                print(response.status_code)
+            io_utils.clear_queue_block(timestamp)
 
         delete_local_files(time_prefix)
 

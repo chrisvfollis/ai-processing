@@ -338,40 +338,59 @@ def update_identities(trk_path, all_trks, reset=False):
                     pass
 
 
-# def get_queue_block():
-#     base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+def get_queue_block():
+    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
     
-#     load_dotenv()
-#     headers = {
-#         'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
-#         'Content-Type': 'application/json'
-#     }
+    load_dotenv()
+    headers = {
+        'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
+        'Content-Type': 'application/json'
+    }
 
-#     queue_block_url = base_url + 'api/service/get_queue_block/'
+    get_queue_url = base_url + 'api/service/get_queue_block/'
 
-#     try:
-#         response = requests.get(queue_block_url, headers=headers)
-#         data = response.json()
+    try:
+        response = requests.get(get_queue_url, headers=headers)
+        data = response.json()
 
-#         queue_block = data.get('results', [])
-#         if len(queue_block) == 0:
-#             print('No clips in the queue')
-#             return None
-#         else:
-#             return queue_block
+        queue_block = data.get('results', [])
+        if len(queue_block) == 0:
+            print('No clips in the queue')
+            return None
+        else:
+            return queue_block
 
-#     except requests.exceptions.RequestException as e:
-#         print(f'Error making request: {e}')
-#         return False
-#     except Exception as e:
-#         print(f'Unexpected error: {e}')
-#         return False
+    except requests.exceptions.RequestException as e:
+        print(f'Error making request: {e}')
+        return False
+    except Exception as e:
+        print(f'Unexpected error: {e}')
+        return False
 
-#     # CONVERT QUEUE FUNCTIONS TO WORK WITH INTERNAL API INSTEAD
+    # CONVERT QUEUE FUNCTIONS TO WORK WITH INTERNAL API INSTEAD
 
-# def update_queue(action='add', video_file=None, datetime=None, cam=None,
-#                  db_path='../appdata/data.db'):
+def clear_queue_block(timestamp):
+    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+    
+    load_dotenv()
+    headers = {
+        'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
+        'Content-Type': 'application/json'
+    }
 
+    update_queue_url = base_url + 'api/service/update_queue/'
+
+    response = requests.post(
+        update_queue_url, json={
+            'action': 'clear_section', 'timestamp': timestamp.isoformat()},
+        headers=headers
+    )
+
+    if response.status_code == 200:
+        print("Success")
+    else:
+        print(f"Failed posting to internal API: {response.text}")
+        print(response.status_code) 
 
 
 def get_shop(db_path):
