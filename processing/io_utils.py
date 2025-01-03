@@ -337,29 +337,29 @@ def update_identities(trk_path, all_trks, reset=False):
                     pass
 
 
-def get_queue_block(designation='primary', ):
-    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+# def get_queue_block(designation='primary', ):
+#     base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
 
-    queue_block_url = base_url + 'api/service/get_queue_block/'
+#     queue_block_url = base_url + 'api/service/get_queue_block/'
 
-    try:
-        response = requests.get(queue_block_url, headers=headers)
-        data = response.json()
+#     try:
+#         response = requests.get(queue_block_url, headers=headers)
+#         data = response.json()
 
-        queue_block = data.get('results', [])
-        if len(queue_block) == 0:
-            print('No clips in the queue')
-            time.sleep(60)
-            continue
-    except requests.exceptions.RequestException as e:
-        print(f'Error making request: {e}')
-        time.sleep(60)
-        continue
-    except Exception as e:
-        print(f'Unexpected error: {e}')
-        time.sleep(60)
-        continue
-    return results
+#         queue_block = data.get('results', [])
+#         if len(queue_block) == 0:
+#             print('No clips in the queue')
+#             time.sleep(60)
+#             continue
+#     except requests.exceptions.RequestException as e:
+#         print(f'Error making request: {e}')
+#         time.sleep(60)
+#         continue
+#     except Exception as e:
+#         print(f'Unexpected error: {e}')
+#         time.sleep(60)
+#         continue
+#     return results
 
     # CONVERT QUEUE FUNCTIONS TO WORK WITH INTERNAL API INSTEAD
 
