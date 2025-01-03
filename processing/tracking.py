@@ -431,7 +431,7 @@ class Tracker:
                                     if j not in matched]
             unmatched_embeddings = [embeddings[j] for j in range(len(embeddings))
                                     if j not in matched]
-            if (keypoints is not None) and (keypoints.size > 0):
+            if keypoints:
                 unmatched_keypoints = [
                     keypoints[j] for j in range(len(keypoints)) if j not in matched
                 ]
