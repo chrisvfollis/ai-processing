@@ -108,10 +108,8 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
         print(f"Failed to download {video_file}")
         return False
 
-    inference_pipeline = InferencePipeline(
-        video_file, model_paths, device,
-        track_stride=stride, id_stride=30
-    )
+    inference_pipeline = InferencePipeline(video_file, model_paths, device,
+                                           stride=stride)
 
     print(f"Running inference pipeline for {video_file}...")
     result = inference_pipeline.run()
