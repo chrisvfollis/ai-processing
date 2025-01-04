@@ -611,8 +611,8 @@ class Tracker:
 
             def _print_info():
                 print(f'{len(self.all_trks.keys())} valid tracks retained')
-                print(f'{sum(1 for trk in self.all_trks.values() if trk.identity
-                             is not None)} valid tracks identified')
+                print(str(sum(1 for trk in self.all_trks.values()
+                              if trk.identity is not None)) + 'valid tracks identified')
                 print(f'{len(self.keypoint_filtered.keys())} low kp average tracks filtered')
                 print(f'{len(self.lifespan_filtered.keys())} low lifespan tracks filtered')
 
