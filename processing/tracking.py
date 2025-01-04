@@ -567,19 +567,7 @@ class Tracker:
                     
                     for id in self.keypoint_filtered.keys():
                         del self.all_trks[id]
-
-                def _print_filtered_info():
-                    _get_track_images(self.keypoint_filtered)
-                    
-                    for id, trk in self.keypoint_filtered.items():
-                        print(f'TRACK {id} filtered: kp_avg = {trk.kp_avg:.2f}')
-                        print(f'num detections: {len(trk.detections)}')
-                        print(f'start img: {trk.start_img}')
-                        print(f'end img: {trk.start_img}')
-                    
-                    print(f'{len(self.keypoint_filtered.keys())} low kp average tracks filtered')
-                    print(f'{len(self.lifespan_filtered.keys())} low lifespan tracks filtered')
-
+                
                 self.all_trks = {**self.active_trks, **self.trk_cache}
                 del self.active_trks
                 del self.trk_cache
@@ -589,9 +577,7 @@ class Tracker:
                 
                 _filter_by_lifespan()
                 _filter_by_keypoints()
-
-                _print_filtered_info()
-
+            
             def _get_track_images(tracks, vid_dir='../input_files/'):
                 vid_path = os.path.join(vid_dir, self.video_file)
                 cap = cv2.VideoCapture(vid_path)
@@ -620,9 +606,22 @@ class Tracker:
                     trk.end_img = io_utils.save_event_image(images[1])
 
                 cap.release()
-            
+
+            def _print_info():
+                print(f'{len(self.all_trks.keys())} valid tracks retained')
+                print(f'{len(self.keypoint_filtered.keys())} low kp average tracks filtered')
+                print(f'{len(self.lifespan_filtered.keys())} low lifespan tracks filtered')
+
+                _get_track_images(self.keypoint_filtered)
+                for id, trk in self.keypoint_filtered.items():
+                    print(f'TRACK {id} filtered: kp_avg = {trk.kp_avg:.2f}')
+                    print(f'num detections: {len(trk.detections)}')
+                    print(f'start img: {trk.start_img}')
+                    print(f'end img: {trk.start_img}')
+                
             _finalize_and_filter()
             _get_track_images(self.all_trks)
+            _print_info()
     
 
         while self.f_num < self.total_frames:
