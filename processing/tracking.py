@@ -266,7 +266,7 @@ class Tracker:
             for id in cached:
                 del self.active_trks[id]
 
-        def _match_and_update(measurements, min_lifespan=15):
+        def _match_and_update(measurements):
             def _construct_cost_matrix(detections, embeddings, weights=[1, 0.1]):
                 '''
                 Creates a cost matrix based on a weighted sum of geometric
@@ -611,13 +611,15 @@ class Tracker:
 
             def _print_info():
                 print(f'{len(self.all_trks.keys())} valid tracks retained')
+                print(f'{sum(1 for trk in self.all_trks.values() if trk.identity
+                             is not None)} valid tracks identified')
                 print(f'{len(self.keypoint_filtered.keys())} low kp average tracks filtered')
                 print(f'{len(self.lifespan_filtered.keys())} low lifespan tracks filtered')
 
                 _get_track_images(self.keypoint_filtered)
                 for id, trk in self.keypoint_filtered.items():
                     print(f'TRACK {id} filtered: kp_avg = {trk.kp_avg:.2f}')
-                    print(f'num detections: {len(trk.detections)}')
+                    print(f'lifespan: {trk.last_detection_frame - trk.first_detection_frame}')
                     print(f'start img: {trk.start_img}')
                     print(f'end img: {trk.start_img}')
                 
