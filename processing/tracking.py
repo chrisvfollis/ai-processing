@@ -549,6 +549,8 @@ class Tracker:
                         del self.all_trks[id]
             
                 def _filter_by_keypoints(expected_kps=3, expected_conf=.65):
+                    expected_avg = (expected_kps * expected_conf) / 17
+
                     for id, trk in self.all_trks.items():
                         if trk.identity is not None:
                             continue
@@ -557,8 +559,6 @@ class Tracker:
                             trk.kp_avg = 0
                             self.keypoint_filtered[id] = trk
                             continue
-                        
-                        expected_avg = (expected_kps * expected_conf) / 17
         
                         total_conf = sum(trk.keypoints[f][:, 2].sum()
                                         for f in trk.keypoints.keys())
