@@ -14,8 +14,6 @@ from dotenv import load_dotenv
 from datetime import datetime
 import requests
 import pandas as pd
-import time
-
 
 
 def get_config():
@@ -215,7 +213,7 @@ def write_trk_data(video_file, all_trks, span):
             trk_group.create_dataset('trk_span', data=trk_span)
 
 
-def save_track_info(time_prefix, camera, all_trks, min_lifespan=450,
+def save_track_info(time_prefix, camera, all_trks,
                     db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -242,9 +240,6 @@ def save_track_info(time_prefix, camera, all_trks, min_lifespan=450,
     conn.commit()
    
     for id, trk in all_trks.items():
-        if ((trk.last_detection_frame - trk.first_detection_frame)
-            < min_lifespan) and (trk.identity is None):
-            continue
         track_id = id
         identity = trk.identity if trk.identity is not None else str(uuid.uuid4())
         id_cost = trk.id_cost if trk.id_cost is not None else ""
@@ -320,24 +315,6 @@ def get_trk_data(trk_path, cameras, min_span=0):
     return metadata, all_trks 
 
 
-def update_identities(trk_path, all_trks, reset=False):
-    with h5py.File(trk_path, 'r+') as file:
-        trks_group = file['tracks']
-        for id, data in all_trks.items():
-            if not reset:
-                if data.get('identity', False):
-                    trk_group = trks_group[id]
-                    trk_group.attrs['identity'] = data['identity']
-            else:
-                trk_group = trks_group[id]
-                try:
-                    print(trk_group.attrs['identity'])
-                    del trk_group.attrs['identity']
-                    print('deleted')
-                except Exception:
-                    pass
-
-
 def get_queue_block():
     base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
     
@@ -367,7 +344,6 @@ def get_queue_block():
         print(f'Unexpected error: {e}')
         return False
 
-    # CONVERT QUEUE FUNCTIONS TO WORK WITH INTERNAL API INSTEAD
 
 def clear_queue_block(timestamp):
     base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
@@ -689,10 +665,6 @@ def post_events_to_webapp(time_prefix, db_path='../appdata/data.db'):
         data['start_time'].append(str(row['end_time']))
         data['duration'].append(0)
         data['image'].append(row['end_img'])
-
-        print(f"EMPLOYEE ID: {row['identity']}")
-        print(f"START: {row['start_time']}")
-        print(f"END: {row['end_time']}")
 
     headers = {
         'x-custom-api-key': WEBAPP_API_KEY,

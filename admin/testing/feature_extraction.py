@@ -17,7 +17,7 @@ def cos_sim(embedding1, embedding2):
     return sim_tensor.item()
 
 
-def inference_pipeline(video_file, detector, stride=60, start=0):
+def generate_detections(video_file, detector, stride=60, start=0):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     base_path = '../input_files/'
     cap = cv2.VideoCapture(base_path + video_file)
@@ -60,7 +60,7 @@ def crop_boxes(stride):
     for row in primary[:1]:
         video_file = row[1]
         print('detecting and embedding...')
-        inference_pipeline(video_file, yolov4, stride=stride)
+        generate_detections(video_file, yolov4, stride=stride)
 
 
 def test_similarity(base_path='../test_data/cropped_boxes'):

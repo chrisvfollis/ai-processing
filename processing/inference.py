@@ -447,15 +447,13 @@ class InferencePipeline:
             face_dfs = DeepFace.find(
                 img_path=frame, db_path='../input_files/faces',
                 model_name='Facenet512', detector_backend='retinaface',
-                threshold = 0.8, enforce_detection=True, silent=True
-            )        
+                threshold = 0.75, enforce_detection=True, silent=True
+            )
         except ValueError:
             return None
 
         filtered_dfs= []
         for df in face_dfs:
-            if not df.empty:
-                print('Possible identity match(es) found')
             df['identity'] = (
                 df['identity'].map(lambda x: io_utils.get_employee(x))
             )
@@ -465,11 +463,11 @@ class InferencePipeline:
         if filtered_dfs:
             self.face_data[self.f_num] = filtered_dfs
 
-    def run(self, checkpoint_frequency=600):
+    def run(self, checkpoint_frequency=4500):
         def _process_frame(frame):
             if self.f_num % self.track_stride == 0:
                 bboxes = self.yolov4.detect(frame, 0, conf_thresh=0.65,
-                                                resize_dims=(416, 416))
+                                            resize_dims=(416, 416))
                 self.osnet.extraction_batch(frame, bboxes, self.f_num)
                 if bboxes:
                     self.person_data[self.f_num] = bboxes

@@ -77,6 +77,33 @@ class Track(KalmanFilter):
     def add_face_detection(self, possible_matches, frame_number):
         self.face_detections[frame_number] = possible_matches
     
+    def best_single_id(self, target_id=None):
+        min_distance = float('inf')
+        identity = None
+        frame = None
+
+        if not target_id:
+            for f_num, df in self.face_detections.items():
+                if not df.empty:
+                    min_row = df.loc[df['distance'].idxmin()]
+
+                    if min_row['distance'] < min_distance:
+                        min_distance = min_row['distance']
+                        frame = f_num
+                        identity = min_row['identity']
+        else:
+            identity = target_id
+            for f_num, df in self.face_detections.items():
+                df = df.loc[df['identity'] == target_id]
+                if not df.empty:
+                    target_row = df.loc[df['distance'].idxmin()]
+
+                    if target_row['distance'] < min_distance:
+                        min_distance = target_row['distance']
+                        frame = f_num
+
+        return (identity, min_distance, frame)
+
     def calc_id_match_costs(self):
         costs = {}
 
@@ -132,7 +159,7 @@ class Track(KalmanFilter):
 
 class Tracker:
     def __init__(self, video_file, detection_data, keypoint_data, face_data,
-                 embedding_path):
+                 embedding_path, min_lifespan=450):
         self.video_file = video_file
         self.f_num = 0
 
@@ -146,7 +173,10 @@ class Tracker:
         self.all_trks = {}
         self.active_trks = {}
         self.trk_cache = {}
+        self.filtered_trks = {}
+    
         self.trk_id = 0
+        self.min_lifespan = min_lifespan
 
         self.detection_data = detection_data
         self.keypoint_data = keypoint_data
@@ -498,27 +528,69 @@ class Tracker:
                 ]
 
                 self.active_trks[id].add_face_detection(f_matches, self.f_num)     
-
-        def _continue_prior_tracks():
-            self.load_prior_tracks()
-            
-            while self.f_num < 0:
-                if not self.active_trks:
-                    return None
-                else:
-                    _predict_or_cache()
         
-        def _save_and_cleanup():
-            def _get_track_images(vid_dir='../input_files/'):
+        def _wrap_up():
+            def _finalize_and_filter():
+                def _filter_by_lifespan():                
+                    for id, trk in self.all_trks.items():
+                        start = trk.first_detection_frame
+                        end = trk.last_detection_frame
+                        lifespan = end - start
+
+                        if (
+                            (lifespan < self.min_lifespan) and
+                            (trk.identity is None)
+                        ):
+                            self.filtered_trks[id] = trk
+                    
+                    for id in self.filtered_trks.keys():
+                        del self.all_trks[id]
+            
+                def _filter_by_keypoints(expected_kps=3, expected_conf=.65):
+                    for id, trk in self.all_trks.items():
+                        n_frames = len(trk.keypoints.keys())
+                        if n_frames == 0:
+                            trk.kp_avg = 0
+                            self.filtered_trks[id] = trk
+                            continue
+                        
+                        expected_avg = (expected_kps * expected_conf) / 17
+        
+                        total_conf = sum(trk.keypoints[f][:, 2].sum()
+                                        for f in trk.keypoints.keys())
+                        trk.kp_avg = total_conf / (n_frames * 17)
+
+                        if trk.kp_avg < expected_avg:
+                            self.filtered_trks[id] = trk
+                    
+                    for id in self.filtered_trks.keys():
+                        del self.all_trks[id]
+        
+                self.all_trks = {**self.active_trks, **self.trk_cache}
+                del self.active_trks
+                del self.trk_cache
+
+                for trk in self.all_trks.values():
+                    trk.find_best_id()
+                
+                _filter_by_lifespan()
+                _filter_by_keypoints()
+
+            def _get_track_images(tracks, vid_dir='../input_files/'):
                 vid_path = os.path.join(vid_dir, self.video_file)
                 cap = cv2.VideoCapture(vid_path)
                 if not cap.isOpened():
                     return None
-    
-                for trk in self.all_trks.values():
+
+                for trk in tracks.values():
                     images = []
-                    for f in [trk.first_detection_frame,
-                              trk.last_detection_frame]:
+
+                    frames = [
+                        trk.first_detection_frame,
+                        trk.last_detection_frame,
+                    ]
+
+                    for f in frames:
                         x, y, w, h = trk.detections[f][:4]
                         cap.set(cv2.CAP_PROP_POS_FRAMES, f)
                         ret, frame = cap.read()
@@ -533,49 +605,29 @@ class Tracker:
 
                 cap.release()
             
-            def _filter_by_keypoints(expected_kps=5, expected_conf=.5):
-                filtered_out = []
-                for id, trk in self.all_trks.items():
-                    n_frames = len(trk.keypoints.keys())
-                    if n_frames == 0:
-                        filtered_out.append(id)
-                        continue
-    
-                    expected_value = (
-                        (expected_kps * expected_conf) / (n_frames * 17)
-                    )
-    
-                    total_kp_conf = sum(trk.keypoints[f][:, 2].sum()
-                                        for f in trk.keypoints.keys())
-                    
-                    avg_value = total_kp_conf / (n_frames * 17)
+            def _print_filtered_info():
+                _get_track_images(self.filtered_trks)
 
-                    if avg_value < expected_value:
-                        filtered_out.append(id)
-                        print(f'TRACK {id} REMOVED: avg_val={avg_value:.2f}, ' +
-                              f'expected_value={expected_value:.2f}')
-                        print(f'start img: {trk.start_img}')
-                        print(f'end img: {trk.end_img}')
+                num_low_kp_avg = 0
+                num_low_lifespan = 0
                 
-                for id in filtered_out:
-                    del self.all_trks[id]
+                for id, trk in self.filtered_trks.items():
+                    if hasattr(trk, 'kp_avg'):
+                        num_low_kp_avg += 1
+                        print(f'TRACK {id} filtered: kp_avg = {trk.kp_avg:.2f}')
+                        print(f'num detections: {len(trk.detections)}')
+                        print(f'start img: {trk.start_img}')
+                        print(f'end img: {trk.start_img}')
+                    else:
+                        num_low_lifespan += 1
+                
+                print(f'{num_low_kp_avg} low kp average tracks filtered')
+                print(f'{num_low_lifespan} low lifespan tracks filtered')
+
+            _finalize_and_filter()
+            _get_track_images(self.all_trks)
     
-            # last_frame = self.total_frames - 1
-            # if self.active_trks:
-            #     io_utils.save_track_continuations(
-            #         self.video_file, last_frame, self.active_trks
-            #     )
-
-            # self.span = [0, last_frame]
-            self.all_trks = {**self.active_trks, **self.trk_cache}
-            del self.active_trks
-            del self.trk_cache
-
-            _get_track_images()
-            _filter_by_keypoints(expected_kps=5, expected_conf=.5)
-
-            for trk in self.all_trks.values():
-                trk.find_best_id()
+            _print_filtered_info()
 
         while self.f_num < self.total_frames:
             if self.active_trks:

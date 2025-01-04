@@ -51,7 +51,7 @@ def delete_local_files(identifier, file_types='any',
     return True
 
 
-def delete_from_s3(s3_key, credentials, bucket_name='ivakt-footage'):
+def delete_from_s3(object_key, credentials, bucket_name='ivakt-footage'):
     s3 = boto3.client(
         's3',
         aws_access_key_id=credentials[0],
@@ -60,16 +60,16 @@ def delete_from_s3(s3_key, credentials, bucket_name='ivakt-footage'):
     )
 
     try:
-        s3.delete_object(Bucket=bucket_name, Key=s3_key)
-        print(f'Deleted {s3_key} from S3')
+        s3.delete_object(Bucket=bucket_name, Key=object_key)
+        print(f'Deleted {object_key} from S3')
         return True
     except Exception as e:
-        print(f"Failed to delete {s3_key} from S3: {e}")
+        print(f"Failed to delete {object_key} from S3: {e}")
         return False
 
 
 def process_row(row, credentials, model_paths, device, stride, time_prefix):
-    def _download_from_s3(s3_key, credentials, bucket_name='ivakt-footage'):
+    def _download_from_s3(object_key, credentials, bucket_name='ivakt-footage'):
         s3 = boto3.client(
             's3',
             aws_access_key_id=credentials[0],
@@ -78,12 +78,12 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
         )
 
         try:
-            local_path = '../input_files/' + s3_key 
-            s3.download_file(bucket_name, s3_key, local_path)
-            print(f'Downloaded {s3_key}')
+            local_path = os.path.join('../input_files', object_key)
+            s3.download_file(bucket_name, object_key, local_path)
+            print(f'Downloaded {object_key}')
             return True
         except Exception as e:
-            print(f"Failed to download {s3_key}: {e}")
+            print(f"Failed to download {object_key}: {e}")
             return False
 
     gpus = tf.config.list_physical_devices('GPU')
@@ -126,7 +126,7 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
     return True
 
 
-def main(stride=15):
+def main(stride=3):
     def _qb_time_info(queue_block):
         time_prefix = utilities.parse_clip_filename(queue_block[0][0],
                                                     data='time')
