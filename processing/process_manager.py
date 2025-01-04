@@ -116,6 +116,7 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
 
     if not result:
         print(f"No detections in {video_file}")
+        delete_from_s3(video_file, credentials)
         return False
 
     print(f"Running tracking pipeline for {video_file}...")
@@ -162,12 +163,12 @@ def main(stride=3):
         with multiprocessing.Pool(processes=3) as pool:
             pool.starmap(process_row, tasks)
 
-        if io_utils.post_events_to_webapp(time_prefix):
-            video_files = [row[0] for row in queue_block]
-            for video_file in video_files:
-                delete_from_s3(video_file, credentials)
+        io_utils.post_events_to_webapp(time_prefix)
+        video_files = [row[0] for row in queue_block]
+        for video_file in video_files:
+            delete_from_s3(video_file, credentials)
 
-            io_utils.clear_queue_block(timestamp)
+        io_utils.clear_queue_block(timestamp)
 
         delete_local_files(time_prefix)
 
