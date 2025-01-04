@@ -34,6 +34,8 @@ def read_list_file(file_name, dir_path='lists'):
     with open(file_path, 'r') as file:
         for line in file.readlines():
             line = line.strip()
-            items.append(line)
+            if line:
+                items.append(line)
+                print(line)
 
     return items

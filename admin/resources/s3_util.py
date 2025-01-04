@@ -76,10 +76,15 @@ def s3_bulk_delete(object_keys: Union[list, str], config: Union[dict, str]):
     items = _initial_setup(config, object_keys)
     s3_client, bucket, object_keys = items
 
-    delete_params = {
-        'Objects': [{'Key': key} for key in object_keys],
-        'Quiet': True
-    }
+    for i in range(0, len(object_keys), 1000):
+        delete_params = {
+            'Objects': [{'Key': key} for key in object_keys[i:i + 1000]],
+            'Quiet': True
+        }
 
-    response = s3_client.delete_objects(Bucket=bucket, Delete=delete_params)
-    print("Errors:", response.get('Errors', []))
+        response = s3_client.delete_objects(
+            Bucket=bucket, Delete=delete_params
+        )
+        errors = response.get('Errors', None)
+        if errors:
+            print(f'Errors: {errors}')
