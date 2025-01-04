@@ -550,6 +550,8 @@ class Tracker:
             
                 def _filter_by_keypoints(expected_kps=3, expected_conf=.65):
                     for id, trk in self.all_trks.items():
+                        if trk.identity is not None:
+                            continue
                         n_frames = len(trk.keypoints.keys())
                         if n_frames == 0:
                             trk.kp_avg = 0
