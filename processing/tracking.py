@@ -173,7 +173,9 @@ class Tracker:
         self.all_trks = {}
         self.active_trks = {}
         self.trk_cache = {}
-        self.filtered_trks = {}
+
+        self.lifespan_filtered = {}
+        self.keypoint_filtered = {}
     
         self.trk_id = 0
         self.min_lifespan = min_lifespan
@@ -541,9 +543,9 @@ class Tracker:
                             (lifespan < self.min_lifespan) and
                             (trk.identity is None)
                         ):
-                            self.filtered_trks[id] = trk
+                            self.lifespan_filtered[id] = trk
                     
-                    for id in self.filtered_trks.keys():
+                    for id in self.lifespan_filtered.keys():
                         del self.all_trks[id]
             
                 def _filter_by_keypoints(expected_kps=3, expected_conf=.65):
@@ -551,7 +553,7 @@ class Tracker:
                         n_frames = len(trk.keypoints.keys())
                         if n_frames == 0:
                             trk.kp_avg = 0
-                            self.filtered_trks[id] = trk
+                            self.keypoint_filtered[id] = trk
                             continue
                         
                         expected_avg = (expected_kps * expected_conf) / 17
@@ -561,11 +563,23 @@ class Tracker:
                         trk.kp_avg = total_conf / (n_frames * 17)
 
                         if trk.kp_avg < expected_avg:
-                            self.filtered_trks[id] = trk
+                            self.keypoint_filtered[id] = trk
                     
-                    for id in self.filtered_trks.keys():
+                    for id in self.keypoint_filtered.keys():
                         del self.all_trks[id]
-        
+
+                def _print_filtered_info():
+                    _get_track_images(self.keypoint_filtered)
+                    
+                    for id, trk in self.keypoint_filtered.items():
+                        print(f'TRACK {id} filtered: kp_avg = {trk.kp_avg:.2f}')
+                        print(f'num detections: {len(trk.detections)}')
+                        print(f'start img: {trk.start_img}')
+                        print(f'end img: {trk.start_img}')
+                    
+                    print(f'{len(self.keypoint_filtered.keys())} low kp average tracks filtered')
+                    print(f'{len(self.lifespan_filtered.keys())} low lifespan tracks filtered')
+
                 self.all_trks = {**self.active_trks, **self.trk_cache}
                 del self.active_trks
                 del self.trk_cache
@@ -575,6 +589,8 @@ class Tracker:
                 
                 _filter_by_lifespan()
                 _filter_by_keypoints()
+
+                _print_filtered_info()
 
             def _get_track_images(tracks, vid_dir='../input_files/'):
                 vid_path = os.path.join(vid_dir, self.video_file)
@@ -605,29 +621,9 @@ class Tracker:
 
                 cap.release()
             
-            def _print_filtered_info():
-                _get_track_images(self.filtered_trks)
-
-                num_low_kp_avg = 0
-                num_low_lifespan = 0
-                
-                for id, trk in self.filtered_trks.items():
-                    if hasattr(trk, 'kp_avg'):
-                        num_low_kp_avg += 1
-                        print(f'TRACK {id} filtered: kp_avg = {trk.kp_avg:.2f}')
-                        print(f'num detections: {len(trk.detections)}')
-                        print(f'start img: {trk.start_img}')
-                        print(f'end img: {trk.start_img}')
-                    else:
-                        num_low_lifespan += 1
-                
-                print(f'{num_low_kp_avg} low kp average tracks filtered')
-                print(f'{num_low_lifespan} low lifespan tracks filtered')
-
             _finalize_and_filter()
             _get_track_images(self.all_trks)
     
-            _print_filtered_info()
 
         while self.f_num < self.total_frames:
             if self.active_trks:
@@ -651,7 +647,7 @@ class Tracker:
 
             self.f_num += 1
 
-        _save_and_cleanup()
+        _wrap_up()
 
 
 def tracking_pipeline(video_file):
