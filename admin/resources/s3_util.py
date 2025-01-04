@@ -2,38 +2,21 @@ import boto3
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 import os
-import utilities
+from utilities import initial_s3_setup
 from typing import Union
+from datetime import datetime
 
 
-def s3_bulk_download(object_keys: Union[list, str], config: Union[dict, str],
-                     output_dir='downloads'):
-    def _initial_setup(config, obj_keys, output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-
-        if isinstance(config, str):
-            config = utilities.read_aws_config(config)
-
-        region = config['region']
-        bucket = config['bucket']
-
-        load_dotenv()
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
-            aws_secret_access_key=os.environ.get('AWS_SECRET_KEY'),
-            region_name=region
-        )
-
-        if isinstance(obj_keys, str):
-            obj_keys = utilities.read_list_file(obj_keys)
-
-        return (s3_client, bucket, obj_keys)
+def list_download(object_keys: Union[list, str], output_dir='downloads',
+                  config: Union[dict, str] = None, existing_setup: list = None):
     
-    results = {'downloaded': [], 'failed': {}}
-    items = _initial_setup(config, object_keys, output_dir)
-    s3_client, bucket, object_keys = items
+    if existing_setup is None:
+        items = initial_s3_setup(config, object_keys, output_dir)
+        s3_client, bucket, object_keys = items
+    else:
+        s3_client, bucket = existing_setup
 
+    results = {'downloaded': [], 'failed': {}}
     for obj_key in object_keys:
         try:
             local_path = os.path.join(output_dir, obj_key)
@@ -52,39 +35,80 @@ def s3_bulk_download(object_keys: Union[list, str], config: Union[dict, str],
     return results
 
 
-def s3_bulk_delete(object_keys: Union[list, str], config: Union[dict, str]):
-    def _initial_setup(config, obj_keys):
-        if isinstance(config, str):
-            config = utilities.read_aws_config(config)
+def list_delete(object_keys: Union[list, str], config: Union[dict, str] = None,
+                existing_setup: list = None):
 
-        region = config['region']
-        bucket = config['bucket']
+    if existing_setup is None:
+        s3_client, bucket, object_keys = initial_s3_setup(config, object_keys)
+    else:
+        s3_client, bucket = existing_setup
 
-        load_dotenv()
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
-            aws_secret_access_key=os.environ.get('AWS_SECRET_KEY'),
-            region_name=region
-        )
-
-        if isinstance(obj_keys, str):
-            obj_keys = utilities.read_list_file(obj_keys)
-
-        return (s3_client, bucket, obj_keys)
-    
-    items = _initial_setup(config, object_keys)
-    s3_client, bucket, object_keys = items
-
+    results = {'deleted': [], 'failed': {}}
     for i in range(0, len(object_keys), 1000):
         delete_params = {
             'Objects': [{'Key': key} for key in object_keys[i:i + 1000]],
             'Quiet': True
         }
 
-        response = s3_client.delete_objects(
-            Bucket=bucket, Delete=delete_params
+        response = s3_client.delete_objects(Bucket=bucket, Delete=delete_params)
+
+        for deleted_obj in response.get('Deleted', []):
+            results['deleted'].append(deleted_obj['Key'])
+ 
+        for error in response.get('Errors', []):
+            error_code = error['Code']
+            error_key = error['Key']
+            error_message = error['Message']
+
+            results['failed'].setdefault(error_code, []).append(error_key)
+            print(f"Failed to delete {error_key}: {error_code}: {error_message}")
+
+    return results
+
+
+def time_delete(
+        start: Union[datetime, list] = None, end: Union[datetime, list] = None,
+        config: Union[dict, str] = None, existing_setup: list = None
+    ):
+
+    if (start is None) and (end is None):
+        raise ValueError(
+            "Both arguments for 'start' and 'end' are None. At least\n" +
+            "one of these parameters must reference a point in time."
         )
-        errors = response.get('Errors', None)
-        if errors:
-            print(f'Errors: {errors}')
+
+    if existing_setup is None:
+        s3_client, bucket = initial_s3_setup(config)
+    else:
+        s3_client, bucket = existing_setup
+
+    if isinstance(start, list):
+        start = datetime(*start)
+    if isinstance(end, list):
+        end = datetime(*end)
+
+    object_keys = []
+    results = {'deleted': [], 'failed': {}}
+    
+    try:
+        paginator = s3_client.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket):
+            if 'Contents' not in page:
+                continue
+
+            for object in page['Contents']:
+                obj_key = object['Key']
+                last_modified = object['LastModified']
+
+                if (
+                    ((start is None) or (last_modified > start)) and
+                    ((end is None) or (last_modified < end))
+                ):
+                    object_keys.append(obj_key)
+
+    except ClientError as e:
+        print(f"Error listing objects: {e}")
+
+    results = list_delete(object_keys, existing_setup=[s3_client, bucket])
+
+    return results
