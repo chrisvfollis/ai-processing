@@ -652,9 +652,91 @@ class Tracker:
                         coincident_graph[j][i] = 1
 
             return np.array(coincident_graph)
+        
+        def _build_track_sets(graph):
+            '''
+            Returns sets of tracks that are all temporally coincident.
+
+            Importantly, note that tracks may belong to multiple sets if e.g.
+            the tracks they coincide with in one set end before the tracks in
+            another set they coincide with begin.
+
+            Concept:
+
+            S1 = [T1, T2, T3]
+            S2 = [T2, T4, T5]
+            S3 = [T4, T6, T7]
+
+            '''
+
+            num_tracks = len(graph)
+            visited = [False] * num_tracks
+            all_sets = []
+
+            for track in range(num_tracks):
+                if not visited[track]:
+                    neighbor_set = []
+
+                    for neighbor in range(num_tracks):
+                        if graph[track][neighbor] == 1:
+                            neighbor_set.append(neighbor)
+                            visited[neighbor] = True
+
+                    all_sets.append(neighbor_set)
+                
+            return all_sets
+
+        def _build_meta_sets():
+            '''
+            Returns "meta" sets containing sets of tracks which share one or
+            more tracks.
+
+            Note that a track set may belong to multiple meta sets.
+
+            Concept:
+
+            S1 = [T1, T2, T3]
+            S2 = [T2, T4, T5]
+            S3 = [T4, T6, T7]
+
+            M1 = [S1, S2]
+            M2 = [S2, S3]
+
+            '''
+            return None
+        
+        def _build_constraint_groups():
+            '''
+            Returns distinct groups of meta sets which share one or more track
+            sets. No two groups contain the same meta set, so no groups are
+            constrained by each others' results.
+            
+            Groups can be processed in any order. 
+
+            Concept:
+
+            S1 = [T1, T2, T3]
+            S2 = [T2, T4, T5]
+            S3 = [T4, T6, T7]
+            S4 = [T8, T9, T10]
+
+            M1 = [S1, S2]
+            M2 = [S2, S3]
+            M3 = [S4]
+
+            G1 = [M1, M2]
+            G2 = [S4]
+
+            '''
+            return None
 
         if trk_ids == 'all':
             trk_ids = sorted(self.all_trks.keys())
+        
+        coincident_graph = _construct_graph(trk_ids)
+        neighbor_sets = _build_track_sets(coincident_graph)
+
+
         
     def assign_identities(self):
         trk_id_costs = {}
