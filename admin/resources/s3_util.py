@@ -1,6 +1,4 @@
-import boto3
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
 import os
 from utilities import initial_s3_setup
 from typing import Union

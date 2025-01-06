@@ -1,5 +1,3 @@
-import math
-import csv
 import cv2
 import numpy as np
 import pandas as pd
@@ -7,15 +5,8 @@ from scipy.optimize import linear_sum_assignment
 import os
 import io_utils
 from datetime import datetime
-import torch
-import torch.nn.functional as F
-
-import cv2
-import cv2.legacy as cv2l
 import numpy as np
 import utilities as utils
-import math
-import sqlite3
 import json
 
 
@@ -135,26 +126,15 @@ class Track(KalmanFilter):
         if not id_costs:
             self.identity = None
             self.id_cost = None
-        else:
-            identities, costs = zip(*id_costs.items())
-            min_idx = costs.index(min(costs))
+            return self.identity
 
-            self.identity = identities[min_idx]
-            self.id_cost = costs[min_idx]
+        identities, costs = zip(*id_costs.items())
+        min_idx = costs.index(min(costs))
+
+        self.identity = identities[min_idx]
+        self.id_cost = costs[min_idx]
         
         return self.identity
-
-    def find_coincident_trks(self, id, all_trks):
-        span = [self.first_detection_frame, self.last_detection_frame]
-        for id2, trk2 in all_trks.items():
-            if (id2 == id) or (id in trk2.coincident_trks):
-                continue
-
-            span2 = [trk2.first_detection_frame, trk2.last_detection_frame]
- 
-            if utils.is_coincident(span, span2):
-                self.coincident_trks.append(id2)
-                trk2.coincident_trks.append(id)
 
 
 class Tracker:
@@ -652,6 +632,52 @@ class Tracker:
 
         _wrap_up()
 
+    def group_coincident(self, trk_ids: list = 'all'):
+        def _construct_graph(trk_ids):
+            coincident_graph = np.diag([1] * len(trk_ids)).tolist()
+
+            for i in range(len(trk_ids)):
+                trk = self.all_trks[trk_ids[i]]
+                span = [trk.first_detection_frame, trk.last_detection_frame]
+
+                for j in range(i + 1, len(trk_ids)):
+                    trk2 = self.all_trks[trk_ids[j]]
+                    span2 = [
+                        trk2.first_detection_frame,
+                        trk2.last_detection_frame
+                    ]
+
+                    if utils.is_coincident(span, span2):
+                        coincident_graph[i][j] = 1
+                        coincident_graph[j][i] = 1
+
+            return np.array(coincident_graph)
+
+        if trk_ids == 'all':
+            trk_ids = sorted(self.all_trks.keys())
+        
+    def assign_identities(self):
+        trk_id_costs = {}
+        for trk_id, trk in self.all_trks.items():
+            id_costs = trk.calc_id_match_costs()
+
+            if not id_costs:
+                continue
+
+            trk_id_costs[trk_id] = id_costs
+        
+        trk_ids = sorted(trk_id_costs.keys())
+        
+        coincident_sets = self.group_coincident(trk_ids)
+        
+
+        
+
+
+
+            
+
+
 
 def tracking_pipeline(video_file):
 
@@ -673,7 +699,3 @@ def tracking_pipeline(video_file):
     # io_utils.write_trk_data(video_file, tracker.all_trks, tracker.span)
 
     return tracker.all_trks
-        
-
-
-

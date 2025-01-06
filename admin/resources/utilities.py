@@ -30,7 +30,7 @@ def read_aws_config(file_name, dir_path='configs'):
 
 
 def read_listfile(file_name, dir_path='lists'):
-    file_path = validate_file_path(file_name, dir_path)
+    file_path = validate_filepath(file_name, dir_path)
     items = []
 
     with open(file_path, 'r') as file:
