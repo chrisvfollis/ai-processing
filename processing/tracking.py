@@ -632,9 +632,34 @@ class Tracker:
 
         _wrap_up()
 
-    def group_coincident(self, trk_ids: list = 'all'):
-        def _construct_graph(trk_ids):
-            coincident_graph = np.diag([1] * len(trk_ids)).tolist()
+    def group_tracks(self, trk_ids: list = 'all'):
+        '''
+        Group permutations example:
+
+        S1 = [T1, T2, T3]
+        S2 = [T2, T4, T5]
+        S3 = [T4, T6, T7]
+        S4 = [T4, T8, T9]
+        S5 = [T9, T10]
+
+        M1 = [S1, S2]
+        M2 = [S2, S3, S4]
+        M3 = [S4, S5]
+
+        
+        M1 > M2 > M3 = 2! * ((3 - 1)! * (2 - 1)!) = 2! * 2 = 4
+        M1 > M3 > M2 = 2! * ((2 - 0)! * (3 - 2)!) = 2! * 2 = 4
+
+
+        M2 > [(M1 > M3) | (M3 > M1)] = 3! * ((2 - 1)! * (2 - 1)!) = 3! * 1 = 6
+
+        M3 > M2 > M1 = 2! * ((3 - 1)! * (2 - 1)!) = 2! * 2 = 4
+        M3 > M1 > M2 = 2! * ((2 - 0)! * (3 - 2)!) = 2! * 2 = 4
+
+        '''
+
+        def _construct_track_graph(trk_ids):
+            track_graph = np.diag([1] * len(trk_ids)).tolist()
 
             for i in range(len(trk_ids)):
                 trk = self.all_trks[trk_ids[i]]
@@ -648,27 +673,40 @@ class Tracker:
                     ]
 
                     if utils.is_coincident(span, span2):
-                        coincident_graph[i][j] = 1
-                        coincident_graph[j][i] = 1
+                        track_graph[i][j] = 1
+                        track_graph[j][i] = 1
 
-            return np.array(coincident_graph)
+            return np.array(track_graph)
         
-        def _build_track_sets(graph):
+        def _construct_set_graph(trk_sets):
             '''
-            Returns sets of tracks that are all temporally coincident.
-
-            Importantly, note that tracks may belong to multiple sets if e.g.
-            the tracks they coincide with in one set end before the tracks in
-            another set they coincide with begin.
-
-            Concept:
-
             S1 = [T1, T2, T3]
             S2 = [T2, T4, T5]
             S3 = [T4, T6, T7]
-
+            S4 = [T4, T8, T9]
+            S5 = [T9, T10]
             '''
 
+            graph = [
+            #    1, 2, 3, 4, 5
+                [1, 1, 0, 0, 0], #   1
+                [1, 1, 1, 1, 0], #   2
+                [0, 1, 1, 1, 0], #   3
+                [0, 1, 1, 1, 1], #   4
+                [0, 0, 0, 1, 1], #   5
+            ]
+
+            set_graph = np.diag([1] * len(trk_sets)).tolist()
+
+            for i in range(len(trk_sets)):
+                for j in range(i + 1, len(trk_sets)):
+                    if bool(set(track_sets[i]) & set(trk_sets[j])):
+                        set_graph[i][j] = 1
+                        set_graph[j][i] = 1
+
+            return np.array(set_graph)
+
+        def _build_sets(graph):
             num_tracks = len(graph)
             visited = [False] * num_tracks
             all_sets = []
@@ -685,56 +723,45 @@ class Tracker:
                     all_sets.append(neighbor_set)
                 
             return all_sets
-
-        def _build_meta_sets():
-            '''
-            Returns "meta" sets containing sets of tracks which share one or
-            more tracks.
-
-            Note that a track set may belong to multiple meta sets.
-
-            Concept:
-
-            S1 = [T1, T2, T3]
-            S2 = [T2, T4, T5]
-            S3 = [T4, T6, T7]
-
-            M1 = [S1, S2]
-            M2 = [S2, S3]
-
-            '''
-            return None
         
-        def _build_constraint_groups():
-            '''
-            Returns distinct groups of meta sets which share one or more track
-            sets. No two groups contain the same meta set, so no groups are
-            constrained by each others' results.
-            
-            Groups can be processed in any order. 
+        def _isolate_groups(meta_sets):
+            grouped = [False] * len(meta_sets)
 
-            Concept:
+            group_contents = []
+            groups = []
 
-            S1 = [T1, T2, T3]
-            S2 = [T2, T4, T5]
-            S3 = [T4, T6, T7]
-            S4 = [T8, T9, T10]
+            for i in range(len(meta_sets)):
+                if grouped[i]:
+                    continue
+    
+                group_contents.append(meta_sets[i])
+                grouped[i] = True
 
-            M1 = [S1, S2]
-            M2 = [S2, S3]
-            M3 = [S4]
+                groups.append([i])
 
-            G1 = [M1, M2]
-            G2 = [S4]
+                for j in range(i + 1, len(meta_sets)):
+                    if bool(set(group_contents[-1]) & set(meta_sets[j])):
+                        
+                        group_contents[-1] += meta_sets[j]
 
-            '''
-            return None
+                        groups[-1].append(j)
+                        grouped[j] = True
 
+            return groups
+        
         if trk_ids == 'all':
             trk_ids = sorted(self.all_trks.keys())
-        
-        coincident_graph = _construct_graph(trk_ids)
-        neighbor_sets = _build_track_sets(coincident_graph)
+
+        track_graph = _construct_track_graph(trk_ids)
+        track_sets = _build_sets(track_graph)
+
+        meta_graph = _construct_set_graph(track_sets)
+        meta_sets = _build_sets(meta_graph)
+
+        groups = _isolate_groups(meta_sets)
+
+        return groups, meta_sets, track_sets
+
 
 
         
