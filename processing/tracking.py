@@ -8,6 +8,7 @@ from datetime import datetime
 import numpy as np
 import utilities as utils
 import json
+from itertools import permutations
 
 
 class KalmanFilter:
@@ -636,15 +637,16 @@ class Tracker:
         '''
         Group permutations example:
 
-        S1 = [T1, T2, T3]
-        S2 = [T2, T4, T5]
-        S3 = [T4, T6, T7]
-        S4 = [T4, T8, T9]
-        S5 = [T9, T10]
 
-        M1 = [S1, S2]
-        M2 = [S2, S3, S4]
-        M3 = [S4, S5]
+        S0 = [T0, T1, T2]
+        S1 = [T1, T3, T4]
+        S2 = [T3, T5, T6]
+        S3 = [T3, T7, T8]
+        S4 = [T8, T9]
+
+        M1 = [S0, S1]
+        M2 = [S1, S2, S3]
+        M3 = [S3, S4]
 
         
         M1 > M2 > M3 = 2! * ((3 - 1)! * (2 - 1)!) = 2! * 2 = 4
@@ -678,23 +680,7 @@ class Tracker:
 
             return np.array(track_graph)
         
-        def _construct_set_graph(trk_sets):
-            '''
-            S1 = [T1, T2, T3]
-            S2 = [T2, T4, T5]
-            S3 = [T4, T6, T7]
-            S4 = [T4, T8, T9]
-            S5 = [T9, T10]
-            '''
-
-            graph = [
-            #    1, 2, 3, 4, 5
-                [1, 1, 0, 0, 0], #   1
-                [1, 1, 1, 1, 0], #   2
-                [0, 1, 1, 1, 0], #   3
-                [0, 1, 1, 1, 1], #   4
-                [0, 0, 0, 1, 1], #   5
-            ]
+        def _construct_meta_graph(trk_sets):
 
             set_graph = np.diag([1] * len(trk_sets)).tolist()
 
@@ -755,15 +741,54 @@ class Tracker:
         track_graph = _construct_track_graph(trk_ids)
         track_sets = _build_sets(track_graph)
 
-        meta_graph = _construct_set_graph(track_sets)
+        meta_graph = _construct_meta_graph(track_sets)
         meta_sets = _build_sets(meta_graph)
 
         groups = _isolate_groups(meta_sets)
 
         return groups, meta_sets, track_sets
 
+    def permute_constraint_cascades(groups, meta_sets, track_sets):
+        def _remove_duplicates(track_order):
+            seen = set()
+            return [x for x in track_order if not (x in seen or seen.add(x))]
+
+        group_permutations = []
+
+        for group in groups:
+            group_permutations.append(list(set(permutations(group))))
+        
+        print(group_permutations)
+
+        all_orders = []
+
+        for group in group_permutations:
+            group_orders = []
+
+            for meta_order in group:
+                track_processing_permutations = [[]]
+
+                for meta_idx in meta_order:
+                    meta_set = meta_sets[meta_idx]
+                    meta_set_permutations = list(permutations(meta_set))
+
+                    track_processing_permutations = [
+                        existing_order + list(new_order)
+                        for existing_order in track_processing_permutations
+                        for new_order in meta_set_permutations
+                    ]
+
+                unique_orders = set()
+                for track_order in track_processing_permutations:
+                    cleaned_track_order = tuple(_remove_duplicates(track_order))
+                    unique_orders.add(cleaned_track_order)
+
+                group_orders.extend(list(unique_orders))
 
 
+            all_orders.append(group_orders)
+
+        return all_orders
         
     def assign_identities(self):
         trk_id_costs = {}

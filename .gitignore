@@ -18,6 +18,8 @@
 .vscode/
 .env
 
+scratch.py
+
 # Ignore __pycache__ directories
 **/__pycache__/
 
