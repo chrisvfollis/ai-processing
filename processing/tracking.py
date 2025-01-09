@@ -752,11 +752,43 @@ class Tracker:
         def _remove_duplicates(track_order):
             seen = set()
             return [x for x in track_order if not (x in seen or seen.add(x))]
+        
+        def _filter_redundant(groups, group_permutations, meta_sets):
+            def _find_independent(group_members, meta_sets):
+                independent = []
+
+                for i in range(len(group_members)):
+                    for j in range(i + 1, len(group_members)):
+                        if not bool(set(meta_sets[i]) & set(meta_sets[j])):
+                            independent.append(str([i, j]).strip('[]'))
+                
+                return independent
+            
+            filtered_group_permutations = []
+
+            for i in range(len(group_permutations)):
+                group_members = groups[i]
+                group_member_permutations = group_permutations[i]
+                filtered_gm_permutations = []
+                independent = _find_independent(group_members, meta_sets)
+                for j in range(len(group_member_permutations)):
+                    for sequence in independent:
+                        if sequence not in str(group_member_permutations[j]):
+                            filtered_gm_permutations.append(
+                                group_member_permutations[j]
+                            )
+                filtered_group_permutations.append(filtered_gm_permutations)
+            
+            return filtered_group_permutations
 
         group_permutations = []
 
         for group in groups:
             group_permutations.append(list(set(permutations(group))))
+        
+        group_permutations = _filter_redundant(
+            groups, group_permutations, meta_sets
+        )
         
         print(group_permutations)
 
