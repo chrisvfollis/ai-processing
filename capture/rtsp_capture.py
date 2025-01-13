@@ -79,16 +79,31 @@ def update_camera_info():
     _add_new_cameras(conn, cursor, new_ip_addresses)
 
 
-def get_stream_info(fps={'primary': 30, 'secondary': 15}, db_path='../appdata/data.db'):
-    def _create_rtsp_url(ip_address, format=0, default_creds=0, credentials=None):
-        default_credentials = [('admin', 'abcd1234'), ('admin', 'admin')]
-        if credentials:
-            user, passwd = credentials
+def get_stream_info(db_path='../appdata/data.db'):
+    def _create_rtsp_url(ip_address, format=2, credentials=2):
+        
+        default_credentials = [
+            ('admin', 'abcd1234'),
+            ('admin', 'admin'),
+            ('admin', '123456')
+        ]
+
+        if isinstance(credentials, int):
+            user, passwd = default_credentials[credentials]
         else:
-            user, passwd = default_credentials[default_creds]
-        formats = [f'rtsp://{user}:{passwd}@{ip_address}:554/rtsp/streaming?channel=01&subtype=0',
-                f'rtsp://{user}:{passwd}@{ip_address}:554/ch01/0']
-        return formats[format]
+            user, passwd = credentials
+        
+        formats = [
+            f'rtsp://{user}:{passwd}@{ip_address}:554/rtsp/streaming?channel=01&subtype=0',
+            f'rtsp://{user}:{passwd}@{ip_address}:554/ch01/0',
+            f'rtsp://{user}:{passwd}@{ip_address}:554/Streaming/Channels/101'
+        ]
+
+        if isinstance(format, int):
+            return formats[format]
+        else:
+            return format
+
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -104,13 +119,9 @@ def get_stream_info(fps={'primary': 30, 'secondary': 15}, db_path='../appdata/da
     stream_info = {}
     for result in results:
         camera = result[1].strip('c')
-        try:
-            frame_rate = fps[result[2]]
-        except KeyError:
-            frame_rate = 30
         url = _create_rtsp_url(result[3])
 
-        stream_info[camera] = {'url': url, 'frame_rate': frame_rate}
+        stream_info[camera] = {'url': url}
 
     return stream_info
 
@@ -170,7 +181,7 @@ def upload_and_post(cap_info):
         print(f'Request failed: {e}')
 
 
-def rtsp_capture(rtsp_url, duration, cam, frame_rate):
+def rtsp_capture(rtsp_url, duration, cam):
     try:
         time = datetime.now()
         t_formatted = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -180,10 +191,9 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
         (
             ffmpeg
             .input(rtsp_url, rtsp_transport='tcp', t=duration)
-            .output(output_path, vcodec='copy', format='mp4', r=frame_rate)
+            .output(output_path, vcodec='copy', format='mp4', an=None)
             .run()
         )
-
     except Exception as e:
         print(f'Error: {e}')
         return None
@@ -193,16 +203,15 @@ def rtsp_capture(rtsp_url, duration, cam, frame_rate):
 def run_capture_cycle(stream_info, interval=1, min_seconds=3):
     def _multi_capture(stream_info, duration):
         try:
-            streams = [{'url': data['url'], 'duration': duration, 'cam': cam,
-                        'frame_rate': data['frame_rate']} for cam, data in
-                        stream_info.items()]
+            streams = [{'url': data['url'], 'duration': duration, 'cam': cam}
+                       for cam, data in stream_info.items()]
             
             num_processes = len(stream_info.keys())
 
             pool = multiprocessing.Pool(processes=num_processes)
             cap_info = pool.starmap(rtsp_capture, (
-                (stream["url"], stream["duration"], stream["cam"],
-                 stream["frame_rate"]) for stream in streams
+                (stream["url"], stream["duration"], stream["cam"])
+                for stream in streams
             ))
             pool.close()
             pool.join()
