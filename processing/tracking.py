@@ -769,6 +769,9 @@ class Tracker:
             for i in range(len(group_permutations)):
                 group_members = groups[i]
                 group_member_permutations = group_permutations[i]
+                if len(group_members) < 2:
+                    filtered_group_permutations.append(group_member_permutations)
+                    continue
                 filtered_gm_permutations = []
                 independent = _find_independent(group_members, meta_sets)
                 for j in range(len(group_member_permutations)):
