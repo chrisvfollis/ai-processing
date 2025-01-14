@@ -634,32 +634,6 @@ class Tracker:
         _wrap_up()
 
     def group_tracks(self, trk_ids: list = 'all'):
-        '''
-        Group permutations example:
-
-
-        S0 = [T0, T1, T2]
-        S1 = [T1, T3, T4]
-        S2 = [T3, T5, T6]
-        S3 = [T3, T7, T8]
-        S4 = [T8, T9]
-
-        M1 = [S0, S1]
-        M2 = [S1, S2, S3]
-        M3 = [S3, S4]
-
-        
-        M1 > M2 > M3 = 2! * ((3 - 1)! * (2 - 1)!) = 2! * 2 = 4
-        M1 > M3 > M2 = 2! * ((2 - 0)! * (3 - 2)!) = 2! * 2 = 4
-
-
-        M2 > [(M1 > M3) | (M3 > M1)] = 3! * ((2 - 1)! * (2 - 1)!) = 3! * 1 = 6
-
-        M3 > M2 > M1 = 2! * ((3 - 1)! * (2 - 1)!) = 2! * 2 = 4
-        M3 > M1 > M2 = 2! * ((2 - 0)! * (3 - 2)!) = 2! * 2 = 4
-
-        '''
-
         def _construct_track_graph(trk_ids):
             track_graph = np.diag([1] * len(trk_ids)).tolist()
 
@@ -748,7 +722,7 @@ class Tracker:
 
         return groups, meta_sets, track_sets
 
-    def permute_constraint_cascades(groups, meta_sets, track_sets):
+    def permute_constraint_cascades(groups, meta_sets):
         def _remove_duplicates(track_order):
             seen = set()
             return [x for x in track_order if not (x in seen or seen.add(x))]
@@ -826,6 +800,34 @@ class Tracker:
         return all_orders
         
     def assign_identities(self):
+        def _build_cost_matrices(trk_id_costs, track_sets):
+            matrices = []
+
+            for track_set in track_sets:
+                tracks = sorted(track_set)
+                identities = sorted(list(set(
+                    [identity for trk_id, trk_matches in trk_id_costs.items()
+                     if trk_id in tracks
+                     for identity in trk_matches.keys()]
+                )))
+                
+                rows = len(tracks)
+                cols = len(identities)
+
+                cost_matrix = [[float('inf')] * cols for _ in range(rows)]
+
+                for i, trk_id in enumerate(tracks):
+                    for j, identity in enumerate(identities):
+                        if identity not in trk_id_costs[trk_id]:
+                            continue
+
+                        cost = trk_id_costs[trk_id][identity]
+                        cost_matrix[i][j] = cost
+        
+                matrices.append(np.array(cost_matrix))
+            
+            return matrices
+
         trk_id_costs = {}
         for trk_id, trk in self.all_trks.items():
             id_costs = trk.calc_id_match_costs()
@@ -837,17 +839,13 @@ class Tracker:
         
         trk_ids = sorted(trk_id_costs.keys())
         
-        coincident_sets = self.group_coincident(trk_ids)
-        
+        groups, meta_sets, track_sets = self.group_tracks(trk_ids)
+
+        cascade_orders = self.permute_constraint_cascades(groups, meta_sets)
+
+        trk_set_cost_matrices = _build_cost_matrices(trk_id_costs, track_sets)
 
         
-
-
-
-            
-
-
-
 def tracking_pipeline(video_file):
 
     video_path = f'../input_files/{video_file}'
