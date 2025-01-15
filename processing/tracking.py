@@ -803,7 +803,7 @@ class Tracker:
         def _build_cost_matrices(trk_id_costs, track_sets):
             matrices = []
 
-            track_mappings = {trk_id: {} for trk_id in trk_id_costs.keys()}
+            track_mappings = {}
             identity_mappings = {}
 
             for k, track_set in enumerate(track_sets):
@@ -814,11 +814,8 @@ class Tracker:
                      for identity in trk_matches.keys()]
                 )))
 
-                for i, identity in enumerate(identities):
-                    if identity not in identity_mappings:
-                        identity_mappings[identity] = {k: i}
-                    else:
-                        identity_mappings[identity][k] = i
+                for identity in identities:
+                    identity_mappings.setdefault(k, []).append(identity)
                 
                 rows = len(tracks)
                 cols = len(identities)
@@ -827,13 +824,14 @@ class Tracker:
 
                 for i, trk_id in enumerate(tracks):
                     for j, identity in enumerate(identities):
+
                         if identity not in trk_id_costs[trk_id]:
                             continue
 
                         cost = trk_id_costs[trk_id][identity]
                         cost_matrix[i][j] = cost
 
-                    track_mappings[trk_id].setdefault(k, i)
+                    track_mappings.setdefault(k, []).append(trk_id)
         
                 matrices.append(np.array(cost_matrix))
             
@@ -858,17 +856,20 @@ class Tracker:
         unique_cascades = self.permute_constraint_cascades(groups, meta_sets)
 
         for group in unique_cascades:
+            assigned = {}
             min_cost = float('inf')
             min_idx = None
             for permutation in group:
                 cost = 0
                 ordered_matrices = [np.copy(trk_set_cost_matrices[i])
                                     for i in permutation]
-                for matrix in ordered_matrices:
-                    row_idxs, col_idxs = linear_sum_assignment(matrix)
-                    for i in range(len(row_idxs)):
+                for k, matrix in enumerate(ordered_matrices):
+                    tracks = [trk_id for idxs in sorted(track_mappings[k].keys())
+                              for trk_id in ]
+                    identities = 
+                    trk_idxs, id_idxs = linear_sum_assignment(matrix)
+                    for i in range(len(trk_idxs)):
                         cost += matrix[i][i]
-
         
 
         
