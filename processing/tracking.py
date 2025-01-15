@@ -803,7 +803,9 @@ class Tracker:
         def _build_cost_matrices(trk_id_costs, track_sets):
             matrices = []
 
-            for track_set in track_sets:
+            track_mappings = {trk_id: {} for trk_id in trk_id_costs.keys()}
+
+            for k, track_set in enumerate(track_sets):
                 tracks = sorted(track_set)
                 identities = sorted(list(set(
                     [identity for trk_id, trk_matches in trk_id_costs.items()
@@ -823,10 +825,12 @@ class Tracker:
 
                         cost = trk_id_costs[trk_id][identity]
                         cost_matrix[i][j] = cost
+
+                    track_mappings[trk_id].setdefault(k, i)
         
                 matrices.append(np.array(cost_matrix))
             
-            return matrices
+            return matrices, track_mappings
 
         trk_id_costs = {}
         for trk_id, trk in self.all_trks.items():
@@ -841,9 +845,24 @@ class Tracker:
         
         groups, meta_sets, track_sets = self.group_tracks(trk_ids)
 
-        cascade_orders = self.permute_constraint_cascades(groups, meta_sets)
+        results = _build_cost_matrices(trk_id_costs, track_sets)
+        trk_set_cost_matrices, track_mappings = results
 
-        trk_set_cost_matrices = _build_cost_matrices(trk_id_costs, track_sets)
+        unique_cascades = self.permute_constraint_cascades(groups, meta_sets)
+
+        for group in unique_cascades:
+            min_cost = float('inf')
+            min_idx = None
+            for permutation in group:
+                cost = 0
+                ordered_matrices = [np.copy(trk_set_cost_matrices[i])
+                                    for i in permutation]
+                for matrix in ordered_matrices:
+                    row_idxs, col_idxs = linear_sum_assignment(matrix)
+                    for i in range(len(row_idxs)):
+                        cost += matrix[i][i]
+
+        
 
         
 def tracking_pipeline(video_file):

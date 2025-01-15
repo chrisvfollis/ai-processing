@@ -306,12 +306,10 @@ def format_cv2D_kf(measurement, m_noise, p_noise, initial_uncertainty,
 def is_grayscale(frame, threshold=10):
     b, g, r = cv2.split(frame)
     
-    # Calculate absolute differences between channels
     diff_rg = np.abs(r - g)
     diff_rb = np.abs(r - b)
     diff_gb = np.abs(g - b)
     
-    # Compute mean of differences
     mean_diff = np.mean([np.mean(diff_rg), np.mean(diff_rb), np.mean(diff_gb)])
     
     return mean_diff < threshold
