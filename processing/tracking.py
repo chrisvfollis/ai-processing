@@ -804,6 +804,7 @@ class Tracker:
             matrices = []
 
             track_mappings = {trk_id: {} for trk_id in trk_id_costs.keys()}
+            identity_mappings = {}
 
             for k, track_set in enumerate(track_sets):
                 tracks = sorted(track_set)
@@ -812,6 +813,12 @@ class Tracker:
                      if trk_id in tracks
                      for identity in trk_matches.keys()]
                 )))
+
+                for i, identity in enumerate(identities):
+                    if identity not in identity_mappings:
+                        identity_mappings[identity] = {k: i}
+                    else:
+                        identity_mappings[identity][k] = i
                 
                 rows = len(tracks)
                 cols = len(identities)
@@ -830,7 +837,7 @@ class Tracker:
         
                 matrices.append(np.array(cost_matrix))
             
-            return matrices, track_mappings
+            return matrices, track_mappings, identity_mappings
 
         trk_id_costs = {}
         for trk_id, trk in self.all_trks.items():
