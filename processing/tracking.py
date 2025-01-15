@@ -853,7 +853,7 @@ class Tracker:
         groups, meta_sets, track_sets = self.group_tracks(trk_ids)
 
         results = _build_cost_matrices(trk_id_costs, track_sets)
-        trk_set_cost_matrices, track_mappings = results
+        trk_set_cost_matrices, track_mappings, identity_mappings = results
 
         unique_cascades = self.permute_constraint_cascades(groups, meta_sets)
 
