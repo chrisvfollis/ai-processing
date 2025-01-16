@@ -911,6 +911,7 @@ def tracking_pipeline(video_file):
 
     tracker = Tracker(video_path, det_data, kp_data, face_data, embedding_path)
     tracker.run()
+    tracker.assign_identities()
 
     # io_utils.write_trk_data(video_file, tracker.all_trks, tracker.span)
 

@@ -4,13 +4,22 @@ import multiprocessing
 import time
 import utilities
 import os
-import requests
 from dotenv import load_dotenv
 import boto3
+import signal
 import sys
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
+
+
+def handle_sigterm(signum, frame):
+    print("Received SIGTERM. Cleaning up...")
+
+    io_utils.clear_track_info('all')
+    delete_local_files('all')
+
+    sys.exit(0)
 
 
 def delete_local_files(identifier, file_types='any',
@@ -133,6 +142,8 @@ def main(stride=3):
                                                     data='time')
         timestamp = utilities.frame_timestamp(time_prefix)
         return time_prefix, timestamp
+    
+    signal.signal(signal.SIGTERM, handle_sigterm)
 
     multiprocessing.set_start_method("spawn")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
