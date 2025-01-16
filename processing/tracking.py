@@ -54,6 +54,7 @@ class Track(KalmanFilter):
         self.last_detection_frame = args[0]
 
         self.coincident_trks = []
+        self.identity = None
 
     def add_embedding(self, embedding, window=-20):
         self.embeddings.append(embedding)
@@ -847,7 +848,6 @@ class Tracker:
             trk_id_costs[trk_id] = id_costs
         
         trk_ids = sorted(trk_id_costs.keys())
-        
         groups, meta_sets, track_sets = self.group_tracks(trk_ids)
 
         results = _build_cost_matrices(trk_id_costs, track_sets)
@@ -855,24 +855,46 @@ class Tracker:
 
         unique_cascades = self.permute_constraint_cascades(groups, meta_sets)
 
+        all_optimal_assignments = {}
         for group in unique_cascades:
-            assigned = {}
             min_cost = float('inf')
-            min_idx = None
+            optimal_assignments = None
             for permutation in group:
+                assigned = {}
                 cost = 0
-                ordered_matrices = [np.copy(trk_set_cost_matrices[i])
-                                    for i in permutation]
+                ordered_matrices = [
+                    np.copy(trk_set_cost_matrices[i]) for i in permutation
+                ]
+
                 for k, matrix in enumerate(ordered_matrices):
-                    tracks = [trk_id for idxs in sorted(track_mappings[k].keys())
-                              for trk_id in ]
-                    identities = 
+                    tracks = track_mappings[k]
+                    identities = identity_mappings[k]
+
+                    for trk_idx, track in enumerate(tracks):
+                        if track in assigned:
+                            id_idx = identities.index(assigned[track])
+                            matrix[trk_idx, :] = float('inf')
+                            matrix[:, id_idx] = float('inf')
+                            matrix[trk_idx, id_idx] = 0
+
                     trk_idxs, id_idxs = linear_sum_assignment(matrix)
                     for i in range(len(trk_idxs)):
-                        cost += matrix[i][i]
+                        cost += matrix[trk_idxs[i], id_idxs[i]]
+
+                        assigned[tracks[trk_idxs[i]]] = identities[id_idxs[i]]
+    
+                if cost < min_cost:
+                    min_cost = cost
+                    optimal_assignments = assigned
+            
+            for trk_id, identity in optimal_assignments.items():
+                self.all_trks[trk_id].identity = identity
+            
+            all_optimal_assignments.update(optimal_assignments)
+
+        return all_optimal_assignments
         
 
-        
 def tracking_pipeline(video_file):
 
     video_path = f'../input_files/{video_file}'
