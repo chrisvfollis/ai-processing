@@ -1,5 +1,8 @@
 from datetime import datetime
 import multiprocessing
+from multiprocessing import Value
+import threading
+import signal
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -9,6 +12,8 @@ import os
 from dotenv import load_dotenv
 import requests
 import boto3
+import signal
+
 
 def update_camera_info():
     def _scan_network():
@@ -181,19 +186,31 @@ def upload_and_post(cap_info):
         print(f'Request failed: {e}')
 
 
-def rtsp_capture(rtsp_url, duration, cam):
+def rtsp_capture(rtsp_url, duration, cam, shutdown_flag):
     try:
         time = datetime.now()
         t_formatted = time.strftime("%Y-%m-%d_%H-%M-%S")
         timestamp = datetime.strptime(t_formatted, "%Y-%m-%d_%H-%M-%S")
         file = f'{t_formatted}_{str(cam)}.mp4'
         output_path = f'../input_files/{file}'
-        (
+        process = (
             ffmpeg
             .input(rtsp_url, rtsp_transport='tcp', t=duration)
             .output(output_path, vcodec='copy', format='mp4', an=None)
-            .run()
+            .run_async(pipe_stdin=True)
         )
+        start_time = time.time()
+
+        while process.poll() is None:
+            with shutdown_flag.get_lock():
+                if shutdown_flag.value:
+                    print(f'Terminating capture for camera {cam}')
+                    process.stdin.write(b'q')
+                    process.stdin.close()
+                    break
+                if time.time() - start_time >= duration:
+                    break
+        process.wait()
     except Exception as e:
         print(f'Error: {e}')
         return None
@@ -210,7 +227,7 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
 
             pool = multiprocessing.Pool(processes=num_processes)
             cap_info = pool.starmap(rtsp_capture, (
-                (stream["url"], stream["duration"], stream["cam"])
+                (stream["url"], stream["duration"], stream["cam"], shutdown_flag)
                 for stream in streams
             ))
             pool.close()
@@ -226,11 +243,16 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
 
     duration = interval * 60
     while True:
+        with shutdown_flag.get_lock():
+            if shutdown_flag.value:
+                print('Stopping capture cycle.')
+                break
+
         now = datetime.now()
         if now.minute % interval == 0:
             cap_info = _multi_capture(stream_info, duration)
         else:
-            next_interval = (((now.minute//interval)+1)*interval)
+            next_interval = (((now.minute // interval) + 1) * interval)
             if next_interval >= 60:
                 record_until = datetime(now.year, now.month, now.day,
                                         now.hour + 1, 0, 0)
@@ -249,6 +271,15 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
 
 
 if __name__ == '__main__':
+    shutdown_flag = Value('b', False)
+
+    def handle_sigterm(signum, frame):
+        print('Received SIGTERM. Initiating shutdown...')
+        with shutdown_flag.get_lock():
+            shutdown_flag.value=True
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+
     while True:
         update_camera_info()
         stream_info = get_stream_info()
