@@ -1,6 +1,6 @@
 from datetime import datetime
 import multiprocessing
-from multiprocessing import Value
+from multiprocessing import Manager
 import threading
 import signal
 import subprocess
@@ -17,17 +17,17 @@ import signal
 multiprocessing.set_start_method('fork')
 
 
+def worker_initializer(manager_dict):
+    global SHUTDOWN_FLAG
+    SHUTDOWN_FLAG = manager_dict['shutdown_flag']
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+
 def handle_sigterm(signum, frame):
     print(f'Received SIGTERM in process {os.getpid()}. Initiating shutdown...')
-    with shutdown_flag.get_lock():
-        shutdown_flag.value=True
-        print(f'shutdown_flag set to {shutdown_flag.value} by process {os.getpid()}')
-
-
-def worker_initializer(shutdown_flag):
-    global SHUTDOWN_FLAG
-    SHUTDOWN_FLAG = shutdown_flag
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    with manager_dict['shutdown_flag'].get_lock():
+        manager_dict['shutdown_flag'].value = True
+        print(f"shutdown_flag set to {manager_dict['shutdown_flag'].value} by process {os.getpid()}")
 
 
 def update_camera_info():
@@ -201,7 +201,7 @@ def upload_and_post(cap_info):
         print(f'Request failed: {e}')
 
 
-def rtsp_capture(rtsp_url, duration, cam, shutdown_flag):
+def rtsp_capture(rtsp_url, duration, cam):
     try:
         print(f"Worker started for camera {cam} with PID {os.getpid()}")
 
@@ -235,7 +235,7 @@ def rtsp_capture(rtsp_url, duration, cam, shutdown_flag):
     return (file, timestamp, f'c{cam}')
 
 
-def run_capture_cycle(stream_info, shutdown_flag, interval=1, min_seconds=3):
+def run_capture_cycle(stream_info, manager_dict, interval=1, min_seconds=3):
     def _multi_capture(stream_info, duration):
         try:
             streams = [{'url': data['url'], 'duration': duration, 'cam': cam}
@@ -246,13 +246,13 @@ def run_capture_cycle(stream_info, shutdown_flag, interval=1, min_seconds=3):
             pool = multiprocessing.Pool(
                 processes=num_processes,
                 initializer=worker_initializer,
-                initargs=(shutdown_flag,)
+                initargs=(manager_dict,)
             )
             try:
                 print('Star mapping...')
                 cap_info = pool.starmap(rtsp_capture, (
-                    (stream["url"], stream["duration"], stream["cam"],
-                     shutdown_flag) for stream in streams
+                    (stream["url"], stream["duration"], stream["cam"])
+                    for stream in streams
                 ))
                 return [row for row in cap_info if row is not None]
             finally:
@@ -270,10 +270,9 @@ def run_capture_cycle(stream_info, shutdown_flag, interval=1, min_seconds=3):
     duration = interval * 60
     try:
         while True:
-            with shutdown_flag.get_lock():
-                if shutdown_flag.value:
-                    print('Stopping capture cycle.')
-                    break
+            if manager_dict['shutdown_flag'].value:
+                print('Stopping capture cycle.')
+                break
 
             now = datetime.now()
             if now.minute % interval == 0:
@@ -302,29 +301,22 @@ def run_capture_cycle(stream_info, shutdown_flag, interval=1, min_seconds=3):
 
 
 if __name__ == '__main__':
-    shutdown_flag = Value('b', False)
+    manager = Manager()
+    manager_dict = manager.dict()
+    manager_dict['shutdown_flag'] = manager.Value('b', False)
 
     signal.signal(signal.SIGTERM, handle_sigterm)
 
-    already_running = False
     while True:
-        with shutdown_flag.get_lock():
-            if shutdown_flag.value:
-                print('Shutdown detected. Exiting main loop...')
-                break
+        if manager_dict['shutdown_flag'].value:
+            print('Shutdown detected. Exiting main loop...')
+            break
         
-        if already_running:
-            time.sleep(1)
-            continue
-        
-        already_running = True
         update_camera_info()
         stream_info = get_stream_info()
         if not stream_info:
             print('No stream info')
             time.sleep(30)
-            already_running = False
             continue
         else:
-            run_capture_cycle(stream_info, shutdown_flag, interval=5)
-            already_running = False
+            run_capture_cycle(stream_info, manager_dict, interval=5)
