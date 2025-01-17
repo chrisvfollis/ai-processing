@@ -1,7 +1,6 @@
 from datetime import datetime
 import multiprocessing
 from multiprocessing import Value
-import threading
 import signal
 import subprocess
 from concurrent.futures import ThreadPoolExecutor

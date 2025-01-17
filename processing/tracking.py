@@ -69,33 +69,6 @@ class Track(KalmanFilter):
 
     def add_face_detection(self, possible_matches, frame_number):
         self.face_detections[frame_number] = possible_matches
-    
-    def best_single_id(self, target_id=None):
-        min_distance = float('inf')
-        identity = None
-        frame = None
-
-        if not target_id:
-            for f_num, df in self.face_detections.items():
-                if not df.empty:
-                    min_row = df.loc[df['distance'].idxmin()]
-
-                    if min_row['distance'] < min_distance:
-                        min_distance = min_row['distance']
-                        frame = f_num
-                        identity = min_row['identity']
-        else:
-            identity = target_id
-            for f_num, df in self.face_detections.items():
-                df = df.loc[df['identity'] == target_id]
-                if not df.empty:
-                    target_row = df.loc[df['distance'].idxmin()]
-
-                    if target_row['distance'] < min_distance:
-                        min_distance = target_row['distance']
-                        frame = f_num
-
-        return (identity, min_distance, frame)
 
     def calc_id_match_costs(self):
         costs = {}
@@ -137,6 +110,55 @@ class Track(KalmanFilter):
         self.id_cost = costs[min_idx]
         
         return self.identity
+
+    def best_single_id_frame(self, target_id=None):
+        min_distance = float('inf')
+        identity = None
+        frame = None
+
+        if not target_id:
+            for f_num, df in self.face_detections.items():
+                if not df.empty:
+                    min_row = df.loc[df['distance'].idxmin()]
+
+                    if min_row['distance'] < min_distance:
+                        min_distance = min_row['distance']
+                        frame = f_num
+                        identity = min_row['identity']
+        else:
+            identity = target_id
+            for f_num, df in self.face_detections.items():
+                df = df.loc[df['identity'] == target_id]
+                if not df.empty:
+                    target_row = df.loc[df['distance'].idxmin()]
+
+                    if target_row['distance'] < min_distance:
+                        min_distance = target_row['distance']
+                        frame = f_num
+
+        return (identity, min_distance, frame)
+
+    def get_high_keypoint_frames(self, percentile=50):
+        if not self.keypoints:
+            return None
+
+        frame_confidences = {
+            frame: self.keypoints[frame][:, 2].sum()
+            for frame in self.keypoints.keys()
+        }
+
+        confidences = np.array(list(frame_confidences.values()))
+        median_confidence = np.percentile(confidences, percentile)
+
+        qualifying_frames = [
+            frame for frame, total_conf in frame_confidences.items()
+            if total_conf >= median_confidence
+        ]
+
+        if not qualifying_frames:
+            return None
+
+        return qualifying_frames
 
 
 class Tracker:
