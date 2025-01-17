@@ -15,6 +15,19 @@ import boto3
 import signal
 
 
+def handle_sigterm(signum, frame):
+    print(f'Received SIGTERM in process {os.getpid()}. Initiating shutdown...')
+    with shutdown_flag.get_lock():
+        shutdown_flag.value=True
+        print(f'shutdown_flag set to {shutdown_flag.value} by process {os.getpid()}')
+
+
+def worker_initializer(shutdown_flag):
+    global SHUTDOWN_FLAG
+    SHUTDOWN_FLAG = shutdown_flag
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+
 def update_camera_info():
     def _scan_network():
         while True:
@@ -205,9 +218,11 @@ def rtsp_capture(rtsp_url, duration, cam, shutdown_flag):
             with shutdown_flag.get_lock():
                 if shutdown_flag.value:
                     print(f'Terminating capture for camera {cam}')
-                    process.stdin.write(b'q')
-                    process.stdin.close()
-                    break
+                    try:
+                        process.stdin.write(b'q')
+                        process.stdin.close()
+                    except Exception as e:
+                        print(f'Error while stopping FFmpeg for camera {cam}: {e}')
                 if time.time() - start_time >= duration:
                     break
         process.wait()
@@ -217,7 +232,7 @@ def rtsp_capture(rtsp_url, duration, cam, shutdown_flag):
     return (file, timestamp, f'c{cam}')
 
 
-def run_capture_cycle(stream_info, interval=1, min_seconds=3):
+def run_capture_cycle(stream_info, shutdown_flag, interval=1, min_seconds=3):
     def _multi_capture(stream_info, duration):
         try:
             streams = [{'url': data['url'], 'duration': duration, 'cam': cam}
@@ -225,7 +240,11 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             
             num_processes = len(stream_info.keys())
 
-            pool = multiprocessing.Pool(processes=num_processes)
+            pool = multiprocessing.Pool(
+                processes=num_processes,
+                initializer=worker_initializer,
+                initargs=(shutdown_flag,)
+            )
             cap_info = pool.starmap(rtsp_capture, (
                 (stream["url"], stream["duration"], stream["cam"], shutdown_flag)
                 for stream in streams
@@ -242,44 +261,42 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
     upload_queue = ThreadPoolExecutor(max_workers=1)
 
     duration = interval * 60
-    while True:
-        with shutdown_flag.get_lock():
-            if shutdown_flag.value:
-                print('Stopping capture cycle.')
-                break
+    try:
+        while True:
+            with shutdown_flag.get_lock():
+                if shutdown_flag.value:
+                    print('Stopping capture cycle.')
+                    break
 
-        now = datetime.now()
-        if now.minute % interval == 0:
-            cap_info = _multi_capture(stream_info, duration)
-        else:
-            next_interval = (((now.minute // interval) + 1) * interval)
-            if next_interval >= 60:
-                record_until = datetime(now.year, now.month, now.day,
-                                        now.hour + 1, 0, 0)
-            else:
-                record_until = datetime(now.year, now.month, now.day, 
-                                        now.hour, next_interval, 0)
             now = datetime.now()
-            delta = (record_until - now).total_seconds() + 1
-            if delta > min_seconds:
-                cap_info = _multi_capture(stream_info, delta)
-        
-        if cap_info:
-            upload_queue.submit(upload_and_post, cap_info)
-        else:
-            print("No valid captures to upload")
+            if now.minute % interval == 0:
+                cap_info = _multi_capture(stream_info, duration)
+            else:
+                next_interval = (((now.minute // interval) + 1) * interval)
+                if next_interval >= 60:
+                    record_until = datetime(now.year, now.month, now.day,
+                                            now.hour + 1, 0, 0)
+                else:
+                    record_until = datetime(now.year, now.month, now.day, 
+                                            now.hour, next_interval, 0)
+                now = datetime.now()
+                delta = (record_until - now).total_seconds() + 1
+                if delta > min_seconds:
+                    cap_info = _multi_capture(stream_info, delta)
+            
+            if cap_info:
+                upload_queue.submit(upload_and_post, cap_info)
+            else:
+                print("No valid captures to upload")
+    
+    finally:
+        upload_queue.shutdown(wait=True)
+        print("Upload queue has been shut down.")
 
 
 if __name__ == '__main__':
     multiprocessing.set_start_method('fork')
     shutdown_flag = Value('b', False)
-    shutdown_lock = threading.Lock()
-
-    def handle_sigterm(signum, frame):
-        print(f'Received SIGTERM in process {os.getpid()}. Initiating shutdown...')
-        with shutdown_flag.get_lock():
-            shutdown_flag.value=True
-            print(f'shutdown_flag set to {shutdown_flag.value} by process {os.getpid()}')
 
     signal.signal(signal.SIGTERM, handle_sigterm)
 
@@ -296,4 +313,4 @@ if __name__ == '__main__':
             time.sleep(30)
             continue
         else:
-            run_capture_cycle(stream_info, interval=5)
+            run_capture_cycle(stream_info, shutdown_flag, interval=5)
