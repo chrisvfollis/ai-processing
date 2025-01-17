@@ -9,6 +9,39 @@ import os
 from dotenv import load_dotenv
 import requests
 import boto3
+import signal
+import json
+
+
+UPLOAD_QUEUE_FILE = "upload_queue.json"  # File to store upload info
+
+
+def load_upload_queue():
+    try:
+        with open(UPLOAD_QUEUE_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+
+def save_upload_queue(queue):
+    with open(UPLOAD_QUEUE_FILE, "w") as f:
+        json.dump(queue, f)
+
+
+def worker_initializer():
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+
+def handle_sigterm(signum, frame):
+    print(f'Received SIGTERM in process {os.getpid()}. Initiating shutdown...')
+    global shutdown_flag
+    shutdown_flag = True
+
+
+shutdown_flag = False
+signal.signal(signal.SIGTERM, handle_sigterm)
+
 
 def update_camera_info():
     def _scan_network():
@@ -223,14 +256,19 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             return None
     
     upload_queue = ThreadPoolExecutor(max_workers=1)
+    pending_uploads = load_upload_queue()
+
+    for upload_data in pending_uploads:
+        upload_queue.submit(upload_and_post, upload_data)
+    save_upload_queue([])
 
     duration = interval * 60
-    while True:
+    while not shutdown_flag:
         now = datetime.now()
         if now.minute % interval == 0:
             cap_info = _multi_capture(stream_info, duration)
         else:
-            next_interval = (((now.minute//interval)+1)*interval)
+            next_interval = (((now.minute // interval) + 1) * interval)
             if next_interval >= 60:
                 record_until = datetime(now.year, now.month, now.day,
                                         now.hour + 1, 0, 0)
@@ -246,6 +284,18 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             upload_queue.submit(upload_and_post, cap_info)
         else:
             print("No valid captures to upload")
+    
+    print('Capture cycle finished. Saving pending uploads...')
+    pending_uploads = []
+    for future in upload_queue._futures:
+        if not future.done():
+            try:
+                pending_uploads.append(future.result())
+            except Exception as e:
+                print(f'Error getting future result: {e}')
+    save_upload_queue(pending_uploads)
+    upload_queue.shutdown(wait=False, cancel_futures=True)
+    print('Pending uploads saved. Exiting.')
 
 
 if __name__ == '__main__':
