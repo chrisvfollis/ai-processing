@@ -1,6 +1,7 @@
 from datetime import datetime
 import multiprocessing
 from multiprocessing import Value
+import threading
 import signal
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -270,16 +271,24 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
 
 
 if __name__ == '__main__':
+    multiprocessing.set_start_method('fork')
     shutdown_flag = Value('b', False)
+    shutdown_lock = threading.Lock()
 
     def handle_sigterm(signum, frame):
-        print('Received SIGTERM. Initiating shutdown...')
+        print(f'Received SIGTERM in process {os.getpid()}. Initiating shutdown...')
         with shutdown_flag.get_lock():
             shutdown_flag.value=True
+            print(f'shutdown_flag set to {shutdown_flag.value} by process {os.getpid()}')
 
     signal.signal(signal.SIGTERM, handle_sigterm)
 
     while True:
+        with shutdown_flag.get_lock():
+            if shutdown_flag.value:
+                print('Shutdown detected. Exiting main loop...')
+                break
+    
         update_camera_info()
         stream_info = get_stream_info()
         if not stream_info:
