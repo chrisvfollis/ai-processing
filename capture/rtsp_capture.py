@@ -1,8 +1,5 @@
 from datetime import datetime
 import multiprocessing
-from multiprocessing import Manager
-import threading
-import signal
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -14,21 +11,19 @@ import requests
 import boto3
 import signal
 
-multiprocessing.set_start_method('forkserver', force=True)
 
-
-def worker_initializer(manager_dict):
-    global SHUTDOWN_FLAG
-    SHUTDOWN_FLAG = manager_dict['shutdown_flag']
+def worker_initializer():
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
 
 def handle_sigterm(signum, frame):
     print(f'Received SIGTERM in process {os.getpid()}. Initiating shutdown...')
-    with manager_dict['shutdown_flag'].get_lock():
-        manager_dict['shutdown_flag'].value = True
-        print(f"shutdown_flag set to {manager_dict['shutdown_flag'].value} by process {os.getpid()}")
+    global shutdown_flag
+    shutdown_flag = True
 
+
+shutdown_flag = False
+signal.signal(signal.SIGTERM, handle_sigterm)
 
 def update_camera_info():
     def _scan_network():
@@ -203,8 +198,6 @@ def upload_and_post(cap_info):
 
 def rtsp_capture(rtsp_url, duration, cam):
     try:
-        print(f"Worker started for camera {cam} with PID {os.getpid()}")
-
         time = datetime.now()
         t_formatted = time.strftime("%Y-%m-%d_%H-%M-%S")
         timestamp = datetime.strptime(t_formatted, "%Y-%m-%d_%H-%M-%S")
@@ -216,16 +209,17 @@ def rtsp_capture(rtsp_url, duration, cam):
             .output(output_path, vcodec='copy', format='mp4', an=None)
             .run_async(pipe_stdin=True)
         )
-        start_time = time.time()
 
+        start_time = time.time()
         while process.poll() is None:
-            if SHUTDOWN_FLAG.value:
+            if shutdown_flag:
                 print(f'Terminating capture for camera {cam}')
                 try:
                     process.stdin.write(b'q')
                     process.stdin.close()
                 except Exception as e:
                     print(f'Error while stopping FFmpeg for camera {cam}: {e}')
+                    break
             if time.time() - start_time >= duration:
                 break
         process.wait()
@@ -235,7 +229,7 @@ def rtsp_capture(rtsp_url, duration, cam):
     return (file, timestamp, f'c{cam}')
 
 
-def run_capture_cycle(stream_info, manager_dict, interval=1, min_seconds=3):
+def run_capture_cycle(stream_info, interval=1, min_seconds=3):
     def _multi_capture(stream_info, duration):
         try:
             streams = [{'url': data['url'], 'duration': duration, 'cam': cam}
@@ -243,24 +237,16 @@ def run_capture_cycle(stream_info, manager_dict, interval=1, min_seconds=3):
             
             num_processes = len(stream_info.keys())
 
-            pool = multiprocessing.Pool(
-                processes=num_processes,
-                initializer=worker_initializer,
-                initargs=(manager_dict,)
-            )
-            try:
-                print('Star mapping...')
-                cap_info = pool.starmap(rtsp_capture, (
-                    (stream["url"], stream["duration"], stream["cam"])
-                    for stream in streams
-                ))
-                return [row for row in cap_info if row is not None]
-            finally:
-                print("Closing multiprocessing pool...")
-                pool.close()
-                pool.join()
-                print("Pool closed and joined.")
-    
+            pool = multiprocessing.Pool(processes=num_processes)
+            cap_info = pool.starmap(rtsp_capture, (
+                (stream["url"], stream["duration"], stream["cam"])
+                for stream in streams
+            ))
+            pool.close()
+            pool.join()
+
+            return [row for row in cap_info if row is not None]
+
         except Exception as e:
             print(f'Error: {e}')
             return None
@@ -268,50 +254,31 @@ def run_capture_cycle(stream_info, manager_dict, interval=1, min_seconds=3):
     upload_queue = ThreadPoolExecutor(max_workers=1)
 
     duration = interval * 60
-    try:
-        while True:
-            if manager_dict['shutdown_flag'].value:
-                print('Stopping capture cycle.')
-                break
-
+    while True:
+        now = datetime.now()
+        if now.minute % interval == 0:
+            cap_info = _multi_capture(stream_info, duration)
+        else:
+            next_interval = (((now.minute//interval)+1)*interval)
+            if next_interval >= 60:
+                record_until = datetime(now.year, now.month, now.day,
+                                        now.hour + 1, 0, 0)
+            else:
+                record_until = datetime(now.year, now.month, now.day, 
+                                        now.hour, next_interval, 0)
             now = datetime.now()
-            if now.minute % interval == 0:
-                cap_info = _multi_capture(stream_info, duration)
-            else:
-                next_interval = (((now.minute // interval) + 1) * interval)
-                if next_interval >= 60:
-                    record_until = datetime(now.year, now.month, now.day,
-                                            now.hour + 1, 0, 0)
-                else:
-                    record_until = datetime(now.year, now.month, now.day, 
-                                            now.hour, next_interval, 0)
-                now = datetime.now()
-                delta = (record_until - now).total_seconds() + 1
-                if delta > min_seconds:
-                    cap_info = _multi_capture(stream_info, delta)
-            
-            if cap_info:
-                upload_queue.submit(upload_and_post, cap_info)
-            else:
-                print("No valid captures to upload")
-    
-    finally:
-        upload_queue.shutdown(wait=True)
-        print("Upload queue has been shut down.")
+            delta = (record_until - now).total_seconds() + 1
+            if delta > min_seconds:
+                cap_info = _multi_capture(stream_info, delta)
+        
+        if cap_info:
+            upload_queue.submit(upload_and_post, cap_info)
+        else:
+            print("No valid captures to upload")
 
 
 if __name__ == '__main__':
-    manager = Manager()
-    manager_dict = manager.dict()
-    manager_dict['shutdown_flag'] = manager.Value('b', False)
-
-    signal.signal(signal.SIGTERM, handle_sigterm)
-
     while True:
-        if manager_dict['shutdown_flag'].value:
-            print('Shutdown detected. Exiting main loop...')
-            break
-        
         update_camera_info()
         stream_info = get_stream_info()
         if not stream_info:
@@ -319,4 +286,4 @@ if __name__ == '__main__':
             time.sleep(30)
             continue
         else:
-            run_capture_cycle(stream_info, manager_dict, interval=5)
+            run_capture_cycle(stream_info, interval=5)
