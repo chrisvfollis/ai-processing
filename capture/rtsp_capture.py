@@ -217,16 +217,15 @@ def rtsp_capture(rtsp_url, duration, cam, shutdown_flag):
         start_time = time.time()
 
         while process.poll() is None:
-            with shutdown_flag.get_lock():
-                if shutdown_flag.value:
-                    print(f'Terminating capture for camera {cam}')
-                    try:
-                        process.stdin.write(b'q')
-                        process.stdin.close()
-                    except Exception as e:
-                        print(f'Error while stopping FFmpeg for camera {cam}: {e}')
-                if time.time() - start_time >= duration:
-                    break
+            if SHUTDOWN_FLAG.value:
+                print(f'Terminating capture for camera {cam}')
+                try:
+                    process.stdin.write(b'q')
+                    process.stdin.close()
+                except Exception as e:
+                    print(f'Error while stopping FFmpeg for camera {cam}: {e}')
+            if time.time() - start_time >= duration:
+                break
         process.wait()
     except Exception as e:
         print(f'Error: {e}')
