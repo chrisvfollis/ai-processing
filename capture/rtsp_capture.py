@@ -201,6 +201,8 @@ def upload_and_post(cap_info):
 
 def rtsp_capture(rtsp_url, duration, cam, shutdown_flag):
     try:
+        print(f"Worker started for camera {cam} with PID {os.getpid()}")
+        
         time = datetime.now()
         t_formatted = time.strftime("%Y-%m-%d_%H-%M-%S")
         timestamp = datetime.strptime(t_formatted, "%Y-%m-%d_%H-%M-%S")
@@ -249,8 +251,12 @@ def run_capture_cycle(stream_info, shutdown_flag, interval=1, min_seconds=3):
                 (stream["url"], stream["duration"], stream["cam"], shutdown_flag)
                 for stream in streams
             ))
-            pool.close()
-            pool.join()
+
+            if pool:
+                print("Closing multiprocessing pool...")
+                pool.close()
+                pool.join()
+                print("Pool closed and joined.")
 
             return [row for row in cap_info if row is not None]
 
@@ -300,17 +306,25 @@ if __name__ == '__main__':
 
     signal.signal(signal.SIGTERM, handle_sigterm)
 
+    already_running = False
     while True:
         with shutdown_flag.get_lock():
             if shutdown_flag.value:
                 print('Shutdown detected. Exiting main loop...')
                 break
-    
+        
+        if already_running:
+            time.sleep(1)
+            continue
+        
+        already_running = True
         update_camera_info()
         stream_info = get_stream_info()
         if not stream_info:
             print('No stream info')
             time.sleep(30)
+            already_running = False
             continue
         else:
             run_capture_cycle(stream_info, shutdown_flag, interval=5)
+            already_running = False
