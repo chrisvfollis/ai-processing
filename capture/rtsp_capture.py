@@ -14,6 +14,8 @@ import requests
 import boto3
 import signal
 
+multiprocessing.set_start_method('fork')
+
 
 def handle_sigterm(signum, frame):
     print(f'Received SIGTERM in process {os.getpid()}. Initiating shutdown...')
