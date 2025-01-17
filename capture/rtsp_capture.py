@@ -14,7 +14,7 @@ import requests
 import boto3
 import signal
 
-multiprocessing.set_start_method('fork')
+multiprocessing.set_start_method('forkserver', force=True)
 
 
 def worker_initializer(manager_dict):
