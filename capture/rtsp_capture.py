@@ -202,7 +202,7 @@ def upload_and_post(cap_info):
 def rtsp_capture(rtsp_url, duration, cam, shutdown_flag):
     try:
         print(f"Worker started for camera {cam} with PID {os.getpid()}")
-        
+
         time = datetime.now()
         t_formatted = time.strftime("%Y-%m-%d_%H-%M-%S")
         timestamp = datetime.strptime(t_formatted, "%Y-%m-%d_%H-%M-%S")
@@ -247,19 +247,19 @@ def run_capture_cycle(stream_info, shutdown_flag, interval=1, min_seconds=3):
                 initializer=worker_initializer,
                 initargs=(shutdown_flag,)
             )
-            cap_info = pool.starmap(rtsp_capture, (
-                (stream["url"], stream["duration"], stream["cam"], shutdown_flag)
-                for stream in streams
-            ))
-
-            if pool:
+            try:
+                print('Star mapping...')
+                cap_info = pool.starmap(rtsp_capture, (
+                    (stream["url"], stream["duration"], stream["cam"],
+                     shutdown_flag) for stream in streams
+                ))
+                return [row for row in cap_info if row is not None]
+            finally:
                 print("Closing multiprocessing pool...")
                 pool.close()
                 pool.join()
                 print("Pool closed and joined.")
-
-            return [row for row in cap_info if row is not None]
-
+    
         except Exception as e:
             print(f'Error: {e}')
             return None
