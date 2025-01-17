@@ -302,7 +302,6 @@ def run_capture_cycle(stream_info, shutdown_flag, interval=1, min_seconds=3):
 
 
 if __name__ == '__main__':
-    multiprocessing.set_start_method('fork')
     shutdown_flag = Value('b', False)
 
     signal.signal(signal.SIGTERM, handle_sigterm)
