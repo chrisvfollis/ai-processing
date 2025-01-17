@@ -9,21 +9,6 @@ import os
 from dotenv import load_dotenv
 import requests
 import boto3
-import signal
-
-
-def worker_initializer():
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-
-
-def handle_sigterm(signum, frame):
-    print(f'Received SIGTERM in process {os.getpid()}. Initiating shutdown...')
-    global shutdown_flag
-    shutdown_flag = True
-
-
-shutdown_flag = False
-signal.signal(signal.SIGTERM, handle_sigterm)
 
 def update_camera_info():
     def _scan_network():
@@ -203,26 +188,12 @@ def rtsp_capture(rtsp_url, duration, cam):
         timestamp = datetime.strptime(t_formatted, "%Y-%m-%d_%H-%M-%S")
         file = f'{t_formatted}_{str(cam)}.mp4'
         output_path = f'../input_files/{file}'
-        process = (
+        (
             ffmpeg
             .input(rtsp_url, rtsp_transport='tcp', t=duration)
             .output(output_path, vcodec='copy', format='mp4', an=None)
-            .run_async(pipe_stdin=True)
+            .run()
         )
-
-        start_time = time.time()
-        while process.poll() is None:
-            if shutdown_flag:
-                print(f'Terminating capture for camera {cam}')
-                try:
-                    process.stdin.write(b'q')
-                    process.stdin.close()
-                except Exception as e:
-                    print(f'Error while stopping FFmpeg for camera {cam}: {e}')
-                    break
-            if time.time() - start_time >= duration:
-                break
-        process.wait()
     except Exception as e:
         print(f'Error: {e}')
         return None
