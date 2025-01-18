@@ -228,7 +228,7 @@ def rtsp_capture(rtsp_url, duration, cam):
                 '-i', rtsp_url,
                 '-t', str(duration),
                 '-c:v', 'copy',
-                'an',
+                '-an',
                 '-f', 'mp4',
                 output_path
             ],
