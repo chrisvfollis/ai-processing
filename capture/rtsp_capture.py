@@ -221,12 +221,26 @@ def rtsp_capture(rtsp_url, duration, cam):
         timestamp = datetime.strptime(t_formatted, "%Y-%m-%d_%H-%M-%S")
         file = f'{t_formatted}_{str(cam)}.mp4'
         output_path = f'../input_files/{file}'
-        (
-            ffmpeg
-            .input(rtsp_url, rtsp_transport='tcp', t=duration)
-            .output(output_path, vcodec='copy', format='mp4', an=None)
-            .run()
+        process = subprocess.Popen(
+            [
+                'ffmpeg',
+                '-rtsp_transport', 'tcp',
+                '-i', rtsp_url,
+                '-t', str(duration),
+                '-c:v', 'copy',
+                'an',
+                '-f', 'mp4',
+                output_path
+            ],
+            preexec_fn=os.setpgrp
         )
+        process.wait()
+        # (
+        #     ffmpeg
+        #     .input(rtsp_url, rtsp_transport='tcp', t=duration)
+        #     .output(output_path, vcodec='copy', format='mp4', an=None)
+        #     .run()
+        # )
     except Exception as e:
         print(f'Error: {e}')
         return None
@@ -256,10 +270,13 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             return None
     
     upload_queue = ThreadPoolExecutor(max_workers=1)
+    futures = []
     pending_uploads = load_upload_queue()
 
     for upload_data in pending_uploads:
+        future = upload_queue.submit(upload_and_post, upload_data)
         upload_queue.submit(upload_and_post, upload_data)
+        futures.append(future)
     save_upload_queue([])
 
     duration = interval * 60
@@ -281,18 +298,20 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
                 cap_info = _multi_capture(stream_info, delta)
         
         if cap_info:
-            upload_queue.submit(upload_and_post, cap_info)
+            future = upload_queue.submit(upload_and_post, cap_info)
+            future.upload_data = cap_info
+            futures.append(future)
         else:
             print("No valid captures to upload")
     
     print('Capture cycle finished. Saving pending uploads...')
     pending_uploads = []
-    for future in upload_queue._futures:
+    for future in futures:
         if not future.done():
             try:
-                pending_uploads.append(future.result())
-            except Exception as e:
-                print(f'Error getting future result: {e}')
+                pending_uploads.append(future.upload_data)
+            except AttributeError:
+                print('Warning: Could not retrieve upload data for a pending future')
     save_upload_queue(pending_uploads)
     upload_queue.shutdown(wait=False, cancel_futures=True)
     print('Pending uploads saved. Exiting.')
