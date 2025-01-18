@@ -13,20 +13,45 @@ import signal
 import json
 
 
-UPLOAD_QUEUE_FILE = "upload_queue.json"  # File to store upload info
+UPLOAD_QUEUE_FILE = "upload_queue.json"
 
 
 def load_upload_queue():
+    def _deserialize(item):
+        if isinstance(item, dict):
+            return {k: _deserialize(v) for k, v in item.items()}
+        elif isinstance(item, list):
+            return [_deserialize(i) for i in item]
+        try:
+            return datetime.fromisoformat(item)
+        except (ValueError, TypeError):
+            return item 
+
     try:
         with open(UPLOAD_QUEUE_FILE, "r") as f:
-            return json.load(f)
+            content = f.read().strip()
+            if not content:
+                return []
+            return _deserialize(json.loads(content))
     except FileNotFoundError:
+        return []
+    except json.JSONDecodeError:
+        print(f"Warning: {UPLOAD_QUEUE_FILE} contains invalid JSON. Resetting queue.")
         return []
 
 
 def save_upload_queue(queue):
+    def _serialize(item):
+        if isinstance(item, dict):
+            return {k: _serialize(v) for k, v in item.items()}
+        elif isinstance(item, list):
+            return [_serialize(i) for i in item]
+        elif isinstance(item, datetime):
+            return item.isoformat()
+        return item
+
     with open(UPLOAD_QUEUE_FILE, "w") as f:
-        json.dump(queue, f)
+        json.dump(_serialize(queue), f)
 
 
 def worker_initializer():
