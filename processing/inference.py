@@ -394,7 +394,7 @@ class MoveNet:
 
 
 class InferencePipeline:
-    def __init__(self, video_file, model_paths, device, stride=3,
+    def __init__(self, video_file, model_paths, device, stride=1,
                  buffer_limit=100):
     
         self.yolov4 = YOLOv4(model_paths[0], device, nms_thresh=0.5)
@@ -412,8 +412,8 @@ class InferencePipeline:
         self.f_num = 0
 
         self.track_stride = stride
-        self.id_stride = stride * 10
-        self.kp_stride = stride * 30
+        self.id_stride = stride * 15
+        self.kp_stride = stride * 45
 
     def detection_skim(self, stride=120):
         print(f'skimming...')

@@ -136,7 +136,7 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
     return True
 
 
-def main(stride=3):
+def main(stride=1):
     def _qb_time_info(queue_block):
         time_prefix = utilities.parse_clip_filename(queue_block[0][0],
                                                     data='time')
