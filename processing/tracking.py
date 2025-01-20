@@ -756,7 +756,7 @@ class Tracker:
 
         return groups, meta_sets, track_sets
 
-    def permute_constraint_cascades(groups, meta_sets):
+    def permute_constraint_cascades(self, groups, meta_sets):
         def _remove_duplicates(track_order):
             seen = set()
             return [x for x in track_order if not (x in seen or seen.add(x))]
