@@ -231,9 +231,9 @@ def upload_and_post(cap_info):
             data['timestamps'].append(row[1].isoformat())
             data['cameras'].append(row[2])
 
-        if os.path.exists(file_path):
-            print('Removed file')
-            os.remove(file_path)
+            if os.path.exists(file_path):
+                print('Removed file')
+                os.remove(file_path)
 
     headers = {
         'X-Custom-Api-Key': INTERNAL_API_KEY,
@@ -293,7 +293,8 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             
             num_processes = len(stream_info.keys())
 
-            pool = multiprocessing.Pool(processes=num_processes)
+            pool = multiprocessing.Pool(processes=num_processes,
+                                        initializer=worker_initializer)
             cap_info = pool.starmap(rtsp_capture, (
                 (stream["url"], stream["duration"], stream["cam"])
                 for stream in streams
