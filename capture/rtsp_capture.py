@@ -83,7 +83,7 @@ signal.signal(signal.SIGTERM, handle_sigterm)
 
 def update_camera_info():
     def _scan_network():
-        while True:
+        while not shutdown_flag:
             try:
                 process = subprocess.Popen(
                     '/home/ivaktvision/Documents/timemanager/capture/utilities/network_scanner.sh',
@@ -355,7 +355,7 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
 
 
 if __name__ == '__main__':
-    while True:
+    while not shutdown_flag:
         update_camera_info()
         stream_info = get_stream_info()
         if not stream_info:

@@ -1,5 +1,5 @@
 [Unit]
-Description=RTSP Capture
+Description=RTSP Capture        
 Wants=network-online.target
 After=network-online.target
 
@@ -14,6 +14,7 @@ Environment="PATH=/usr/bin:/usr/local/bin:/bin:/usr/sbin:/sbin" "PYTHONUNBUFFERE
 PYTHONUNBUFFERED=1
 LimitFSIZE=infinity
 LimitCORE=infinity
+TimeoutStopSec=300
 
 [Install]
 WantedBy=multi-user.target
