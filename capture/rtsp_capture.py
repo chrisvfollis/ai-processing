@@ -48,7 +48,11 @@ def save_upload_queue(queue):
             return [_serialize(i) for i in item]
         elif isinstance(item, datetime):
             return item.isoformat()
-        return item
+        elif isinstance(item, (str, int, float, bool, type(None))):
+            return item
+        else:
+            print(f"Warning: Unhandled type {type(item)} for item {item}")
+            raise TypeError(f"Unhandled type {type(item)} for JSON serialization")
 
     with open(UPLOAD_QUEUE_FILE, "w") as f:
         json.dump(_serialize(queue), f)
@@ -205,7 +209,6 @@ def upload_and_post(cap_info):
     credentials = [os.environ.get('AWS_ACCESS_KEY'),
                    os.environ.get('AWS_SECRET_KEY')]
     INTERNAL_API_KEY = os.environ.get('INTERNAL_API_KEY')
-    print(f'Internal API key: {INTERNAL_API_KEY}')
     url = ('https://ivaktvision-fe27c015e5ff.herokuapp.com/'
            + 'api/service/update_queue/')
 
