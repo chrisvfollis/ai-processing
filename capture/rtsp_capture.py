@@ -232,6 +232,7 @@ def upload_and_post(cap_info):
             data['cameras'].append(row[2])
 
         if os.path.exists(file_path):
+            print('Removed file')
             os.remove(file_path)
 
     headers = {
