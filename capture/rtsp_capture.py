@@ -19,13 +19,19 @@ UPLOAD_QUEUE_FILE = "upload_queue.json"
 def load_upload_queue():
     def _deserialize(item):
         if isinstance(item, dict):
+            if "file" in item and "timestamp" in item and "camera" in item:
+                return (
+                    item["file"],
+                    datetime.fromisoformat(item["timestamp"]),
+                    item["camera"]
+                )
             return {k: _deserialize(v) for k, v in item.items()}
         elif isinstance(item, list):
             return [_deserialize(i) for i in item]
         try:
             return datetime.fromisoformat(item)
         except (ValueError, TypeError):
-            return item 
+            return item
 
     try:
         with open(UPLOAD_QUEUE_FILE, "r") as f:
@@ -46,6 +52,8 @@ def save_upload_queue(queue):
             return {k: _serialize(v) for k, v in item.items()}
         elif isinstance(item, list):
             return [_serialize(i) for i in item]
+        elif isinstance(item, tuple):
+            return {"file": item[0], "timestamp": item[1].isoformat(), "camera": item[2]}
         elif isinstance(item, datetime):
             return item.isoformat()
         elif isinstance(item, (str, int, float, bool, type(None))):
@@ -56,6 +64,7 @@ def save_upload_queue(queue):
 
     with open(UPLOAD_QUEUE_FILE, "w") as f:
         json.dump(_serialize(queue), f)
+
 
 
 def worker_initializer():
