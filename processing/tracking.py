@@ -163,7 +163,7 @@ class Track(KalmanFilter):
 
 class Tracker:
     def __init__(self, video_file, detection_data, keypoint_data, face_data,
-                 embedding_path, min_lifespan=450):
+                 embedding_path, min_lifespan=225):
         self.video_file = video_file
         self.f_num = 0
 
