@@ -2,7 +2,7 @@ from botocore.exceptions import ClientError
 import os
 from utilities import initial_s3_setup
 from typing import Union
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def list_download(object_keys: Union[list, str], output_dir='downloads',
@@ -84,6 +84,11 @@ def time_delete(
         start = datetime(*start)
     if isinstance(end, list):
         end = datetime(*end)
+
+    if start and start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end and end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
 
     object_keys = []
     results = {'deleted': [], 'failed': {}}

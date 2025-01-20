@@ -593,10 +593,21 @@ class Tracker:
                 for trk in tracks.values():
                     images = []
 
-                    frames = [
-                        trk.first_detection_frame,
-                        trk.last_detection_frame,
-                    ]
+                    percentile = 75
+                    clear_frames = None
+                    while (not clear_frames) and (percentile >= 5):
+                        clear_frames = trk.get_high_keypoint_frames(percentile=percentile)
+                        percentile -= 10
+                    
+        
+                    if clear_frames:
+                        frames = [clear_frames[0], clear_frames[-1]]
+                    else:
+                        frames = [
+                            trk.first_detection_frame,
+                            trk.last_detection_frame,
+                        ]
+
 
                     for f in frames:
                         x, y, w, h = trk.detections[f][:4]
