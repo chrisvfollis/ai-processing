@@ -848,10 +848,8 @@ class Tracker:
                      for identity in trk_matches.keys()]
                 )))
 
-                print(k)
-                print('Identities:')
-                print(identities)
-
+                # For the kth track set in all track sets, append each
+                # identity (UUID) in order:
                 for identity in identities:
                     identity_mappings.setdefault(k, []).append(identity)
                 
@@ -860,6 +858,8 @@ class Tracker:
 
                 cost_matrix = [[float('inf')] * cols for _ in range(rows)]
 
+                # For the kth track set in all tracks sets, append each track
+                # id in order to track_mappings:
                 for i, trk_id in enumerate(tracks):
                     for j, identity in enumerate(identities):
 
@@ -870,9 +870,6 @@ class Tracker:
                         cost_matrix[i][j] = cost
 
                     track_mappings.setdefault(k, []).append(trk_id)
-                print(i)
-                print('Track IDs:')
-                print(tracks)
         
                 matrices.append(np.array(cost_matrix))
             
@@ -905,6 +902,9 @@ class Tracker:
                 ordered_matrices = [
                     np.copy(trk_set_cost_matrices[i]) for i in permutation
                 ]
+
+                print('Identity mappings:')
+                print(identity_mappings)
 
                 for k, matrix in enumerate(ordered_matrices):
                     tracks = track_mappings[k]
