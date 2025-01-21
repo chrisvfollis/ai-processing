@@ -848,28 +848,30 @@ class Tracker:
                      for identity in trk_matches.keys()]
                 )))
 
+                identity_mappings[k] = []
+                track_mappings[k] = []
+
                 # For the kth track set in all track sets, append each
                 # identity (UUID) in order:
                 for identity in identities:
-                    identity_mappings.setdefault(k, []).append(identity)
+                    identity_mappings[k].append(identity)
                 
                 rows = len(tracks)
                 cols = len(identities)
 
                 cost_matrix = [[float('inf')] * cols for _ in range(rows)]
 
-                # For the kth track set in all tracks sets, append each track
+                # For the kth track set in all track sets, append each track
                 # id in order to track_mappings:
                 for i, trk_id in enumerate(tracks):
                     for j, identity in enumerate(identities):
-
                         if identity not in trk_id_costs[trk_id]:
                             continue
 
                         cost = trk_id_costs[trk_id][identity]
                         cost_matrix[i][j] = cost
 
-                    track_mappings.setdefault(k, []).append(trk_id)
+                    track_mappings[k].append(trk_id)
         
                 matrices.append(np.array(cost_matrix))
             
@@ -903,10 +905,10 @@ class Tracker:
                     np.copy(trk_set_cost_matrices[i]) for i in permutation
                 ]
 
-                print('Identity mappings:')
-                print(identity_mappings)
                 print('Track mappings:')
                 print(track_mappings)
+                print('Identity mappings:')
+                print(identity_mappings)
 
                 for k, matrix in enumerate(ordered_matrices):
                     tracks = track_mappings[k]
@@ -914,10 +916,14 @@ class Tracker:
 
                     for trk_idx, track in enumerate(tracks):
                         if track in assigned:
-                            id_idx = identities.index(assigned[track])
-                            matrix[trk_idx, :] = float('inf')
-                            matrix[:, id_idx] = float('inf')
-                            matrix[trk_idx, id_idx] = 0
+                            try:
+                                id_idx = identities.index(assigned[track])
+                                matrix[trk_idx, :] = float('inf')
+                                matrix[:, id_idx] = float('inf')
+                                matrix[trk_idx, id_idx] = 0
+                            except ValueError:
+                                print("Non-overlapping identity")
+                                continue
 
                     trk_idxs, id_idxs = linear_sum_assignment(matrix)
                     for i in range(len(trk_idxs)):
