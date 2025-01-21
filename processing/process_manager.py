@@ -185,4 +185,4 @@ def main(stride=1):
 
 
 if __name__ == '__main__':
-    main(stride=3)
+    main(stride=1)

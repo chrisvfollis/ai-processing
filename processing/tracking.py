@@ -848,6 +848,10 @@ class Tracker:
                      for identity in trk_matches.keys()]
                 )))
 
+                print(k)
+                print('Identities:')
+                print(identities)
+
                 for identity in identities:
                     identity_mappings.setdefault(k, []).append(identity)
                 
@@ -866,6 +870,9 @@ class Tracker:
                         cost_matrix[i][j] = cost
 
                     track_mappings.setdefault(k, []).append(trk_id)
+                print(i)
+                print('Track IDs:')
+                print(tracks)
         
                 matrices.append(np.array(cost_matrix))
             
