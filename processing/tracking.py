@@ -905,6 +905,8 @@ class Tracker:
 
                 print('Identity mappings:')
                 print(identity_mappings)
+                print('Track mappings:')
+                print(track_mappings)
 
                 for k, matrix in enumerate(ordered_matrices):
                     tracks = track_mappings[k]
