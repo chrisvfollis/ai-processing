@@ -415,7 +415,7 @@ class InferencePipeline:
         self.id_stride = stride * 15
         self.kp_stride = stride * 45
 
-    def detection_skim(self, stride=120):
+    def detection_skim(self, stride=60):
         print(f'skimming...')
 
         prev_frame = -1
