@@ -851,8 +851,6 @@ class Tracker:
                 identity_mappings[k] = []
                 track_mappings[k] = []
 
-                # For the kth track set in all track sets, append each
-                # identity (UUID) in order:
                 for identity in identities:
                     identity_mappings[k].append(identity)
                 
@@ -861,8 +859,6 @@ class Tracker:
 
                 cost_matrix = [[float('inf')] * cols for _ in range(rows)]
 
-                # For the kth track set in all track sets, append each track
-                # id in order to track_mappings:
                 for i, trk_id in enumerate(tracks):
                     for j, identity in enumerate(identities):
                         if identity not in trk_id_costs[trk_id]:
@@ -928,6 +924,15 @@ class Tracker:
                     trk_idxs, id_idxs = linear_sum_assignment(matrix)
                     for i in range(len(trk_idxs)):
                         cost += matrix[trk_idxs[i], id_idxs[i]]
+                        print(i)
+                        print('Track indexes:')
+                        print(trk_idxs)
+                        print('Tracks:')
+                        print(tracks)
+                        print('Identity indexes:')
+                        print(id_idxs)
+                        print('Identities:')
+                        print(identities)
 
                         assigned[tracks[trk_idxs[i]]] = identities[id_idxs[i]]
     
