@@ -902,8 +902,9 @@ class Tracker:
                 assigned = {}
                 cost = 0
                 ordered_matrices = [
-                    trk_set_cost_matrices[i].copy() for i in permutation
+                    trk_set_cost_matrices[k].copy() for k in permutation
                 ]
+                permutation_to_original = {k: i for k, i in enumerate(permutation)}
 
                 print('Track mappings:')
                 print(track_mappings)
@@ -911,8 +912,9 @@ class Tracker:
                 print(identity_mappings)
 
                 for k, matrix in enumerate(ordered_matrices):
-                    tracks = track_mappings[k]
-                    identities = identity_mappings[k]
+                    original_index = permutation_to_original[k]
+                    tracks = track_mappings[original_index]
+                    identities = identity_mappings[original_index]
 
                     for trk_idx, track in enumerate(tracks):
                         if track in assigned:
