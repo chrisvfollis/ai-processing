@@ -463,7 +463,7 @@ class InferencePipeline:
         if filtered_dfs:
             self.face_data[self.f_num] = filtered_dfs
 
-    def run(self, checkpoint_frequency=4500):
+    def run(self, checkpoint_frequency=1500):
         def _process_frame(frame):
             if self.f_num % self.track_stride == 0:
                 bboxes = self.yolov4.detect(frame, 0, conf_thresh=0.65,

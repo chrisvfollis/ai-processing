@@ -894,7 +894,7 @@ class Tracker:
         for group in unique_cascades:
             min_cost = float('inf')
             optimal_assignments = None
-            for permutation in group:
+            for p, permutation in enumerate(group):
                 assigned = {}
                 cost = 0
                 ordered_matrices = [
@@ -924,20 +924,13 @@ class Tracker:
                     trk_idxs, id_idxs = linear_sum_assignment(matrix)
                     for i in range(len(trk_idxs)):
                         cost += matrix[trk_idxs[i], id_idxs[i]]
-                        print('Track mappings:')
-                        tracks
-                        print('Identity mappings:')
-                        identities
-                        print('Cost matrix:')
-                        print(matrix)
-                        print('Track indexes:')
-                        print(trk_idxs)
-                        print('Tracks:')
-                        print(tracks)
-                        print('Identity indexes:')
-                        print(id_idxs)
-                        print('Identities:')
-                        print(identities)
+                        print(f'p{p}, k{k} Track mappings: {tracks}')
+                        print(f'p{p}, k{k} Identity mappings: {identities}')
+                        print(f'p{p}, k{k} Cost matrix: {matrix}')
+                        print(f'p{p}, k{k} Track indexes: {trk_idxs}')
+                        print(f'p{p}, k{k} Tracks: {tracks}')
+                        print(f'p{p}, k{k} Identity indexes: {id_idxs}')
+                        print(f'p{p}, k{k} Identities: {identities}')
 
                         assigned[tracks[trk_idxs[i]]] = identities[id_idxs[i]]
     

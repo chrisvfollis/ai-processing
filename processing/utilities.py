@@ -170,7 +170,7 @@ def is_coincident(span1, span2):
     return not (span1[1] < span2[0] or span2[1] < span1[0])
 
 
-def frame_timestamp(clip_timestamp, frame=0, fps=30):
+def frame_timestamp(clip_timestamp, frame=0, fps=15):
     if isinstance(clip_timestamp, str):
         clip_timestamp = datetime.strptime(clip_timestamp, '%Y-%m-%d_%H-%M-%S')
 
