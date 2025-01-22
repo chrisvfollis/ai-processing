@@ -829,13 +829,16 @@ class Tracker:
         
     def assign_identities(self):
         def _build_cost_matrices(trk_id_costs, track_sets):
+            trk_ids = sorted(self.all_trks.keys())
+            idx_to_id = {idx: trk_id for idx, trk_id in enumerate(trk_ids)}
+
             matrices = []
 
             track_mappings = {}
             identity_mappings = {}
 
             for k, track_set in enumerate(track_sets):
-                tracks = sorted(track_set)
+                tracks = sorted([idx_to_id[track_index] for track_index in track_set])
                 identities = sorted(list(set(
                     [identity for trk_id, trk_matches in trk_id_costs.items()
                      if trk_id in tracks
