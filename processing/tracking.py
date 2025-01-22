@@ -545,7 +545,7 @@ class Tracker:
 
                         if (
                             (lifespan < self.min_lifespan) and
-                            (trk.identity is None)
+                            (not trk.face_detections)
                         ):
                             self.lifespan_filtered[id] = trk
                     
@@ -556,7 +556,7 @@ class Tracker:
                     expected_avg = (expected_kps * expected_conf) / 17
 
                     for id, trk in self.all_trks.items():
-                        if trk.identity is not None:
+                        if trk.face_detections:
                             continue
                         n_frames = len(trk.keypoints.keys())
                         if n_frames == 0:
@@ -577,9 +577,6 @@ class Tracker:
                 self.all_trks = {**self.active_trks, **self.trk_cache}
                 del self.active_trks
                 del self.trk_cache
-
-                for trk in self.all_trks.values():
-                    trk.find_best_id()
                 
                 _filter_by_lifespan()
                 _filter_by_keypoints()
@@ -608,7 +605,6 @@ class Tracker:
                             trk.last_detection_frame,
                         ]
 
-
                     for f in frames:
                         x, y, w, h = trk.detections[f][:4]
                         cap.set(cv2.CAP_PROP_POS_FRAMES, f)
@@ -627,7 +623,7 @@ class Tracker:
             def _print_info():
                 print(f'{len(self.all_trks.keys())} valid tracks retained')
                 print(str(sum(1 for trk in self.all_trks.values()
-                              if trk.identity is not None)) + ' valid tracks identified')
+                              if trk.face_detections)) + ' valid tracks identified')
                 print(f'{len(self.keypoint_filtered.keys())} low kp average tracks filtered')
                 print(f'{len(self.lifespan_filtered.keys())} low lifespan tracks filtered')
 
@@ -866,8 +862,6 @@ class Tracker:
                         cost_matrix[i][j] = cost
 
                     track_mappings[k].append(trk_id)
-
-                print(f"Cost matrix for track set {k}: {np.array(cost_matrix)})")
         
                 matrices.append(np.array(cost_matrix))
             
