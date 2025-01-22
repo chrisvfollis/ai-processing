@@ -871,9 +871,7 @@ class Tracker:
 
                     track_mappings[k].append(trk_id)
 
-                print(f"Cost matrix for track set {k}:")
-                print(np.array(cost_matrix))
-
+                print(f"Cost matrix for track set {k}: {np.array(cost_matrix)})")
         
                 matrices.append(np.array(cost_matrix))
             
