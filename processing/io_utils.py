@@ -242,7 +242,7 @@ def save_track_info(time_prefix, camera, all_trks,
     for id, trk in all_trks.items():
         track_id = id
         identity = trk.identity if trk.identity is not None else str(uuid.uuid4())
-        id_cost = trk.id_cost if trk.id_cost is not None else ""
+        id_cost = ''
         start_img = trk.start_img if trk.start_img is not None else ""
         end_img = trk.end_img if trk.end_img is not None else ""
         start_frame = trk.first_detection_frame
