@@ -801,8 +801,6 @@ class Tracker:
             groups, group_permutations, meta_sets
         )
         
-        print(group_permutations)
-
         all_orders = []
 
         for group in group_permutations:
@@ -857,6 +855,10 @@ class Tracker:
                 rows = len(tracks)
                 cols = len(identities)
 
+                print(f"Track set {k}: Tracks = {tracks}")
+                print(f"Track set {k}: Identities = {identities}")
+                print(f"Track set {k}: trk_id_costs = {trk_id_costs}")
+
                 cost_matrix = [[float('inf')] * cols for _ in range(rows)]
 
                 for i, trk_id in enumerate(tracks):
@@ -868,6 +870,10 @@ class Tracker:
                         cost_matrix[i][j] = cost
 
                     track_mappings[k].append(trk_id)
+
+                print(f"Cost matrix for track set {k}:")
+                print(np.array(cost_matrix))
+
         
                 matrices.append(np.array(cost_matrix))
             
