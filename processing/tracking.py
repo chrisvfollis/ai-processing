@@ -898,7 +898,7 @@ class Tracker:
                 assigned = {}
                 cost = 0
                 ordered_matrices = [
-                    np.copy(trk_set_cost_matrices[i]) for i in permutation
+                    trk_set_cost_matrices[i].copy() for i in permutation
                 ]
 
                 print('Track mappings:')
@@ -924,7 +924,12 @@ class Tracker:
                     trk_idxs, id_idxs = linear_sum_assignment(matrix)
                     for i in range(len(trk_idxs)):
                         cost += matrix[trk_idxs[i], id_idxs[i]]
-                        print(i)
+                        print('Track mappings:')
+                        tracks
+                        print('Identity mappings:')
+                        identities
+                        print('Cost matrix:')
+                        print(matrix)
                         print('Track indexes:')
                         print(trk_idxs)
                         print('Tracks:')
