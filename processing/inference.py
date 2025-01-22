@@ -447,7 +447,7 @@ class InferencePipeline:
             face_dfs = DeepFace.find(
                 img_path=frame, db_path='../input_files/faces',
                 model_name='Facenet512', detector_backend='retinaface',
-                threshold = 0.7, enforce_detection=True, silent=True
+                threshold = 0.8, enforce_detection=True, silent=True
             )
         except ValueError:
             return None

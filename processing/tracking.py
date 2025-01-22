@@ -855,10 +855,6 @@ class Tracker:
                 rows = len(tracks)
                 cols = len(identities)
 
-                print(f"Track set {k}: Tracks = {tracks}")
-                print(f"Track set {k}: Identities = {identities}")
-                print(f"Track set {k}: trk_id_costs = {trk_id_costs}")
-
                 cost_matrix = [[float('inf')] * cols for _ in range(rows)]
 
                 for i, trk_id in enumerate(tracks):
@@ -879,12 +875,7 @@ class Tracker:
 
         trk_id_costs = {}
         for trk_id, trk in self.all_trks.items():
-            id_costs = trk.calc_id_match_costs()
-
-            if not id_costs:
-                continue
-
-            trk_id_costs[trk_id] = id_costs
+            trk_id_costs[trk_id] = trk.calc_id_match_costs()
         
         trk_ids = sorted(trk_id_costs.keys())
         groups, meta_sets, track_sets = self.group_tracks(trk_ids)
@@ -906,11 +897,6 @@ class Tracker:
                 ]
                 permutation_to_original = {k: i for k, i in enumerate(permutation)}
 
-                print('Track mappings:')
-                print(track_mappings)
-                print('Identity mappings:')
-                print(identity_mappings)
-
                 for k, matrix in enumerate(ordered_matrices):
                     original_index = permutation_to_original[k]
                     tracks = track_mappings[original_index]
@@ -930,13 +916,6 @@ class Tracker:
                     trk_idxs, id_idxs = linear_sum_assignment(matrix)
                     for i in range(len(trk_idxs)):
                         cost += matrix[trk_idxs[i], id_idxs[i]]
-                        print(f'p{p}, k{k} Track mappings: {tracks}')
-                        print(f'p{p}, k{k} Identity mappings: {identities}')
-                        print(f'p{p}, k{k} Cost matrix: {matrix}')
-                        print(f'p{p}, k{k} Track indexes: {trk_idxs}')
-                        print(f'p{p}, k{k} Tracks: {tracks}')
-                        print(f'p{p}, k{k} Identity indexes: {id_idxs}')
-                        print(f'p{p}, k{k} Identities: {identities}')
 
                         assigned[tracks[trk_idxs[i]]] = identities[id_idxs[i]]
     
