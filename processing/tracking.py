@@ -852,7 +852,8 @@ class Tracker:
                 cols = len(identities)
 
                 cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-
+                print(f'Tracks in track set: {tracks}')
+                print(f'Track IDs in trk_id_costs: {list(trk_id_costs.keys())}')
                 for i, trk_id in enumerate(tracks):
                     for j, identity in enumerate(identities):
                         if identity not in trk_id_costs[trk_id]:
@@ -869,7 +870,12 @@ class Tracker:
 
         trk_id_costs = {}
         for trk_id, trk in self.all_trks.items():
-            trk_id_costs[trk_id] = trk.calc_id_match_costs()
+            id_costs = trk.calc_id_match_costs()
+
+            if not id_costs:
+                continue
+
+            trk_id_costs[trk_id] = id_costs
         
         trk_ids = sorted(trk_id_costs.keys())
         groups, meta_sets, track_sets = self.group_tracks(trk_ids)
@@ -883,7 +889,7 @@ class Tracker:
         for group in unique_cascades:
             min_cost = float('inf')
             optimal_assignments = None
-            for p, permutation in enumerate(group):
+            for permutation in group:
                 assigned = {}
                 cost = 0
                 ordered_matrices = [
