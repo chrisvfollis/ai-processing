@@ -552,7 +552,7 @@ class Tracker:
                     for id in self.lifespan_filtered.keys():
                         del self.all_trks[id]
             
-                def _filter_by_keypoints(expected_kps=3, expected_conf=.65):
+                def _filter_by_keypoints(expected_kps=3, expected_conf=.55):
                     expected_avg = (expected_kps * expected_conf) / 17
 
                     for id, trk in self.all_trks.items():
