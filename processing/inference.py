@@ -8,6 +8,7 @@ import h5py
 from deepface import DeepFace
 from models.yolov4_architecture import Yolov4Model
 import utilities
+import time
 
 import warnings
 warnings.filterwarnings(
@@ -28,6 +29,9 @@ class OSNet:
         )
         self.input_shape = input_shape
         self.output_shape = output_shape
+
+        self.extraction_time = 0
+        self.flush_time = 0
 
         checkpoint = torch.load(weights_path, map_location=device)
         state_dict = checkpoint['state_dict']
@@ -56,11 +60,16 @@ class OSNet:
         def _postprocess_output(output):
             return output.cpu().detach().numpy().flatten()
         
+        start_extract = time.perf_counter()
+
         img = _preprocess_img(img)
         with torch.no_grad():
             output = self.model(img)
 
         embedding = _postprocess_output(output)
+        
+        end_extract = time.perf_counter()
+        self.extraction_time += (end_extract - start_extract)
 
         return embedding
 
@@ -94,6 +103,8 @@ class OSNet:
         self.hdf5_file.create_dataset('box_indices', **idx_dataset_kwargs)
 
     def flush_buffers(self, close_file=False):
+        start_flush = time.perf_counter()
+
         io_utils.write_embeddings(
             self.hdf5_file, self.embedding_buffer, self.frame_buffer,
             self.box_index_buffer
@@ -104,6 +115,9 @@ class OSNet:
 
         if close_file == True:
             self.hdf5_file.close()
+        
+        end_flush = time.perf_counter()
+        self.flush_time += (end_flush - start_flush)
 
     def extraction_batch(self, img, detections, f_num):
         def _update_buffers(embedding, f_num, box_idx):
@@ -138,6 +152,8 @@ class YOLOv4:
         self.model.eval()
 
         self.nms_thresh = nms_thresh
+
+        self.detection_time = 0
         
     def detect(self, img, class_num, conf_thresh=0.70, resize_dims=(416, 416)):
         def _preprocess_img(img, resize_dims):
@@ -263,6 +279,8 @@ class YOLOv4:
 
             return [x1, y1, w, h]
 
+        start_detect = time.perf_counter()
+
         self.conf_thresh = conf_thresh
 
         img, original_dims = _preprocess_img(img, resize_dims)
@@ -282,6 +300,9 @@ class YOLOv4:
                 )
                 filtered.append([x, y, w, h, confidence])
 
+        end_detect = time.perf_counter()
+        self.detection_time += (end_detect - start_detect)
+
         return filtered
 
 
@@ -289,6 +310,8 @@ class MoveNet:
     def __init__(self, model_path):
         model = tf.saved_model.load(model_path)
         self.model = model.signatures['serving_default']
+
+        self.detection_time = 0
     
     def detect(self, img, conf_thresh=0.35, max_only=False):
         def _preprocess_img(img):
@@ -359,13 +382,20 @@ class MoveNet:
                     return valid_detections
                 else:
                     return np.zeros((6, 17, 3))
-    
+
+        start_detect = time.perf_counter()
+
         self.conf_thresh = conf_thresh
 
         img, mapping = _preprocess_img(img)
         raw_output = self.model(img)
 
-        return _postprocess_output(raw_output, mapping, max_only)
+        final_output = _postprocess_output(raw_output, mapping, max_only)
+
+        end_detect = time.perf_counter()
+        self.detection_time += (end_detect - start_detect)
+
+        return final_output
 
     def detection_batch(self, img, bboxes):
         all_keypoints = []
@@ -492,7 +522,7 @@ class InferencePipeline:
                 self.f_num += self.track_stride
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
         
-        def _save_and_cleanup():
+        def _wrap_up():
             io_utils.write_detection_csv(self.person_data, self.video_file)
             io_utils.write_keypoint_csv(self.keypoint_data, self.video_file)
             io_utils.write_face_csv(self.face_data, self.video_file)
@@ -523,6 +553,19 @@ class InferencePipeline:
             _process_frame(frame)
             _continue()
 
-        _save_and_cleanup()
+        _wrap_up()
 
         return True
+
+    def get_stats(self):
+
+        all_stats = {}
+
+        all_stats['time'] = {}
+        all_stats['time']['object_detection'] = self.yolov4.detection_time
+        all_stats['time']['pose_estimation'] = self.movenet.detection_time
+        all_stats['time']['feature_extraction'] = self.osnet.extraction_time
+        all_stats['time']['extraction_flushing'] = self.osnet.flush_time
+
+        return all_stats
+
