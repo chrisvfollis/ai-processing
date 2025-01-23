@@ -9,6 +9,7 @@ import numpy as np
 import utilities as utils
 import json
 from itertools import permutations
+import time
 
 
 class KalmanFilter:
@@ -191,6 +192,10 @@ class Tracker:
 
         self.unmatched = []
 
+        self.matching_time = 0
+        self.prediction_time = 0
+        self.id_assign_time = 0
+
     def load_prior_tracks(self, threshold=90):
         continuations = io_utils.load_track_continuations(self.video_file)
         if (not continuations) or (len(continuations) == 0):
@@ -259,6 +264,8 @@ class Tracker:
             self.unmatched = []
 
         def _predict_or_cache(threshold=90):
+            start_prediction = time.perf_counter()
+
             cached = []
             for id, trk in self.active_trks.items():
                 if (self.f_num - trk.last_detection_frame) < threshold:
@@ -269,6 +276,9 @@ class Tracker:
                     cached.append(id)
             for id in cached:
                 del self.active_trks[id]
+            
+            end_prediction = time.perf_counter()
+            self.prediction_time += (end_prediction - start_prediction)
 
         def _match_and_update(measurements):
             def _construct_cost_matrix(detections, embeddings, weights=[1, 0.1]):
@@ -436,6 +446,8 @@ class Tracker:
                                 print('No feasible assignments')
 
                 return assignments_dict
+            
+            start_match = time.perf_counter()
 
             trk_ids = sorted(self.active_trks.keys())
             detections, embeddings, keypoints = measurements
@@ -476,6 +488,9 @@ class Tracker:
             
             self.unmatched = [unmatched_detections, unmatched_embeddings,
                               unmatched_keypoints]
+            
+            end_match = time.perf_counter()
+            self.matching_time += (end_match - start_match)
 
         def _associate_faces(cutoff=0.9):
             def _overlap_costs(face_boxes, person_boxes):
@@ -871,6 +886,8 @@ class Tracker:
             
             return matrices, track_mappings, identity_mappings
 
+        start_assign = time.perf_counter()
+
         trk_id_costs = {}
         for trk_id, trk in self.all_trks.items():
             id_costs = trk.calc_id_match_costs()
@@ -930,9 +947,22 @@ class Tracker:
                 self.all_trks[trk_id].identity = identity
             
             all_optimal_assignments.update(optimal_assignments)
+        
+        end_assign = time.perf_counter()
+        self.id_assign_time = (end_assign - start_assign)
 
         return all_optimal_assignments
-        
+    
+    def get_stats(self):
+        all_stats = {}
+        all_stats['time'] = {}
+
+        all_stats['time']['id_assignment'] = self.id_assign_time
+        all_stats['time']['prediction'] = self.prediction_time
+        all_stats['time']['trk_matching'] = self.matching_time
+
+        return all_stats
+
 
 def tracking_pipeline(video_file):
 

@@ -445,7 +445,9 @@ class InferencePipeline:
         self.id_stride = stride * 15
         self.kp_stride = stride * 45
 
-    def detection_skim(self, stride=60):
+        self.identification_time = 0
+
+    def detection_skim(self, stride=30):
         print(f'skimming...')
 
         prev_frame = -1
@@ -473,6 +475,8 @@ class InferencePipeline:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
     
     def identify_faces(self, frame):
+        start_identification = time.perf_counter()
+
         try:
             face_dfs = DeepFace.find(
                 img_path=frame, db_path='../input_files/faces',
@@ -492,6 +496,9 @@ class InferencePipeline:
         
         if filtered_dfs:
             self.face_data[self.f_num] = filtered_dfs
+        
+        end_identification = time.perf_counter()
+        self.identification_time += (end_identification - start_identification)
 
     def run(self, checkpoint_frequency=1500):
         def _process_frame(frame):
@@ -566,6 +573,7 @@ class InferencePipeline:
         all_stats['time']['pose_estimation'] = self.movenet.detection_time
         all_stats['time']['feature_extraction'] = self.osnet.extraction_time
         all_stats['time']['extraction_flushing'] = self.osnet.flush_time
+        all_stats['time']['identification'] = self.identification_time
 
         return all_stats
 
