@@ -888,6 +888,54 @@ class TrackingPipeline:
             
             return matrices, track_mappings, identity_mappings
 
+        def _sync_prior_assignments(tracks, assigned, identities, matrix):
+            for trk_idx, track in enumerate(tracks):
+                if track in assigned:
+                    try:
+                        id_idx = identities.index(assigned[track])
+                        matrix[trk_idx, :] = float('inf')
+                        matrix[:, id_idx] = float('inf')
+                        matrix[trk_idx, id_idx] = 0
+                    except ValueError:
+                        print("Non-overlapping identity")
+                        continue
+            return matrix
+
+        def _filter_sparse_rows(cost_matrix):
+            matrix_coordinates = []
+            unique_cols = set()
+            keep = []
+            filtered_matrix = []
+
+            # For any row containing one finite entry, store the entry's matrix
+            # coordinates and add its column index to unique_cols:
+            for r in range(len(cost_matrix)):
+                row = cost_matrix[r]
+                if np.isfinite(row).sum() == 1:
+                    c = int(np.where(row != float('inf'))[0][0])
+                    matrix_coordinates.append((r, c))
+                    unique_cols.add(c)
+
+            # For each column index from the relevant entries identified above,
+            # add the row index of the minimum-value entry in that column:
+            for c in unique_cols:
+                rows_w_finite_vals = [rc[0] for rc in matrix_coordinates if rc[1] == c]
+                min_val_row = min(rows_w_finite_vals, key=lambda r: cost_matrix[r, c])
+        
+                keep.append(min_val_row)
+
+            all_rows = set(range(cost_matrix.shape[0]))
+            used_rows = set(rc[0] for rc in matrix_coordinates)
+
+            unused = list(all_rows - used_rows)
+            keep.extend(unused)
+            keep = sorted(keep)
+
+            for i in keep:
+                filtered_matrix.append(cost_matrix[i])
+
+            return np.array(filtered_matrix), keep
+
         start_assign = time.perf_counter()
 
         trk_id_costs = {}
@@ -924,25 +972,53 @@ class TrackingPipeline:
                     tracks = track_mappings[original_index]
                     identities = identity_mappings[original_index]
 
-                    for trk_idx, track in enumerate(tracks):
-                        if track in assigned:
-                            try:
-                                id_idx = identities.index(assigned[track])
-                                matrix[trk_idx, :] = float('inf')
-                                matrix[:, id_idx] = float('inf')
-                                matrix[trk_idx, id_idx] = 0
-                            except ValueError:
-                                print("Non-overlapping identity")
-                                continue
-                    try:
-                        trk_idxs, id_idxs = linear_sum_assignment(matrix)
-                    except ValueError as e:
-                        print(f'ValueError: {e}')
-                        print(matrix)
-                    for i in range(len(trk_idxs)):
-                        cost += matrix[trk_idxs[i], id_idxs[i]]
+                    matrix = _sync_prior_assignments(assigned, tracks,
+                                                     identities, matrix)
 
-                        assigned[tracks[trk_idxs[i]]] = identities[id_idxs[i]]
+                    viable_rows = ~np.isinf(matrix).all(axis=1)
+                    viable_cols = ~np.isinf(matrix).all(axis=0)
+
+                    if viable_rows.any() and viable_cols.any():
+                        try:
+                            filtered_matrix = matrix[np.ix_(viable_rows,
+                                                            viable_cols)]
+
+                            if filtered_matrix.size > 0:
+                                row_ind, col_ind = linear_sum_assignment(
+                                    filtered_matrix
+                                )
+
+                                orig_row_ind = np.where(viable_rows)[0]
+                                orig_col_ind = np.where(viable_cols)[0]
+
+                                for i, j in zip(row_ind, col_ind):
+                                    orig_row = orig_row_ind[i]
+                                    orig_col = orig_col_ind[j]
+                                    cost += matrix[orig_row, orig_col]
+                                    assigned[tracks[orig_row]] = (identities
+                                                                  [orig_col])
+
+                        except ValueError:
+                            filtered_matrix, keep = _filter_sparse_rows(
+                                filtered_matrix
+                            )
+                            keep_to_orig_row_map = (np.where(viable_rows)
+                                                    [0][keep])
+
+                            if filtered_matrix.size > 0:
+                                try:
+                                    row_ind, col_ind = linear_sum_assignment(
+                                        filtered_matrix
+                                    )
+                                    orig_row_ind = [keep[i] for i in row_ind]
+                                    for i, j in zip(row_ind, col_ind):
+                                        orig_row = keep_to_orig_row_map[i]
+                                        orig_col = np.where(viable_cols)[0][j]
+                                        cost += matrix[orig_row, orig_col]
+                                        assigned[tracks[orig_row]] = (identities
+                                                                      [orig_col])
+                                except ValueError:
+                                    print('No feasible assignments')
     
                 if cost < min_cost:
                     min_cost = cost
