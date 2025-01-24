@@ -9,6 +9,7 @@ from deepface import DeepFace
 from models.yolov4_architecture import Yolov4Model
 import utilities
 import time
+import pandas as pd
 
 import warnings
 warnings.filterwarnings(
@@ -537,18 +538,35 @@ class InferencePipeline:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
         
         def _wrap_up():
-            io_utils.write_detection_csv(self.person_data, self.video_file)
-            io_utils.write_keypoint_csv(self.keypoint_data, self.video_file)
-            io_utils.write_face_csv(self.face_data, self.video_file)
+            def _format_face_data(face_data):
+                merged_dfs = []
+                for frame, dfs in face_data.items():
+                    valid_dfs = [df for df in dfs if not df.empty]
+                    if valid_dfs:
+                        merged_df = pd.concat(valid_dfs, ignore_index=True)
+                        merged_df['f'] = frame
+                        merged_dfs.append(merged_df)
+
+                if not merged_dfs:
+                    return None
+
+                full_df = pd.concat(merged_dfs, ignore_index=True)
+
+                drop_columns = [
+                    'target_x', 'target_y', 'target_w', 'target_h', 'threshold'
+                ]
+                full_df = full_df.drop([col for col in drop_columns if col in full_df.columns], axis=1)
+
+                full_df = full_df.rename(columns={'source_x': 'x', 'source_y': 'y',
+                                                'source_w': 'w', 'source_h': 'h'})
+
+                return full_df
 
             if len(self.osnet.embedding_buffer) > 0:
                 self.osnet.flush_buffers(close_file=True)
-
             self.cap.release()
 
-        preliminary_detections = self.detection_skim()
-        if not preliminary_detections:
-            return False
+            self.face_data = _format_face_data(self.face_data)
         
         self.f_num = 0
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
@@ -565,8 +583,7 @@ class InferencePipeline:
             _continue()
 
         _wrap_up()
-
-        return True
+        return self.person_data, self.keypoint_data, self.face_data
 
     def get_stats(self):
 

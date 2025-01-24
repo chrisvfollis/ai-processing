@@ -49,110 +49,6 @@ def get_config():
     return config
 
 
-def write_detection_csv(detection_data, video_file):
-    base_path = '../intermediate_output/'
-    csv_file = f'{video_file.split(".")[0]}_detections.csv'
-    csv_path = os.path.join(base_path, csv_file)
-    
-    file = open(csv_path, 'w', newline='')
-    writer = csv.writer(file, delimiter=',')
-    writer.writerow(['f', 'x', 'y', 'w', 'h', 'c'])
-
-    for frame in sorted(detection_data.keys()):
-        for detection in detection_data[frame]:
-            writer.writerow([frame] + detection)
-
-    file.close()
-
-
-def read_detection_csv(csv_path):
-    frame_data = {}
-
-    file = open(csv_path, 'r')
-    csvreader = csv.reader(file, delimiter=',')
-    next(csvreader)
-
-    for row in csvreader:
-        f, x, y, w, h = map(int, row[0:5])
-        c = round(float(row[5]), 3)
-
-        if f not in frame_data:
-            frame_data[f] = []
-        frame_data[f].append([x, y, w, h, c])
-
-    file.close()
-    return frame_data
-
-
-def write_keypoint_csv(keypoint_data, video_file):
-    base_path = '../intermediate_output/'
-    csv_file = f'{video_file.split(".")[0]}_keypoints.csv'
-    csv_path = os.path.join(base_path, csv_file)
-
-    file = open(csv_path, 'w', newline='')
-    writer = csv.writer(file, delimiter=',')
-
-    standard_cols = ['x', 'y', 'c']
-
-    writer.writerow(['f'] + [f'{x}{i}' for i in range(17)
-                             for x in standard_cols])
-    
-    for frame in sorted(keypoint_data.keys()):
-        for detection in keypoint_data[frame]:
-            writer.writerow([frame] + [x for keypoint in detection
-                                       for x in keypoint])
-
-    file.close()
-
-
-def read_keypoint_csv(csv_path):
-    frame_data = {}
-
-    file = open(csv_path, 'r')
-    csvreader = csv.reader(file, delimiter=',')
-    next(csvreader)
-
-    for row in csvreader:
-        f = int(row[0])
-        row[1::3] = list(map(lambda x: int(float(x)), row[1::3]))
-        row[2::3] = list(map(lambda x: int(float(x)), row[2::3]))
-        row[3::3] = list(map(float, row[3::3]))
-
-        detection = np.array([row[i:i+3] for i in range(1,18,3)])
-        frame_data.setdefault(f, []).append(detection)
-
-    file.close()
-    return frame_data
-
-
-def write_face_csv(face_data, video_file):
-    base_path = '../intermediate_output/'
-    csv_file = f'{video_file.split(".")[0]}_faces.csv'
-    csv_path = os.path.join(base_path, csv_file)
-
-    merged_dfs = []
-    for frame, dfs in face_data.items():
-        valid_dfs = [df for df in dfs if not df.empty]
-        if valid_dfs:
-            merged_df = pd.concat(valid_dfs, ignore_index=True)
-            merged_df['f'] = frame
-            merged_dfs.append(merged_df)
-    
-    if not merged_dfs:
-        return None
-
-    full_df = pd.concat(merged_dfs, ignore_index=True)
-
-    drop_columns = [
-        'target_x', 'target_y', 'target_w', 'target_h', 'threshold'
-    ]
-    full_df = full_df.drop([col for col in drop_columns if col in
-                            full_df.columns], axis=1)
-    full_df = full_df.rename(columns={'source_x': 'x', 'source_y': 'y',
-                                      'source_w': 'w', 'source_h': 'h'})
-    full_df.to_csv(csv_path, index=False)
-
-
 def write_embeddings(hdf5_file, embeddings, frames, box_indices):
     frames = np.array(frames)
     box_indices = np.array(box_indices)
@@ -213,7 +109,7 @@ def write_trk_data(video_file, all_trks, span):
             trk_group.create_dataset('trk_span', data=trk_span)
 
 
-def save_track_info(time_prefix, camera, all_trks,
+def save_track_info(time_prefix, camera, all_trks, fps=30,
                     db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -246,9 +142,11 @@ def save_track_info(time_prefix, camera, all_trks,
         start_img = trk.start_img if trk.start_img is not None else ""
         end_img = trk.end_img if trk.end_img is not None else ""
         start_frame = trk.first_detection_frame
-        start_time = utilities.frame_timestamp(time_prefix, frame=start_frame)
+        start_time = utilities.frame_timestamp(time_prefix, frame=start_frame,
+                                               fps=fps)
         end_frame = trk.last_detection_frame
-        end_time = utilities.frame_timestamp(time_prefix, frame=end_frame)
+        end_time = utilities.frame_timestamp(time_prefix, frame=end_frame,
+                                             fps=fps)
 
         cursor.execute('''
             INSERT INTO track_info (
@@ -381,7 +279,8 @@ def get_shop(db_path):
     return results
 
 
-def save_track_continuations(video_file, last_frame, active_trks, db_path='../appdata/data.db'):
+def save_track_continuations(video_file, last_frame, active_trks, fps=30,
+                             db_path='../appdata/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
@@ -418,7 +317,8 @@ def save_track_continuations(video_file, last_frame, active_trks, db_path='../ap
     time_prefix, camera = utilities.parse_clip_filename(video_file)
 
     clip_start_time = utilities.frame_timestamp(time_prefix)
-    clip_end_time = utilities.frame_timestamp(time_prefix, frame=last_frame)
+    clip_end_time = utilities.frame_timestamp(time_prefix, frame=last_frame,
+                                              fps=fps)
 
     for id, data in active_trks.items():
         F = json.dumps(data.F.tolist())
@@ -438,7 +338,7 @@ def save_track_continuations(video_file, last_frame, active_trks, db_path='../ap
     conn.close()
 
 
-def load_track_continuations(video_file, db_path='../appdata/data.db'):
+def load_track_continuations(video_file, fps=30, db_path='../appdata/data.db'):
     time_prefix, camera = utilities.parse_clip_filename(video_file)
     timestamp = utilities.frame_timestamp(time_prefix)
     prev_end_cutoff = timestamp - timedelta(seconds=2.5)

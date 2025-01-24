@@ -162,13 +162,12 @@ class Track(KalmanFilter):
         return qualifying_frames
 
 
-class Tracker:
-    def __init__(self, video_file, detection_data, keypoint_data, face_data,
-                 embedding_path, min_lifespan=225):
+class TrackingPipeline:
+    def __init__(self, video_file, detection_data, keypoint_data, face_data):
         self.video_file = video_file
         self.f_num = 0
 
-        cap = cv2.VideoCapture('../input_files/' + video_file)
+        cap = cv2.VideoCapture(os.path.join('../input_files/', video_file))
         self.fps = int(cap.get(cv2.CAP_PROP_FPS))
         self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.resolution = [cap.get(cv2.CAP_PROP_FRAME_WIDTH),
@@ -183,14 +182,17 @@ class Tracker:
         self.keypoint_filtered = {}
     
         self.trk_id = 0
-        self.min_lifespan = min_lifespan
+        self.min_lifespan = self.fps * 15
 
         self.max_absence = self.fps * 3
 
         self.detection_data = detection_data
         self.keypoint_data = keypoint_data
         self.face_data = face_data
-        self.embedding_path = embedding_path
+        self.embedding_path = os.path.join(
+            "../intermediate_output/",
+            f"{os.path.splitext(video_file)[0]}_embeddings.hdf5"
+        )
 
         self.unmatched = []
 
@@ -964,26 +966,3 @@ class Tracker:
         all_stats['time']['trk_matching'] = self.matching_time
 
         return all_stats
-
-
-def tracking_pipeline(video_file):
-
-    video_path = f'../input_files/{video_file}'
-    data_path = f"../intermediate_output/{video_file.split('.')[0]}"
-
-    det_data = io_utils.read_detection_csv(data_path + '_detections.csv')
-    kp_data = io_utils.read_keypoint_csv(data_path + '_keypoints.csv')
-    embedding_path = data_path + '_embeddings.hdf5'
-
-    try:
-        face_data = pd.read_csv(data_path + '_faces.csv')
-    except FileNotFoundError:
-        face_data = None
-
-    tracker = Tracker(video_path, det_data, kp_data, face_data, embedding_path)
-    tracker.run()
-    tracker.assign_identities()
-
-    # io_utils.write_trk_data(video_file, tracker.all_trks, tracker.span)
-
-    return tracker.all_trks

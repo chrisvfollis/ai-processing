@@ -106,7 +106,7 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
             print(f"Error configuring TensorFlow GPU memory: {e}")
 
     from inference import InferencePipeline
-    from tracking import tracking_pipeline
+    from tracking import TrackingPipeline
 
     video_file = row[0]
     camera = video_file.split('.')[0].split('_')[-1]
@@ -119,18 +119,27 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
 
     inference_pipeline = InferencePipeline(video_file, model_paths, device,
                                            stride=stride)
-
-    print(f"Running inference pipeline for {video_file}...")
-    result = inference_pipeline.run()
-
-    if not result:
+    fps = inference_pipeline.fps
+    
+    preliminary_detections = inference_pipeline.detection_skim()
+    if not preliminary_detections:
         print(f"No detections in {video_file}")
         delete_from_s3(video_file, credentials)
-        return False
+        
+    print(f"Running inference pipeline for {video_file}...")
+    det_data, kp_data, face_data = inference_pipeline.run()
 
+    tracking_pipeline = TrackingPipeline(video_file, det_data, kp_data,
+                                         face_data)
+    
+    del inference_pipeline
+    
     print(f"Running tracking pipeline for {video_file}...")
-    all_trks = tracking_pipeline(video_file)
-    io_utils.save_track_info(time_prefix, camera, all_trks)
+    tracking_pipeline.run()
+    tracking_pipeline.assign_identities()
+
+    all_trks = tracking_pipeline.all_trks
+    io_utils.save_track_info(time_prefix, camera, all_trks, fps=fps)
 
     print(f"Processed {video_file} successfully")
     return True
