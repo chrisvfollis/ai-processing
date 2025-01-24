@@ -888,7 +888,7 @@ class TrackingPipeline:
             
             return matrices, track_mappings, identity_mappings
 
-        def _sync_prior_assignments(tracks, assigned, identities, matrix):
+        def _sync_prior_assignments(assigned, tracks, identities, matrix):
             for trk_idx, track in enumerate(tracks):
                 if track in assigned:
                     try:
