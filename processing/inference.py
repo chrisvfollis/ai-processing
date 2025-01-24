@@ -529,7 +529,8 @@ class InferencePipeline:
     
         def _continue():
             if self.f_num % self.checkpoint_stride == 0:
-                print(self.f_num)
+                progress = int(round((self.f_num / self.total_frames) * 100, 0))
+                print(f'{progress}%')
     
             if self.track_stride <= 15:
                 self.f_num += 1

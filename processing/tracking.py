@@ -874,8 +874,6 @@ class TrackingPipeline:
                 cols = len(identities)
 
                 cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-                print(f'Tracks in track set: {tracks}')
-                print(f'Track IDs in trk_id_costs: {list(trk_id_costs.keys())}')
                 for i, trk_id in enumerate(tracks):
                     for j, identity in enumerate(identities):
                         if identity not in trk_id_costs[trk_id]:
@@ -912,7 +910,7 @@ class TrackingPipeline:
         all_optimal_assignments = {}
         for group in unique_cascades:
             min_cost = float('inf')
-            optimal_assignments = None
+            optimal_assignments = {}
             for permutation in group:
                 assigned = {}
                 cost = 0
