@@ -424,8 +424,7 @@ class MoveNet:
 
 
 class InferencePipeline:
-    def __init__(self, video_file, model_paths, device, stride=1,
-                 buffer_limit=100):
+    def __init__(self, video_file, model_paths, device, buffer_limit=100):
     
         self.yolov4 = YOLOv4(model_paths[0], device, nms_thresh=0.5)
         self.osnet = OSNet(model_paths[1], device)
@@ -439,21 +438,29 @@ class InferencePipeline:
 
         self.video_file = video_file
         self.cap = cv2.VideoCapture('../input_files/' + video_file)
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
+        
         self.f_num = 0
 
-        self.track_stride = stride
-        self.id_stride = stride * 15
-        self.kp_stride = stride * 45
+        self.track_stride = self.fps // 10
+        self.id_stride = (self.fps // self.track_stride) * self.track_stride
+        self.kp_stride = self.id_stride * 3
+
+        self.checkpoint_stride = (
+            ((self.total_frames // 4) // self.track_stride) * self.track_stride
+        )
 
         self.identification_time = 0
 
-    def detection_skim(self, stride=30):
+    def detection_skim(self):
         print(f'skimming...')
 
-        prev_frame = -1
-        total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        stride = self.fps * 2
 
-        while self.f_num < total_frames:
+        prev_frame = -1
+
+        while self.f_num < self.total_frames:
             current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
             ret, frame = self.cap.read()
             if (
@@ -500,7 +507,7 @@ class InferencePipeline:
         end_identification = time.perf_counter()
         self.identification_time += (end_identification - start_identification)
 
-    def run(self, checkpoint_frequency=1500):
+    def run(self):
         def _process_frame(frame):
             if self.f_num % self.track_stride == 0:
                 bboxes = self.yolov4.detect(frame, 0, conf_thresh=0.65,
@@ -520,7 +527,7 @@ class InferencePipeline:
             return True
     
         def _continue():
-            if self.f_num % checkpoint_frequency == 0:
+            if self.f_num % self.checkpoint_stride == 0:
                 print(self.f_num)
     
             if self.track_stride <= 15:
@@ -543,14 +550,11 @@ class InferencePipeline:
         if not preliminary_detections:
             return False
         
-        self.checkpoint_frequency = checkpoint_frequency
-
         self.f_num = 0
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
         prev_frame = -1
-        total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        while self.f_num < total_frames:
+        while self.f_num < self.total_frames:
             current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
             ret, frame = self.cap.read()
             if (not ret) or (current_frame == prev_frame):

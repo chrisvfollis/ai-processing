@@ -185,6 +185,8 @@ class Tracker:
         self.trk_id = 0
         self.min_lifespan = min_lifespan
 
+        self.max_absence = self.fps * 3
+
         self.detection_data = detection_data
         self.keypoint_data = keypoint_data
         self.face_data = face_data
@@ -239,11 +241,13 @@ class Tracker:
                 detections, embeddings, keypoints = self.unmatched
             except ValueError:
                 return None
+            
+            variance_scaling_factor = (self.resolution[0] / 1920) ** 2
 
-            initial_uncertainty = [5, 5, 5, 5, 5, 5, 5, 5]
-            m_noise = [500, 500, 500, 500]
-            p_noise = [50, 50, 50, 50]
-            dt = 0.5
+            initial_uncertainty = [5 * variance_scaling_factor] * 8
+            m_noise = [500 * variance_scaling_factor] * 4
+            p_noise = [50 * variance_scaling_factor] * 4
+            dt = 1/self.fps
 
             for i, detection in enumerate(detections):
                 box = detection[:4]
@@ -263,12 +267,12 @@ class Tracker:
 
             self.unmatched = []
 
-        def _predict_or_cache(threshold=90):
+        def _predict_or_cache():
             start_prediction = time.perf_counter()
 
             cached = []
             for id, trk in self.active_trks.items():
-                if (self.f_num - trk.last_detection_frame) < threshold:
+                if (self.f_num - trk.last_detection_frame) <= self.max_absence:
                     trk.predict()
                     trk.add_state(trk.x, self.f_num)
                 else:

@@ -223,29 +223,36 @@ def format_cv2D_kf(measurement, m_noise, p_noise, initial_uncertainty,
 
     ARGUMENTS:
 
-    measurement — the bounding box of the object, formatted as a list with the
-                  values [center x, center y, width, height].
+    - measurement —
+    The bounding box of the object, formatted as a list with the values
+    [center x, center y, width, height].
 
-    m_noise — the values along the diagonal of the measurement noise covariance
-              matrix, R. Higher magnitudes = greater measurement noise, meaning
-              more weight is given to predictions relative to the incoming
-              measurements. The values of m_noise represent what you expect the
-              squared measurement error (in terms of pixels) to be on average.
+    - m_noise -
+    These values go along the diagonal of the measurement noise covariance
+    matrix, R. Higher magnitudes = greater measurement noise, meaning more
+    weight is given to predictions relative to the incoming measurements. The
+    values represent the expected variance (squared error in pixels) of
+    incoming measurements.
 
-    p_noise — these values are used to create the process noise covariance
-              matrix, Q. Higher magnitudes = greater process noise, meaning
-              incoming measurements are given more weight relative to
-              predictions. The result is that new measurements have a larger
-              impact on updating the trajectory of subsequent predictions.
+    - p_noise —
+    These values are used to create the process noise covariance matrix, Q.
+    Higher magnitudes = greater process noise, meaning incoming measurements
+    are given more weight relative to predictions. The result is that new
+    measurements have a larger impact on updating the trajectory of subsequent
+    predictions. The values represent the expected variance (squared error in
+    pixels) of predictions.
 
-    initial_uncertainty — the initial values of the estimate uncertainty
-                          matrix, P.
+    - initial_uncertainty —
+    These are the initial values of the estimate uncertainty matrix, P. Each
+    represents the expected variance (squared error in pixels) for the
+    corresponding element in the state vector.
 
-    xy_vel — the expected initial velocity of the object.
-
-    wh_vel — the expected initial velocity of the bounding box dimensions.
+    - xy_vel & wh_vel—
+    The expected initial velocities of the object and its dimensions,
+    respectively.
     
-    dt — the timestep.
+    - dt —
+    The timestep.
     
     ---------------------------------------
     '''
