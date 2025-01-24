@@ -77,7 +77,7 @@ def delete_from_s3(object_key, credentials, bucket_name='ivakt-footage'):
         return False
 
 
-def process_row(row, credentials, model_paths, device, stride, time_prefix):
+def process_row(row, credentials, model_paths, device, time_prefix):
     def _download_from_s3(object_key, credentials, bucket_name='ivakt-footage'):
         s3 = boto3.client(
             's3',
@@ -117,8 +117,7 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
         print(f"Failed to download {video_file}")
         return False
 
-    inference_pipeline = InferencePipeline(video_file, model_paths, device,
-                                           stride=stride)
+    inference_pipeline = InferencePipeline(video_file, model_paths, device)
     fps = inference_pipeline.fps
     
     preliminary_detections = inference_pipeline.detection_skim()
@@ -145,7 +144,7 @@ def process_row(row, credentials, model_paths, device, stride, time_prefix):
     return True
 
 
-def main(stride=1):
+def main():
     def _qb_time_info(queue_block):
         time_prefix = utilities.parse_clip_filename(queue_block[0][0],
                                                     data='time')
@@ -177,7 +176,7 @@ def main(stride=1):
             continue
 
         time_prefix, timestamp = _qb_time_info(queue_block)
-        tasks = [(row, credentials, model_paths, device, stride,
+        tasks = [(row, credentials, model_paths, device,
                   time_prefix) for row in queue_block]
         
         with multiprocessing.Pool(processes=3) as pool:
@@ -194,4 +193,4 @@ def main(stride=1):
 
 
 if __name__ == '__main__':
-    main(stride=1)
+    main()
