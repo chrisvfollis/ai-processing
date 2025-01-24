@@ -657,7 +657,7 @@ class TrackingPipeline:
                 
             _finalize_and_filter()
             _get_track_images(self.all_trks)
-            _print_info()
+            # _print_info()
     
 
         while self.f_num < self.total_frames:
@@ -936,8 +936,11 @@ class TrackingPipeline:
                             except ValueError:
                                 print("Non-overlapping identity")
                                 continue
-
-                    trk_idxs, id_idxs = linear_sum_assignment(matrix)
+                    try:
+                        trk_idxs, id_idxs = linear_sum_assignment(matrix)
+                    except ValueError as e:
+                        print(f'ValueError: {e}')
+                        print(matrix)
                     for i in range(len(trk_idxs)):
                         cost += matrix[trk_idxs[i], id_idxs[i]]
 
