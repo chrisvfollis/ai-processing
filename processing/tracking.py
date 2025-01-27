@@ -196,6 +196,12 @@ class TrackingPipeline:
 
         self.unmatched = []
 
+        self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
+        self.initial_uncertainty = [5 * self.variance_scaling_factor] * 8
+        self.m_noise = [500 * self.variance_scaling_factor] * 4
+        self.p_noise = [50 * self.variance_scaling_factor] * 4
+        self.dt = 1/self.fps
+
         self.matching_time = 0
         self.prediction_time = 0
         self.id_assign_time = 0
@@ -243,13 +249,6 @@ class TrackingPipeline:
                 detections, embeddings, keypoints = self.unmatched
             except ValueError:
                 return None
-            
-            variance_scaling_factor = (self.resolution[0] / 1920) ** 2
-
-            initial_uncertainty = [5 * variance_scaling_factor] * 8
-            m_noise = [500 * variance_scaling_factor] * 4
-            p_noise = [50 * variance_scaling_factor] * 4
-            dt = 1/self.fps
 
             for i, detection in enumerate(detections):
                 box = detection[:4]
@@ -257,7 +256,8 @@ class TrackingPipeline:
                 measurement = [c_x, c_y] + box[2:]
         
                 kf_args = utils.format_cv2D_kf(
-                    measurement, m_noise, p_noise, initial_uncertainty, dt=dt
+                    measurement, self.m_noise, self.p_noise,
+                    self.initial_uncertainty, dt=self.dt
                 )
 
                 new_track = Track(box, embeddings[i], self.f_num, *kf_args)
@@ -1043,3 +1043,14 @@ class TrackingPipeline:
         all_stats['time']['trk_matching'] = self.matching_time
 
         return all_stats
+
+    def get_parameters(self):
+        all_parameters = {}
+        all_parameters['KFilter'] = {}
+
+        all_parameters['KFilter']['initial_uncertainty'] = self.initial_uncertainty
+        all_parameters['KFilter']['measurement_noise'] = self.m_noise
+        all_parameters['KFilter']['process_noise'] = self.p_noise
+        all_parameters['KFilter']['time_step'] = self.dt
+
+        return all_parameters
