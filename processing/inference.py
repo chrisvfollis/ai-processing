@@ -153,8 +153,10 @@ class YOLOv4:
         self.model.eval()
 
         self.nms_thresh = nms_thresh
-
+        self.conf_thresh = 0.70
+        self.resize_dims = (416, 416)
         self.detection_time = 0
+        
         
     def detect(self, img, class_num, conf_thresh=0.70, resize_dims=(416, 416)):
         def _preprocess_img(img, resize_dims):
@@ -165,6 +167,7 @@ class YOLOv4:
         
             Examples of valid dimensions include 320, 416, 512, 608, etc
             '''
+            self.resize_dims = resize_dims
             original_dims = img.shape[:2][::-1]
             w, h = resize_dims
 
@@ -599,3 +602,12 @@ class InferencePipeline:
 
         return all_stats
 
+    def get_parameters(self):
+        all_parameters = {}
+
+        all_parameters['YOLOv4'] = {}
+        all_parameters['YOLOv4']['NMS_threshold'] = self.yolov4.nms_thresh
+        all_parameters['YOLOv4']['confidence_threshold'] = self.yolov4.conf_thresh
+        all_parameters['YOLOv4']['resize_dims'] = self.yolov4.resize_dims
+        
+        return all_parameters
