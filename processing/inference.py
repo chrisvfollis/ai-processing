@@ -444,6 +444,10 @@ class InferencePipeline:
         self.cap = cv2.VideoCapture('../input_files/' + video_file)
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
+        self.resolution = (
+            int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        )
         
         self.f_num = 0
 
@@ -473,6 +477,7 @@ class InferencePipeline:
                 (utilities.is_grayscale(frame, threshold=10))
             ):
                 return None
+
             prev_frame = current_frame
 
             if self.f_num % stride == 0:
@@ -588,26 +593,47 @@ class InferencePipeline:
 
         _wrap_up()
         return self.person_data, self.keypoint_data, self.face_data
+    
+    def collect_data(self, output_dir="../output_files"):
+        os.makedirs(output_dir, exist_ok=True)
+        config_data = {
+            "Module": ["YOLOv4", "YOLOv4", "OSNet", "OSNet", "MoveNet", "DeepFace", "Video"],
+            "Parameter": [
+                "NMS_threshold", "Confidence_threshold",
+                "Input_shape", "Output_shape",
+                "Confidence_threshold", "Model_backend",
+                "Resolution"
+            ],
+            "Value": [
+                self.yolov4.nms_thresh, self.yolov4.conf_thresh,
+                self.osnet.input_shape, self.osnet.output_shape,
+                self.movenet.conf_thresh, "Facenet512, RetinaFace",
+                f"{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps"
+            ]
+        }
+        config_df = pd.DataFrame(config_data)
+        config_csv_path = os.path.join(output_dir, 'inference_config.csv')
+        config_df.to_csv(config_csv_path, index=False)
 
-    def get_stats(self):
+        performance_data = {
+            "Metric": [
+                "Object_detection_time",
+                "Pose_estimation_time",
+                "Feature_extraction_time",
+                "Extraction_flush_time",
+                "Face_identification_time",
+            ],
+            "Value": [
+                self.yolov4.detection_time,
+                self.movenet.detection_time,
+                self.osnet.extraction_time,
+                self.osnet.flush_time,
+                self.identification_time,
+            ]
+        }
+        performance_df = pd.DataFrame(performance_data)
+        performance_csv_path = os.path.join(output_dir, 'inference_performance.csv')
+        performance_df.to_csv(performance_csv_path, index=False)
 
-        all_stats = {}
+        return config_df, performance_df
 
-        all_stats['time'] = {}
-        all_stats['time']['object_detection'] = self.yolov4.detection_time
-        all_stats['time']['pose_estimation'] = self.movenet.detection_time
-        all_stats['time']['feature_extraction'] = self.osnet.extraction_time
-        all_stats['time']['extraction_flushing'] = self.osnet.flush_time
-        all_stats['time']['identification'] = self.identification_time
-
-        return all_stats
-
-    def get_parameters(self):
-        all_parameters = {}
-
-        all_parameters['YOLOv4'] = {}
-        all_parameters['YOLOv4']['NMS_threshold'] = self.yolov4.nms_thresh
-        all_parameters['YOLOv4']['confidence_threshold'] = self.yolov4.conf_thresh
-        all_parameters['YOLOv4']['resize_dims'] = self.yolov4.resize_dims
-        
-        return all_parameters
