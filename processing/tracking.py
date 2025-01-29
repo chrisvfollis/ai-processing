@@ -1034,23 +1034,55 @@ class TrackingPipeline:
 
         return all_optimal_assignments
     
-    def get_stats(self):
-        all_stats = {}
-        all_stats['time'] = {}
+    def collect_data(self, output_dir="../output_data"):
+        os.makedirs(output_dir, exist_ok=True)
 
-        all_stats['time']['id_assignment'] = self.id_assign_time
-        all_stats['time']['prediction'] = self.prediction_time
-        all_stats['time']['trk_matching'] = self.matching_time
+        track_data = []
+        for trk_id, trk in self.all_trks.items():
+            for frame, detection in trk.detections.items():
+                detection_conf = detection[-1] if len(detection) == 5 else None
+                face_detections = trk.face_detections.get(frame, None)
+                cosine_distance = (
+                    face_detections['distance'].min() if face_detections is not None else None
+                )
+                keypoints = trk.keypoints.get(frame, None)
+                keypoint_conf = keypoints[:, 2].sum() if keypoints is not None else None
+                num_keypoints = keypoints.shape[0] if keypoints is not None else 0
 
-        return all_stats
+                track_data.append({
+                    "Track_ID": trk_id,
+                    "Frame": frame,
+                    "Detection_Confidence": detection_conf,
+                    "Cosine_Distance": cosine_distance,
+                    "Keypoint_Confidence": keypoint_conf,
+                    "Num_Keypoints": num_keypoints,
+                })
 
-    def get_parameters(self):
-        all_parameters = {}
-        all_parameters['KFilter'] = {}
+        tracks_df = pd.DataFrame(track_data)
+        tracks_csv_path = os.path.join(output_dir, "tracking_output.csv")
+        tracks_df.to_csv(tracks_csv_path, index=False)
 
-        all_parameters['KFilter']['initial_uncertainty'] = self.initial_uncertainty
-        all_parameters['KFilter']['measurement_noise'] = self.m_noise
-        all_parameters['KFilter']['process_noise'] = self.p_noise
-        all_parameters['KFilter']['time_step'] = self.dt
+        config_data = {
+            "Module": ["KalmanFilter", "KalmanFilter", "KalmanFilter", "KalmanFilter", "Video"],
+            "Parameter": [
+                "Initial_Uncertainty", "Measurement_Noise",
+                "Process_Noise", "Time_Step", "Resolution_FPS"
+            ],
+            "Value": [
+                self.initial_uncertainty, self.m_noise, self.p_noise, self.dt,
+                f"{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps"
+            ]
+        }
+        config_df = pd.DataFrame(config_data)
+        config_csv_path = os.path.join(output_dir, "tracking_config.csv")
+        config_df.to_csv(config_csv_path, index=False)
 
-        return all_parameters
+        performance_data = {
+            "Metric": ["ID_Assignment_Time", "Prediction_Time", "Track_Matching_Time"],
+            "Value": [self.id_assign_time, self.prediction_time, self.matching_time],
+        }
+        performance_df = pd.DataFrame(performance_data)
+        performance_csv_path = os.path.join(output_dir, "tracking_performance.csv")
+        performance_df.to_csv(performance_csv_path, index=False)
+
+        return tracks_df, config_df, performance_df
