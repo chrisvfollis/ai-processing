@@ -637,4 +637,3 @@ class InferencePipeline:
         performance_df.to_csv(performance_csv_path, index=False)
 
         return config_df, performance_df
-

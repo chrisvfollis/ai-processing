@@ -1,9 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import multiprocessing
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 import time
-import ffmpeg
 import sqlite3
 import os
 from dotenv import load_dotenv
@@ -273,12 +272,6 @@ def rtsp_capture(rtsp_url, duration, cam):
             preexec_fn=os.setpgrp
         )
         process.wait()
-        # (
-        #     ffmpeg
-        #     .input(rtsp_url, rtsp_transport='tcp', t=duration)
-        #     .output(output_path, vcodec='copy', format='mp4', an=None)
-        #     .run()
-        # )
     except Exception as e:
         print(f'Error: {e}')
         return None
@@ -286,7 +279,7 @@ def rtsp_capture(rtsp_url, duration, cam):
 
 
 def run_capture_cycle(stream_info, interval=1, min_seconds=3):
-    def _multi_capture(stream_info, duration):
+    def _multi_capture(stream_info, duration, upload_queue, futures):
         try:
             streams = [{'url': data['url'], 'duration': duration, 'cam': cam}
                        for cam, data in stream_info.items()]
@@ -302,7 +295,11 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
             pool.close()
             pool.join()
 
-            return [row for row in cap_info if row is not None]
+            cap_info = [row for row in cap_info if row is not None]
+
+            future = upload_queue.submit(upload_and_post, cap_info)
+            future.upload_data = cap_info
+            futures.append(future)
 
         except Exception as e:
             print(f'Error: {e}')
@@ -318,31 +315,24 @@ def run_capture_cycle(stream_info, interval=1, min_seconds=3):
         futures.append(future)
     save_upload_queue([])
 
-    duration = interval * 60
     while not shutdown_flag:
         now = datetime.now()
-        if now.minute % interval == 0:
-            cap_info = _multi_capture(stream_info, duration)
+        next_interval = (((now.minute // interval) + 1) * interval)
+
+        if next_interval >= 60:
+            record_until = now.replace(minute=0, second=0) + timedelta(hours=1)
         else:
-            next_interval = (((now.minute // interval) + 1) * interval)
-            if next_interval >= 60:
-                record_until = datetime(now.year, now.month, now.day,
-                                        now.hour + 1, 0, 0)
-            else:
-                record_until = datetime(now.year, now.month, now.day, 
-                                        now.hour, next_interval, 0)
-            now = datetime.now()
-            delta = (record_until - now).total_seconds() + 1
-            if delta > min_seconds:
-                cap_info = _multi_capture(stream_info, delta)
-        
-        if cap_info:
-            future = upload_queue.submit(upload_and_post, cap_info)
-            future.upload_data = cap_info
-            futures.append(future)
-        else:
-            print("No valid captures to upload")
-    
+            record_until = now.replace(minute=next_interval, second=0)
+
+        duration = (record_until - datetime.now()).total_seconds()
+        if duration > min_seconds:
+            m_cap = multiprocessing.Process(
+                target=_multi_capture, args=(stream_info, int(duration),
+                                             upload_queue, futures)
+            )
+            m_cap.start()
+            time.sleep(duration)
+            
     print('Capture cycle finished. Saving pending uploads...')
     pending_uploads = []
     for future in futures:
