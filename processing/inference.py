@@ -595,6 +595,7 @@ class InferencePipeline:
         return self.person_data, self.keypoint_data, self.face_data
     
     def collect_data(self, output_dir="../output_files"):
+        clip_identifier = self.video_file.split('.')[0]
         os.makedirs(output_dir, exist_ok=True)
         config_data = {
             "Module": ["YOLOv4", "YOLOv4", "OSNet", "OSNet", "MoveNet", "DeepFace", "Video"],
@@ -612,7 +613,7 @@ class InferencePipeline:
             ]
         }
         config_df = pd.DataFrame(config_data)
-        config_csv_path = os.path.join(output_dir, 'inference_config.csv')
+        config_csv_path = os.path.join(output_dir, f'inference_config_{clip_identifier}.csv')
         config_df.to_csv(config_csv_path, index=False)
 
         performance_data = {
@@ -632,7 +633,7 @@ class InferencePipeline:
             ]
         }
         performance_df = pd.DataFrame(performance_data)
-        performance_csv_path = os.path.join(output_dir, 'inference_performance.csv')
+        performance_csv_path = os.path.join(output_dir, f'inference_performance_{clip_identifier}.csv')
         performance_df.to_csv(performance_csv_path, index=False)
 
         return config_df, performance_df

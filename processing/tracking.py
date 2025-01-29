@@ -1035,6 +1035,7 @@ class TrackingPipeline:
         return all_optimal_assignments
     
     def collect_data(self, output_dir="../output_data"):
+        clip_identifier = self.video_file.split('.')[0]
         os.makedirs(output_dir, exist_ok=True)
 
         track_data = []
@@ -1059,7 +1060,7 @@ class TrackingPipeline:
                 })
 
         tracks_df = pd.DataFrame(track_data)
-        tracks_csv_path = os.path.join(output_dir, "tracking_output.csv")
+        tracks_csv_path = os.path.join(output_dir, f"tracking_output_{clip_identifier}.csv")
         tracks_df.to_csv(tracks_csv_path, index=False)
 
         config_data = {
@@ -1074,7 +1075,7 @@ class TrackingPipeline:
             ]
         }
         config_df = pd.DataFrame(config_data)
-        config_csv_path = os.path.join(output_dir, "tracking_config.csv")
+        config_csv_path = os.path.join(output_dir, f"tracking_config_{clip_identifier}.csv")
         config_df.to_csv(config_csv_path, index=False)
 
         performance_data = {
@@ -1082,7 +1083,7 @@ class TrackingPipeline:
             "Value": [self.id_assign_time, self.prediction_time, self.matching_time],
         }
         performance_df = pd.DataFrame(performance_data)
-        performance_csv_path = os.path.join(output_dir, "tracking_performance.csv")
+        performance_csv_path = os.path.join(output_dir, f"tracking_performance_{clip_identifier}.csv")
         performance_df.to_csv(performance_csv_path, index=False)
 
         return tracks_df, config_df, performance_df
