@@ -626,24 +626,10 @@ class TrackingPipeline:
                     trk.end_img = io_utils.save_event_image(images[1])
 
                 cap.release()
-
-            def _print_info():
-                print(f'{len(self.all_trks.keys())} valid tracks retained')
-                print(str(sum(1 for trk in self.all_trks.values()
-                              if trk.face_detections)) + ' valid tracks identified')
-                print(f'{len(self.keypoint_filtered.keys())} low kp average tracks filtered')
-                print(f'{len(self.lifespan_filtered.keys())} low lifespan tracks filtered')
-
-                _get_track_images(self.keypoint_filtered)
-                for id, trk in self.keypoint_filtered.items():
-                    print(f'TRACK {id} filtered: kp_avg = {trk.kp_avg:.2f}')
-                    print(f'lifespan: {trk.last_detection_frame - trk.first_detection_frame}')
-                    print(f'start img: {trk.start_img}')
-                    print(f'end img: {trk.start_img}')
-                
+            
+            self.save_pipeline_state()
             _finalize_and_filter()
             _get_track_images(self.all_trks)
-            # _print_info()
     
 
         while self.f_num < self.total_frames:
