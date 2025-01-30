@@ -7,9 +7,9 @@ import io_utils
 from datetime import datetime
 import numpy as np
 import utilities as utils
-import json
 from itertools import permutations
 import time
+import pickle
 
 
 class KalmanFilter:
@@ -182,8 +182,8 @@ class TrackingPipeline:
         self.keypoint_filtered = {}
     
         self.trk_id = 0
-        self.min_lifespan = self.fps * 15
 
+        self.min_lifespan = self.fps * 15
         self.max_absence = self.fps * 3
 
         self.detection_data = detection_data
@@ -206,42 +206,28 @@ class TrackingPipeline:
         self.prediction_time = 0
         self.id_assign_time = 0
 
-    def load_prior_tracks(self, threshold=90):
-        continuations = io_utils.load_track_continuations(self.video_file)
-        if (not continuations) or (len(continuations) == 0):
-            return None
+    def load_prior_tracks(self):
+        files = [f for f in os.listdir('../intermediate_output')
+                 if f.endswith(str(self.video_file.split('.')[0].split('_')[-1])
+                               + '.pkl')]
+        if not files:
+            return
         
-        prev_end_time = datetime.strptime(continuations[0][4], "%Y-%m-%d %H:%M:%S.%f")
-
-        time_prefix = utils.parse_clip_filename(self.video_file, data='time')
-        clip_start_time = utils.frame_timestamp(time_prefix)
-
-        interim = round((clip_start_time - prev_end_time)
-                        .total_seconds(), 0) * self.fps
-
-        for row in continuations:
-            last_detection_delta = row[11]
-            if (-1 * (last_detection_delta - interim)) >= threshold:
-                continue
-
-            trk_id = 'a' + str(row[1])
-    
-            F = np.array(json.loads(row[5]))
-            Q = np.array(json.loads(row[6]))
-            H = np.array(json.loads(row[7]))
-            R = np.array(json.loads(row[8]))
-            x = np.array(json.loads(row[9]))
-            P = np.array(json.loads(row[10]))
-            embedding = np.array(json.loads(row[11]))
-
-            detection = [None, None, None, None]
-            trk = Track(detection, embedding, (0 - interim), F, Q, H, R, x, P)
-            trk.last_detection_frame = last_detection_delta
-
-            self.active_trks[trk_id] = trk
+        file = sorted(files)[-1]
+        with open(file, 'rb') as f:
+            prior_pipeline = pickle.load(f)
         
-        if self.active_trks:
-            self.f_num = 0 - interim
+        last_frame = max(trk.last_detection_frame for trk in prior_pipeline)
+
+        # Change prior_pipeline.total_frames to the current value + the delta between
+        # the end of last clip and start of current. Then execute prior_pipeline.run()
+        # to persist its active tracks.
+
+        # Finally, reassign the tracks from prior_pipeline to TrackingPipeline, but
+        # with track ids starting from 0 again instead of the prior ones. Then set
+        # self.trk_id accordingly.
+
+        
 
     def run(self):
         def _create_new_tracks():
@@ -1087,3 +1073,16 @@ class TrackingPipeline:
         performance_df.to_csv(performance_csv_path, index=False)
 
         return tracks_df, config_df, performance_df
+
+    def save_pipeline_state(self):
+        os.makedirs('../intermediate_output')
+
+        file_prefix = self.video_file.split('.')[0]
+
+        save_path = os.path.join('../intermediate_output',
+                                 f'{file_prefix}.pkl')
+        with open(save_path, "wb") as f:
+            pickle.dump(self, f)
+        print('Tracking pipeline saved')
+
+        return
