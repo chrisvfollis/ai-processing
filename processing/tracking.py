@@ -163,7 +163,8 @@ class Track(KalmanFilter):
 
 
 class TrackingPipeline:
-    def __init__(self, video_file, detection_data, keypoint_data, face_data):
+    def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
+                 face_data):
         self.video_file = video_file
         self.f_num = 0
 
@@ -172,6 +173,10 @@ class TrackingPipeline:
         self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.resolution = [cap.get(cv2.CAP_PROP_FRAME_WIDTH),
                            cap.get(cv2.CAP_PROP_FRAME_HEIGHT)]
+        
+        self.start_time = utils.frame_timestamp(time_prefix)
+        self.end_time = utils.frame_timestamp(time_prefix, self.total_frames,
+                                              self.fps)
         cap.release()
 
         self.all_trks = {}
@@ -206,6 +211,8 @@ class TrackingPipeline:
         self.prediction_time = 0
         self.id_assign_time = 0
 
+        self.load_prior_tracks()
+
     def load_prior_tracks(self):
         files = [f for f in os.listdir('../intermediate_output')
                  if f.endswith(str(self.video_file.split('.')[0].split('_')[-1])
@@ -217,11 +224,10 @@ class TrackingPipeline:
         with open(file, 'rb') as f:
             prior_pipeline = pickle.load(f)
         
-        last_frame = max(trk.last_detection_frame for trk in prior_pipeline)
+        interim = (self.start_time - prior_pipeline.end_time).total_seconds()
 
-        # Change prior_pipeline.total_frames to the current value + the delta between
-        # the end of last clip and start of current. Then execute prior_pipeline.run()
-        # to persist its active tracks.
+        prior_pipeline.total_frames += int(round(interim * self.fps, 0))
+        prior_pipeline.run(is_continuation=True)
 
         # Finally, reassign the tracks from prior_pipeline to TrackingPipeline, but
         # with track ids starting from 0 again instead of the prior ones. Then set
@@ -229,7 +235,7 @@ class TrackingPipeline:
 
         
 
-    def run(self):
+    def run(self, is_continuation=False):
         def _create_new_tracks():
             try:
                 detections, embeddings, keypoints = self.unmatched
@@ -628,6 +634,7 @@ class TrackingPipeline:
                 cap.release()
             
             self.save_pipeline_state()
+
             _finalize_and_filter()
             _get_track_images(self.all_trks)
     
@@ -654,7 +661,8 @@ class TrackingPipeline:
 
             self.f_num += 1
 
-        _wrap_up()
+        if not is_continuation:
+            _wrap_up()
 
     def group_tracks(self, trk_ids: list = 'all'):
         def _construct_track_graph(trk_ids):

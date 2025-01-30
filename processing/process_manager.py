@@ -128,8 +128,8 @@ def process_row(row, credentials, model_paths, device, time_prefix):
     print(f"Running inference pipeline for {video_file}...")
     det_data, kp_data, face_data = inference_pipeline.run()
 
-    tracking_pipeline = TrackingPipeline(video_file, det_data, kp_data,
-                                         face_data)
+    tracking_pipeline = TrackingPipeline(video_file, time_prefix, det_data,
+                                         kp_data, face_data)
     
     del inference_pipeline
     
