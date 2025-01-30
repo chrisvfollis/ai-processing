@@ -225,15 +225,38 @@ class TrackingPipeline:
             prior_pipeline = pickle.load(f)
         
         interim = (self.start_time - prior_pipeline.end_time).total_seconds()
+        interim_frames = int(round(interim * self.fps, 0))
+        prior_pipeline.total_frames += interim_frames
 
-        prior_pipeline.total_frames += int(round(interim * self.fps, 0))
+        prior_pipeline.trk_cache = {}
+        reset_ids = {}
+        for trk in prior_pipeline.active_trks.values():
+            reset_ids[self.trk_id] = trk
+            self.trk_id += 1
+        prior_pipeline.active_trks = reset_ids
+
         prior_pipeline.run(is_continuation=True)
 
-        # Finally, reassign the tracks from prior_pipeline to TrackingPipeline, but
-        # with track ids starting from 0 again instead of the prior ones. Then set
-        # self.trk_id accordingly.
-
+        reset_active = {}
+        for trk_id, trk in prior_pipeline.active_trks.items():
+            trk.first_detection_frame = -1 * (prior_pipeline.total_frames -
+                                              trk.first_detection_frame)
+            trk.last_detection_frame = -1 * (prior_pipeline.total_frames -
+                                             trk.last_detection_frame)
+            
+            reset_active[trk_id] = trk
         
+        reset_cached = {}
+        for trk_id, trk in prior_pipeline.trk_cache.items():
+            trk.first_detection_frame = -1 * (prior_pipeline.total_frames -
+                                              trk.first_detection_frame)
+            trk.last_detection_frame = -1 * (prior_pipeline.total_frames -
+                                             trk.last_detection_frame)
+            
+            reset_cached[trk_id] = trk
+
+        self.active_trks = reset_active
+        self.trk_cache = reset_cached
 
     def run(self, is_continuation=False):
         def _create_new_tracks():
@@ -587,9 +610,8 @@ class TrackingPipeline:
                     for id in self.keypoint_filtered.keys():
                         del self.all_trks[id]
                 
-                self.all_trks = {**self.active_trks, **self.trk_cache}
+                self.all_trks = self.trk_cache
                 del self.active_trks
-                del self.trk_cache
                 
                 _filter_by_lifespan()
                 _filter_by_keypoints()
