@@ -10,6 +10,7 @@ import utilities as utils
 from itertools import permutations
 import time
 import pickle
+import subprocess
 
 
 class KalmanFilter:
@@ -1037,7 +1038,8 @@ class TrackingPipeline:
         return all_optimal_assignments
     
     def collect_data(self, output_dir="../output_data"):
-        clip_identifier = self.video_file.split('.')[0]
+        git_commit_hash = utils.get_git_commit_hash()
+        clip_identifier = self.video_file.split('.')[0] + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
         track_data = []
@@ -1066,14 +1068,17 @@ class TrackingPipeline:
         tracks_df.to_csv(tracks_csv_path, index=False)
 
         config_data = {
-            "Module": ["KalmanFilter", "KalmanFilter", "KalmanFilter", "KalmanFilter", "Video"],
+            "Module": ["KalmanFilter", "KalmanFilter", "KalmanFilter",
+                       "KalmanFilter", "Video", "Version"],
             "Parameter": [
                 "Initial_Uncertainty", "Measurement_Noise",
-                "Process_Noise", "Time_Step", "Resolution_FPS"
+                "Process_Noise", "Time_Step", "Resolution_FPS",
+                "Git_Commit_Hash"
             ],
             "Value": [
                 self.initial_uncertainty, self.m_noise, self.p_noise, self.dt,
-                f"{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps"
+                f"{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps",
+                git_commit_hash
             ]
         }
         config_df = pd.DataFrame(config_data)

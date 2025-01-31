@@ -7,7 +7,7 @@ import io_utils
 import h5py
 from deepface import DeepFace
 from models.yolov4_architecture import Yolov4Model
-import utilities
+import utilities as utils
 import time
 import pandas as pd
 
@@ -474,7 +474,7 @@ class InferencePipeline:
             if (
                 (not ret) or
                 (current_frame == prev_frame) or
-                (utilities.is_grayscale(frame, threshold=10))
+                (utils.is_grayscale(frame, threshold=10))
             ):
                 return None
 
@@ -595,21 +595,25 @@ class InferencePipeline:
         return self.person_data, self.keypoint_data, self.face_data
     
     def collect_data(self, output_dir="../output_files"):
-        clip_identifier = self.video_file.split('.')[0]
+        git_commit_hash = utils.get_git_commit_hash()
+        clip_identifier = self.video_file.split('.')[0] + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
+
         config_data = {
-            "Module": ["YOLOv4", "YOLOv4", "OSNet", "OSNet", "MoveNet", "DeepFace", "Video"],
+            "Module": ["YOLOv4", "YOLOv4", "OSNet", "OSNet", "MoveNet",
+                       "DeepFace", "Video", "Version"],
             "Parameter": [
                 "NMS_threshold", "Confidence_threshold",
                 "Input_shape", "Output_shape",
                 "Confidence_threshold", "Model_backend",
-                "Resolution"
+                "Resolution", "Git_Commit_Hash"
             ],
             "Value": [
                 self.yolov4.nms_thresh, self.yolov4.conf_thresh,
                 self.osnet.input_shape, self.osnet.output_shape,
                 self.movenet.conf_thresh, "Facenet512, RetinaFace",
-                f"{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps"
+                f"{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps",
+                git_commit_hash
             ]
         }
         config_df = pd.DataFrame(config_data)

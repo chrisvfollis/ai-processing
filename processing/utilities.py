@@ -1,4 +1,3 @@
-import csv
 from shapely.geometry import Polygon, box
 from datetime import datetime, timedelta
 import torch
@@ -6,6 +5,27 @@ import torch.nn.functional as F
 import math
 import numpy as np
 import cv2
+import subprocess
+import os
+
+
+def get_git_commit_hash(cfg_dir_path='../config'):
+    """
+    Retrieve the Git commit hash for the version of the codebase that is
+    currently running.
+    """
+
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short",
+                                        "HEAD"]).decode("utf-8").strip()
+    except subprocess.CalledProcessError:
+        vfile_path = os.path.join(cfg_dir_path, 'version.txt')
+        try:
+            with open(vfile_path, 'r') as vfile:
+                return vfile.read().strip()
+        except Exception:
+            return "unknown"    
+        return "unknown"
 
 
 def centroid(coordinates, reverse=False):
