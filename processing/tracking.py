@@ -10,7 +10,7 @@ import utilities as utils
 from itertools import permutations
 import time
 import pickle
-import subprocess
+import math
 
 
 class KalmanFilter:
@@ -400,9 +400,14 @@ class TrackingPipeline:
                     cols = len(embeddings)
                     cost_matrix = [[float('inf')] * cols for _ in range(rows)]
 
+                    m_i = 0
                     for i, id in enumerate(trk_ids):
                         for j, emb in enumerate(embeddings):
-                            cost = _lowest_single_distance(self.active_trks[id], emb)
+                            if cost_methods[m_i] == 0:
+                                cost = _weighted_moving_avg(self.active_trks[id], emb)
+                            elif cost_methods[m_i] == 1:
+                                cost = _lowest_single_distance(self.active_trks[id], emb)
+
                             cost_matrix[i][j] = cost
 
                     return np.array(cost_matrix)
@@ -410,11 +415,29 @@ class TrackingPipeline:
                 cost_methods = []
                 trk_ids = sorted(self.active_trks.keys())
                 for trk_id in trk_ids:
+                    trk = self.active_trks[trk_id]
+                    t_d_area = math.prod(trk.detections[trk.span[1]][2:4])
                     for detection in detections:
-                        if self.f_num - self.active_trks[trk_id].span[1]:
+                        d_area = math.prod(detection[2:4])
+                        allowed_scale_ratio = 1.2 ** (
+                            (self.f_num - trk.span[1]) / (self.fps / 10)
+                            )
+
+                        if (self.f_num - trk.span[1]) > (self.fps * 1.5): # Use method 1 if last detection was more than 1.5 seconds ago
+                            cost_methods.append(1)
+                            continue
+                        elif ( # Use method 1 if large change in bounding box scale
+                            (max(t_d_area, d_area) / min(t_d_area, d_area))
+                            > allowed_scale_ratio
+                        ):
+                            cost_methods.append(1)
+                        # elif huge lighting difference use method 1
+                        else:
+                            cost_methods.append(0)
+
 
                 distances = _distance_costs(detections)
-                similarities = _similarity_costs(embeddings)
+                similarities = _similarity_costs(embeddings, cost_methods)
                 weighted_matrix = (
                     (distances * weights[0]) + (similarities * weights[1])
                 )
