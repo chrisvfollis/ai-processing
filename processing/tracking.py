@@ -52,8 +52,7 @@ class Track(KalmanFilter):
         self.keypoints = {}
         self.embeddings = [embedding]
 
-        self.first_detection_frame = args[0]
-        self.last_detection_frame = args[0]
+        self.span = [args[0], args[0]]
 
         self.coincident_trks = []
         self.identity = None
@@ -64,7 +63,7 @@ class Track(KalmanFilter):
 
     def add_detection(self, new_detection, frame_number):
         self.detections[frame_number] = new_detection
-        self.last_detection_frame = frame_number
+        self.span[1] = frame_number
     
     def add_keypoints(self, new_keypoints, frame_number):
         self.keypoints[frame_number] = new_keypoints
@@ -240,19 +239,15 @@ class TrackingPipeline:
 
         reset_active = {}
         for trk_id, trk in prior_pipeline.active_trks.items():
-            trk.first_detection_frame = -1 * (prior_pipeline.total_frames -
-                                              trk.first_detection_frame)
-            trk.last_detection_frame = -1 * (prior_pipeline.total_frames -
-                                             trk.last_detection_frame)
+            trk.span[0] = -1 * (prior_pipeline.total_frames - trk.span[0])
+            trk.span[1] = -1 * (prior_pipeline.total_frames - trk.span[1])
             
             reset_active[trk_id] = trk
         
         reset_cached = {}
         for trk_id, trk in prior_pipeline.trk_cache.items():
-            trk.first_detection_frame = -1 * (prior_pipeline.total_frames -
-                                              trk.first_detection_frame)
-            trk.last_detection_frame = -1 * (prior_pipeline.total_frames -
-                                             trk.last_detection_frame)
+            trk.span[0] = -1 * (prior_pipeline.total_frames - trk.span[0])
+            trk.span[1] = -1 * (prior_pipeline.total_frames - trk.span[1])
             
             reset_cached[trk_id] = trk
 
@@ -290,7 +285,7 @@ class TrackingPipeline:
 
             cached = []
             for id, trk in self.active_trks.items():
-                if (self.f_num - trk.last_detection_frame) <= self.max_absence:
+                if (self.f_num - trk.span[1]) <= self.max_absence:
                     trk.predict()
                     trk.add_state(trk.x, self.f_num)
                 else:
@@ -342,7 +337,7 @@ class TrackingPipeline:
 
                     return np.array(cost_matrix)
 
-                def _similarity_costs(embeddings):
+                def _similarity_costs(embeddings, cost_methods):
                     def _weighted_moving_avg(trk, embedding, decay_factor=0.9):
                         '''
                         Computes the matching cost based on a weighted average,
@@ -411,6 +406,12 @@ class TrackingPipeline:
                             cost_matrix[i][j] = cost
 
                     return np.array(cost_matrix)
+                
+                cost_methods = []
+                trk_ids = sorted(self.active_trks.keys())
+                for trk_id in trk_ids:
+                    for detection in detections:
+                        if self.f_num - self.active_trks[trk_id].span[1]:
 
                 distances = _distance_costs(detections)
                 similarities = _similarity_costs(embeddings)
@@ -623,9 +624,7 @@ class TrackingPipeline:
             def _finalize_and_filter():
                 def _filter_by_lifespan():                
                     for id, trk in self.all_trks.items():
-                        start = trk.first_detection_frame
-                        end = trk.last_detection_frame
-                        lifespan = end - start
+                        lifespan = trk.span[1] - trk.span[0]
 
                         if (
                             (lifespan < self.min_lifespan) and
@@ -683,10 +682,7 @@ class TrackingPipeline:
                     if clear_frames:
                         frames = [clear_frames[0], clear_frames[-1]]
                     else:
-                        frames = [
-                            trk.first_detection_frame,
-                            trk.last_detection_frame,
-                        ]
+                        frames = trk.span
 
                     for f in frames:
                         x, y, w, h = trk.detections[f][:4]
@@ -740,16 +736,10 @@ class TrackingPipeline:
 
             for i in range(len(trk_ids)):
                 trk = self.all_trks[trk_ids[i]]
-                span = [trk.first_detection_frame, trk.last_detection_frame]
-
                 for j in range(i + 1, len(trk_ids)):
                     trk2 = self.all_trks[trk_ids[j]]
-                    span2 = [
-                        trk2.first_detection_frame,
-                        trk2.last_detection_frame
-                    ]
 
-                    if utils.is_coincident(span, span2):
+                    if utils.is_coincident(trk.span, trk2.span):
                         track_graph[i][j] = 1
                         track_graph[j][i] = 1
 

@@ -105,7 +105,7 @@ def write_trk_data(video_file, all_trks, span):
             detections_group.create_dataset('frames', data=det_frames)
             detections_group.create_dataset('boxes', data=det_boxes)
 
-            trk_span = [trk.first_detection_frame, trk.last_detection_frame]
+            trk_span = [trk.span[0], trk.span[1]]
             trk_group.create_dataset('trk_span', data=trk_span)
 
 
@@ -141,10 +141,10 @@ def save_track_info(time_prefix, camera, all_trks, fps=30,
         id_cost = ''
         start_img = trk.start_img if trk.start_img is not None else ""
         end_img = trk.end_img if trk.end_img is not None else ""
-        start_frame = trk.first_detection_frame
+        start_frame = trk.span[0]
         start_time = utilities.frame_timestamp(time_prefix, frame=start_frame,
                                                fps=fps)
-        end_frame = trk.last_detection_frame
+        end_frame = trk.span[1]
         end_time = utilities.frame_timestamp(time_prefix, frame=end_frame,
                                              fps=fps)
 
