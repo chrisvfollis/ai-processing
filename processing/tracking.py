@@ -343,7 +343,53 @@ class TrackingPipeline:
                     return np.array(cost_matrix)
 
                 def _similarity_costs(embeddings):
-                    def _lowest_distance(trk, embedding):
+                    def _weighted_moving_avg(trk, embedding, decay_factor=0.9):
+                        '''
+                        Computes the matching cost based on a weighted average,
+                        where recent embeddings are given more weight/have a
+                        greater impact on the resulting cost value.
+
+                        
+                        Best suited for:
+                        - Ordinary association conditions with a small number
+                          of time steps between the current frame and most
+                          recent measurement
+                        - Mild to moderate changes in lighting, bounding box
+                          dimensions, etc between detections.
+                        '''
+
+                        distances = []
+                        weights = [] 
+                        num_embeddings = len(trk.embeddings)
+                        if num_embeddings == 0:
+                            return 1
+
+                        for i, trk_embedding in enumerate(trk.embeddings):
+                            dst = utils.cos_distance(trk_embedding, embedding,
+                                                     normalize=True)
+                            
+                            weight = decay_factor ** (num_embeddings - i - 1)
+                            
+                            distances.append(dst * weight)
+                            weights.append(weight)
+                        
+                        return sum(distances) / sum(weights)
+
+                    def _lowest_single_distance(trk, embedding):
+                        '''
+                        Finds the single lowest cost between any embedding in
+                        the track's embedding cache and the embedding under
+                        consideration. 
+                                    
+                        Best suited for:
+                        - Inactive track reassociation.
+                        - Assessing a possible new measurement when a large
+                          number of time steps have elapsed since the one
+                          prior.
+                        - Extreme changes in lighting, bounding box
+                          dimensions, etc between detections.
+                        '''
+        
                         lowest = 1
                         for trk_embedding in trk.embeddings:
                             dst = utils.cos_distance(trk_embedding, embedding,
@@ -351,6 +397,7 @@ class TrackingPipeline:
                             if dst < lowest:
                                 lowest = dst
                         return lowest
+
 
                     trk_ids = sorted(self.active_trks.keys())
 
@@ -360,7 +407,7 @@ class TrackingPipeline:
 
                     for i, id in enumerate(trk_ids):
                         for j, emb in enumerate(embeddings):
-                            cost = _lowest_distance(self.active_trks[id], emb)
+                            cost = _lowest_single_distance(self.active_trks[id], emb)
                             cost_matrix[i][j] = cost
 
                     return np.array(cost_matrix)
