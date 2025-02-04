@@ -10,10 +10,12 @@
 
 scratch.py
 
+.env
+.pem
+
 .DS_Store
 .idea/
 .vscode/
-.env
 
 **/__pycache__/
 **/__pypackages__/

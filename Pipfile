@@ -4,7 +4,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pyinstaller = "*"
 requests = "*"
 pillow = "*"
 opencv-python = "*"
