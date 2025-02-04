@@ -17,7 +17,7 @@ def validate_filepath(file_name, dir_path):
     return file_path
 
 
-def read_aws_config(file_name, dir_path='configs'):
+def read_aws_config(file_name, dir_path='resources/configs'):
     file_path = validate_filepath(file_name, dir_path)
     
     config_dict = {}
@@ -29,7 +29,7 @@ def read_aws_config(file_name, dir_path='configs'):
     return config_dict
 
 
-def read_listfile(file_name, dir_path='lists'):
+def read_listfile(file_name, dir_path='resources/lists'):
     file_path = validate_filepath(file_name, dir_path)
     items = []
 

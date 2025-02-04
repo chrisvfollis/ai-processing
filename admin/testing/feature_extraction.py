@@ -1,8 +1,7 @@
 import os
 import torch
 import cv2
-import io_utils
-from inference import load_extractor, load_yolov4, detect_yolov4
+from ...processing import inference, io_utils
 import cv2
 import torch.nn.functional as F
 from torchvision import transforms
@@ -31,7 +30,7 @@ def generate_detections(video_file, detector, stride=60, start=0):
             break
 
         if (f_num - start) % stride == 0:
-            detections = detect_yolov4(frame, 0, detector, device)
+            detections = inference.detect_yolov4(frame, 0, detector, device)
             
             for i, box in enumerate(detections):
                 x1, y1 = box[0], box[1]
@@ -51,7 +50,7 @@ def generate_detections(video_file, detector, stride=60, start=0):
 
 def crop_boxes(stride):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    yolov4 = load_yolov4('YOLOv4.pth', device)
+    yolov4 = inference.load_yolov4('YOLOv4.pth', device)
 
     primary = io_utils.get_queue_block()
     if len(primary) == 0:
@@ -65,7 +64,7 @@ def crop_boxes(stride):
 
 def test_similarity(base_path='../test_data/cropped_boxes'):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    extractor = load_extractor('model.pth.tar-250', device)
+    extractor = inference.load_extractor('model.pth.tar-250', device)
 
     transform = transforms.Compose([transforms.Resize((256, 128)),
                                 ConvertImageDtype(torch.float32)])

@@ -5,7 +5,7 @@ from typing import Union
 from datetime import datetime, timezone
 
 
-def list_download(object_keys: Union[list, str], output_dir='downloads',
+def list_download(object_keys: Union[list, str], output_dir='resources/downloads',
                   config: Union[dict, str] = None, existing_setup: list = None):
     
     if existing_setup is None:

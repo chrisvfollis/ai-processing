@@ -1,3 +1,0 @@
-([('application',
-   '/Users/chrisfollis/Documents/LocalDocuments/Ivakt/edgeapp/dist/application',
-   'EXECUTABLE')],)

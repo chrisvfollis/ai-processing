@@ -1,27 +1,21 @@
+*.csv
 *.hdf5
 *.db
-
 *.pkl
 
 *.mp4
-
 *.png
 *.jpeg
 *.jpg
 
-*.csv
-
-*.txt
+scratch.py
 
 .DS_Store
 .idea/
 .vscode/
 .env
 
-scratch.py
-
-# Ignore __pycache__ directories
 **/__pycache__/
+**/__pypackages__/
 
-# Ignore specific files or directories
 capture/utilities/Scan
