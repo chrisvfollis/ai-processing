@@ -181,7 +181,7 @@ class YOLOv4:
         return filtered
 
 
-def run_function():
+def run_function(fx):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     video_path = 'input/2025-02-04_14-15-17_2.mp4'
@@ -189,7 +189,10 @@ def run_function():
 
     yolov4 = YOLOv4(weights_path, device)
 
-    whole_image(video_path, yolov4)
+    if fx == 'whole_image':
+        whole_image(video_path, yolov4)
+    elif fx == 'cropped_detections':
+        cropped_detections(video_path, yolov4)
 
 
 def whole_image(video, yolov4):
@@ -235,45 +238,29 @@ def whole_image(video, yolov4):
             except ValueError:
                 continue
 
-            filtered_dfs = []
             for df in df_results:
-                df = df.loc[df.groupby('identity')['distance'].idxmin()]
-                filtered_dfs.append(df)
+                if df.empty:
+                    continue
 
-            print(f'{len(filtered_dfs)} faces found')
+                row = df.loc[df['distance'].idxmin()]
+                
+                try:
+                    source_x = int(row['source_x'])
+                    source_y = int(row['source_y'])
+                    source_w = int(row['source_w'])
+                    source_h = int(row['source_h'])
+                except (ValueError, TypeError):
+                    print('Invalid coordinates')
+                    continue
 
-            for df in filtered_dfs:
-                row = df.iloc[0]
-                source_x = row['source_x']
-                source_y = row['source_y']
-                source_w = row['source_w']
-                source_h = row['source_h']
                 predicted_identity = row['identity']
-                cosine_distance = row['distance']
+                cosine_distance = round(row['distance'], 3)
 
                 if None in [source_x, source_y, source_w, source_h]:
                     print('No coordinates')
                     continue
 
-                face_center = ((source_x + source_x + source_w) / 2, (source_y + source_y + source_h) / 2)
-
-                min_distance = float('inf')
-                closest_person_box = None
-
-                for person_box in person_boxes:
-                    person_center = (person_box[0] + (person_box[2] / 2),
-                                     person_box[1] + (person_box[3] / 2))
-                    distance = np.linalg.norm(np.array(face_center) - np.array(person_center))
-
-                    if distance < min_distance:
-                        min_distance = distance
-                        closest_person_box = person_box
-
-                if closest_person_box is not None:
-                    x1, y1, w, h = map(int, closest_person_box[:4])
-                    x1, y1, x2, y2 = x1, y1, int(x1 + w), int(y1 + h)
-                else:
-                    x1, y1, x2, y2 = int(source_x), int(source_y), int(source_x + source_w), int(source_y + source_h)
+                x1, y1, x2, y2 = int(source_x), int(source_y), int(source_x + source_w), int(source_y + source_h)
 
                 cropped_image = frame[y1:y2, x1:x2]
 
@@ -281,9 +268,9 @@ def whole_image(video, yolov4):
                 cv2.imwrite(output_path, cropped_image)
 
                 face_data.append({
-                    'image_num': image_num,
-                    'predicted_identity': predicted_identity,
-                    'cosine_distance': cosine_distance
+                    'img_num': image_num,
+                    'identity': predicted_identity,
+                    'distance': cosine_distance
                 })
 
                 image_num += 1
@@ -350,48 +337,15 @@ def cropped_detections(video, yolov4):
                     id_total += (end - start)
                 except ValueError:
                     continue
+                
+                if df_results:
+                    merged_df = pd.concat(df_results, ignore_index=True)
+                    best_row = merged_df.loc[merged_df['distance'].idxmin()]
 
-            filtered_dfs = []
-            for df in df_results:
-                df = df.loc[df.groupby('identity')['distance'].idxmin()]
-                filtered_dfs.append(df)
-
-            print(f'{len(filtered_dfs)} faces found')
-
-            for df in filtered_dfs:
-                row = df.iloc[0]
-                source_x = row['source_x']
-                source_y = row['source_y']
-                source_w = row['source_w']
-                source_h = row['source_h']
-                predicted_identity = row['identity']
-                cosine_distance = row['distance']
-
-                if None in [source_x, source_y, source_w, source_h]:
-                    print('No coordinates')
-                    continue
-
-                face_center = ((source_x + source_x + source_w) / 2, (source_y + source_y + source_h) / 2)
-
-                min_distance = float('inf')
-                closest_person_box = None
-
-                for person_box in person_boxes:
-                    person_center = (person_box[0] + (person_box[2] / 2),
-                                     person_box[1] + (person_box[3] / 2))
-                    distance = np.linalg.norm(np.array(face_center) - np.array(person_center))
-
-                    if distance < min_distance:
-                        min_distance = distance
-                        closest_person_box = person_box
-
-                if closest_person_box is not None:
-                    x1, y1, w, h = map(int, closest_person_box[:4])
-                    x1, y1, x2, y2 = x1, y1, int(x1 + w), int(y1 + h)
+                    predicted_identity = best_row['identity']
+                    cosine_distance = best_row['distance']
                 else:
-                    x1, y1, x2, y2 = int(source_x), int(source_y), int(source_x + source_w), int(source_y + source_h)
-
-                cropped_image = frame[y1:y2, x1:x2]
+                    continue
 
                 output_path = os.path.join('output', 'faces', f'{image_num}.jpg')
                 cv2.imwrite(output_path, cropped_image)
@@ -407,7 +361,7 @@ def cropped_detections(video, yolov4):
     cap.release()
     cv2.destroyAllWindows()
 
-    print(f'Method: Feed whole image to DeepFace.find()\n')
+    print(f'Method: Feed cropped images to DeepFace.find()\n')
     print(f'Total detection time: {detect_total}')
     print(f'Total ID time: {id_total}\n')
     print(f'YOLOv4 input size: {yolov4.resize_dims}')
