@@ -5,15 +5,24 @@ import cv2
 import os
 import numpy as np
 import time
-import sys
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-from processing.inference import YOLOv4
+from ...processing.inference import YOLOv4
+
+
+def run_function():
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+    video_path = 'input/2025-02-04_14-15-17_2.mp4'
+    weights_path = '../../processing/models/YOLOv4.pth'
+
+    yolov4 = YOLOv4(weights_path, device)
+
+    whole_image(video_path, yolov4)
 
 
 def whole_image(video, yolov4):
+
     detect_total = 0
     id_total = 0
-
 
     cap = cv2.VideoCapture(video)
 
@@ -119,14 +128,3 @@ def whole_image(video, yolov4):
     face_df['correct_id'] = ''
     output_path = os.path.join('output', 'face_data.csv')
     face_df.to_csv(output_path, index=False)
-
-
-
-if __name__ == '__main__':
-    video_path = 'input/2025-02-04_14-15-17_2.mp4'
-    weights_path = '../../processing/models/YOLOv4.pth'
-
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    yolov4 = YOLOv4(weights_path, device)
-
-    whole_image(video_path, yolov4)
