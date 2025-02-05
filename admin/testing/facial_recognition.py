@@ -314,6 +314,7 @@ def cropped_detections(video, yolov4):
 
             person_boxes = [box[:4] for box in detections]
 
+            faces_detected = 0
             for box in person_boxes:
                 x1, y1, w, h = map(int, box[:4])
                 x2, y2 = (x1 + w), (y1 + h)
@@ -338,6 +339,7 @@ def cropped_detections(video, yolov4):
 
                     predicted_identity = best_row['identity']
                     cosine_distance = best_row['distance']
+                    faces_detected += 1
                 else:
                     continue
 
@@ -351,6 +353,7 @@ def cropped_detections(video, yolov4):
                 })
 
                 image_num += 1
+            print(f'Found {faces_detected} faces')
 
     ex_end = time.perf_counter()
 
