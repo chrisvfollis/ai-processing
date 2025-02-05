@@ -1,11 +1,13 @@
 import pandas as pd
-from ...processing.inference import YOLOv4
 from deepface import DeepFace
 import torch
 import cv2
 import os
 import numpy as np
 import time
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+from processing.inference import YOLOv4
 
 
 def whole_image(video, yolov4):
