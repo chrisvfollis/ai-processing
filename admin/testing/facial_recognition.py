@@ -181,10 +181,10 @@ class YOLOv4:
         return filtered
 
 
-def run_function(fx):
+def run_function(fx, video):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    video_path = 'input/2025-02-04_14-15-17_2.mp4'
+    video_path = os.path.join('input', video)
     weights_path = '../../processing/models/YOLOv4.pth'
 
     yolov4 = YOLOv4(weights_path, device)
@@ -207,6 +207,7 @@ def whole_image(video):
     image_num = 0
     face_data = []
 
+    ex_start = time.perf_counter()
     while f_num < total_frames:
         f_num += 1
         ret, frame = cap.read()
@@ -265,11 +266,14 @@ def whole_image(video):
                 })
 
                 image_num += 1
+    
+    ex_end = time.perf_counter()
 
     cap.release()
     cv2.destroyAllWindows()
 
-    print(f'Method: Feed whole image to DeepFace.find()\n')
+    print(f'\nMethod: Feed whole image to DeepFace.find()')
+    print(f'Main execution time: {ex_end - ex_start}\n')
     print(f'Total ID time: {id_total}\n')
 
     face_df = pd.DataFrame(face_data)
@@ -291,6 +295,7 @@ def cropped_detections(video, yolov4):
     image_num = 0
     face_data = []
 
+    ex_start = time.perf_counter()
     while f_num < total_frames:
         f_num += 1
         ret, frame = cap.read()
@@ -347,10 +352,13 @@ def cropped_detections(video, yolov4):
 
                 image_num += 1
 
+    ex_end = time.perf_counter()
+
     cap.release()
     cv2.destroyAllWindows()
 
-    print(f'Method: Feed cropped images to DeepFace.find()\n')
+    print(f'\nMethod: Feed cropped images to DeepFace.find()')
+    print(f'Main execution time: {ex_end - ex_start}\n')
     print(f'Total detection time: {detect_total}')
     print(f'Total ID time: {id_total}\n')
     print(f'YOLOv4 input size: {yolov4.resize_dims}')
