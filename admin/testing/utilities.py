@@ -5,7 +5,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 import os
 
 
-def add_imgs_to_csv():
+def add_imgs_to_spreadsheet(df):
     csv_path = 'output/face_data.csv'
     df = pd.read_csv(csv_path)
 
@@ -18,7 +18,7 @@ def add_imgs_to_csv():
             ws.cell(row=r_idx, column=c_idx, value=value)
 
     image_column = len(df.columns) + 1
-    ws.cell(row=1, column=image_column, value="Face Image")
+    ws.cell(row=1, column=image_column, value="image")
 
     for idx, row in df.iterrows():
         img_path = f'output/faces/{idx}.jpg' 
