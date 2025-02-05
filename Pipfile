@@ -3,6 +3,11 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
+[[source]]
+url = "https://download.pytorch.org/whl/cu121"
+verify_ssl = true
+name = "pytorch-cu121"
+
 [packages]
 requests = "*"
 pillow = "*"
@@ -16,7 +21,6 @@ pandas = "*"
 polars = "*"
 scipy = "*"
 shapely = "*"
-torch = "*"
 deepface = "*"
 boto3 = "*"
 python-dotenv = "*"
@@ -24,8 +28,9 @@ ffmpeg-python = "*"
 tqdm = "4.43.0"
 easydict = "1.9"
 pycocotools = "*"
+torch = {version = "*", index = "pytorch-cu121"}
+torchvision = {version = "*", index = "pytorch-cu121"}
 torchreid = "*"
-torchvision = "*"
 tensorflow = "==2.15.0"
 keras = "==2.15.0"
 speedtest-cli = "*"
