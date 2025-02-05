@@ -337,8 +337,20 @@ def cropped_detections(video, yolov4):
                     merged_df = pd.concat(df_results, ignore_index=True)
                     best_row = merged_df.loc[merged_df['distance'].idxmin()]
 
+                    try:
+                        source_x = int(best_row['source_x'])
+                        source_y = int(best_row['source_y'])
+                        source_w = int(best_row['source_w'])
+                        source_h = int(best_row['source_h'])
+                    except (ValueError, TypeError):
+                        print('Invalid coordinates')
+                        continue
+
+                    x1, y1, x2, y2 = int(source_x), int(source_y), int(source_x + source_w), int(source_y + source_h)
+                    cropped_image = cropped_image[y1:y2, x1:x2]
+
                     predicted_identity = best_row['identity']
-                    cosine_distance = best_row['distance']
+                    cosine_distance = round(best_row['distance'], 3)
                     faces_detected += 1
                 else:
                     continue
@@ -348,8 +360,8 @@ def cropped_detections(video, yolov4):
 
                 face_data.append({
                     'image_num': image_num,
-                    'predicted_identity': predicted_identity,
-                    'cosine_distance': cosine_distance
+                    'identity': predicted_identity,
+                    'distance': cosine_distance
                 })
 
                 image_num += 1
