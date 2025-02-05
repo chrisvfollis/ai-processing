@@ -94,6 +94,7 @@ def time_delete(
     results = {'deleted': [], 'failed': {}}
     
     try:
+        print('Collecting object keys...')
         paginator = s3_client.get_paginator('list_objects_v2')
         for page in paginator.paginate(Bucket=bucket):
             if 'Contents' not in page:
@@ -108,6 +109,7 @@ def time_delete(
                     ((end is None) or (last_modified < end))
                 ):
                     object_keys.append(obj_key)
+        print(f'Matching object keys: {object_keys}')
 
     except ClientError as e:
         print(f"Error listing objects: {e}")

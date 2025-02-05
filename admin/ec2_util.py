@@ -8,7 +8,7 @@ def scp_download(remote_dir, local_dir, remote_host, remote_user='ubuntu',
 
     codebase_dirs = ['input_files', 'output_files', 'output_files/event_imgs',
                      'intermediate_output', 'admin/testing/output',
-                     'admin/testing/output/detections']
+                     'admin/testing/output/faces']
     
     if remote_dir in codebase_dirs:
         remote_path = os.path.join(remote_path, remote_dir)
