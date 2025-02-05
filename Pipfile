@@ -34,6 +34,7 @@ torchreid = "*"
 tensorflow = "==2.15.0"
 keras = "==2.15.0"
 speedtest-cli = "*"
+openpyxl = "*"
 
 [dev-packages]
 

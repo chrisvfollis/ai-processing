@@ -68,3 +68,30 @@ def initial_s3_setup(config, obj_keys=None, output_dir=None):
             os.makedirs(output_dir, exist_ok=True)
         
         return s3_client, bucket, obj_keys
+
+
+def ec2_public_dns(config):
+    if isinstance(config, str):
+        config = read_aws_config(config)
+    
+    region = config['region']
+    instance_id = config['instance_id']
+    pem_path = config['pem_path']
+    remote_user = config['remote_user']
+
+    ec2 = boto3.client(
+        'ec2',
+        aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
+        aws_secret_access_key=os.environ.get('AWS_SECRET_KEY'),
+        region_name=region
+    )
+    
+    response = ec2.describe_instances(InstanceIds=[instance_id])
+    reservations = response['Reservations']
+    
+    if reservations:
+        instance = reservations[0]['Instances'][0]
+        public_dns = instance.get('PublicDnsName')
+        return pem_path, remote_user, public_dns
+    else:
+        return None

@@ -1,4 +1,6 @@
 *.csv
+*.xlsx
+*.xls
 *.hdf5
 *.db
 *.pkl
