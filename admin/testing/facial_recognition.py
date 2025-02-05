@@ -9,7 +9,7 @@ import time
 
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-from processing import inference
+from processing.inference import YOLOv4
 
 
 def run_function():
@@ -18,7 +18,7 @@ def run_function():
     video_path = 'input/2025-02-04_14-15-17_2.mp4'
     weights_path = '../../processing/models/YOLOv4.pth'
 
-    yolov4 = inference.YOLOv4(weights_path, device)
+    yolov4 = YOLOv4(weights_path, device)
 
     whole_image(video_path, yolov4)
 
