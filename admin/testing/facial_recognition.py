@@ -190,13 +190,12 @@ def run_function(fx):
     yolov4 = YOLOv4(weights_path, device)
 
     if fx == 'whole_image':
-        whole_image(video_path, yolov4)
+        whole_image(video_path)
     elif fx == 'cropped_detections':
         cropped_detections(video_path, yolov4)
 
 
-def whole_image(video, yolov4):
-    detect_total = 0
+def whole_image(video):
     id_total = 0
 
     cap = cv2.VideoCapture(video)
@@ -218,14 +217,6 @@ def whole_image(video, yolov4):
             print(f_num)
 
         if f_num % fps == 0:
-            start = time.perf_counter()
-            detections = yolov4.detect(frame, 0, conf_thresh=0.65,
-                                    resize_dims=(416, 416))
-            end = time.perf_counter()
-            detect_total += (end - start)
-
-            person_boxes = [box[:4] for box in detections]
-
             try:
                 start = time.perf_counter()
                 df_results = DeepFace.find(
@@ -238,10 +229,10 @@ def whole_image(video, yolov4):
             except ValueError:
                 continue
 
-            for df in df_results:
-                if df.empty:
-                    continue
+            df_results = [df for df in df_results if not df.empty]
+            print(f'Found {len(df_results)} faces')
 
+            for df in df_results:
                 row = df.loc[df['distance'].idxmin()]
                 
                 try:
@@ -279,9 +270,7 @@ def whole_image(video, yolov4):
     cv2.destroyAllWindows()
 
     print(f'Method: Feed whole image to DeepFace.find()\n')
-    print(f'Total detection time: {detect_total}')
     print(f'Total ID time: {id_total}\n')
-    print(f'YOLOv4 input size: {yolov4.resize_dims}')
 
     face_df = pd.DataFrame(face_data)
     face_df['correct_id'] = ''
