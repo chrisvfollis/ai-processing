@@ -6,9 +6,8 @@ def scp_download(remote_dir, local_dir, remote_host, remote_user='ubuntu',
                  remote_path='/home/ubuntu/timemanager/', pem='timemanager.pem'):
     local_path = os.path.dirname(os.getcwd())
 
-    codebase_dirs = ['input_files', 'output_files', 'output_files/event_imgs',
-                     'intermediate_output', 'admin/testing/output',
-                     'admin/testing/output/faces']
+    codebase_dirs = ['input_files/', 'output_files/',
+                     'intermediate_output', 'admin/testing/output/']
     
     if remote_dir in codebase_dirs:
         remote_path = os.path.join(remote_path, remote_dir)
@@ -23,12 +22,10 @@ def scp_download(remote_dir, local_dir, remote_host, remote_user='ubuntu',
     if remote_dir == local_dir:
         remote_path = os.path.join(remote_path, '*')
     
-    recursive_flag = '-r' if remote_path.endswith('/') else ''
-
     scp_command = [
         'scp',
         '-i', pem,
-        recursive_flag,
+        '-r',
         f"{remote_user}@{remote_host}:{remote_path}",
         local_path
     ]
