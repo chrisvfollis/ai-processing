@@ -14,7 +14,8 @@ from models.face_iq import FaceIq
 def run_function(fx, video):
     video_path = os.path.join('input', video)
 
-    face_iq = FaceIq('Facenet512', 'retinaface', face_db='../../files/input/faces')
+    face_iq = FaceIq('Facenet512', 'retinaface', face_ir='../../files/input/faces',
+                     db_path='../../files/data.db')
 
     if fx == 'whole_image':
         whole_image(video_path, face_iq)

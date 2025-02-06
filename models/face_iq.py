@@ -4,17 +4,19 @@ from utilities import io_utils
 
 
 class FaceIq:
-    def __init__(self, id_model, detect_model, face_db='../files/input/faces'):
+    def __init__(self, id_model, detect_model, face_dir='../files/input/faces',
+                 db_path='../files/data.db'):
         self.id_model = id_model
         self.detect_model = detect_model
-        self.face_db = face_db
+        self.face_dir = face_dir
+        self.db_path = db_path
 
         self.identification_time = 0
 
     def identify_faces(self, img, cutoff=0.8, regions=None):
         def _package_args(cutoff):
             config = {
-                'db_path': self.face_db, 'model_name': self.id_model,
+                'db_path': self.face_dir, 'model_name': self.id_model,
                 'detector_backend': self.detect_model, 'threshold': cutoff,
                 'enforce_detection': True, 'silent': True
             }
@@ -45,7 +47,9 @@ class FaceIq:
         filtered_face_dfs = []
         for df in all_face_dfs:
             df['identity'] = (
-                df['identity'].map(lambda x: io_utils.get_employee(x))
+                df['identity'].map(lambda x: io_utils.get_employee(
+                    x, db_path=self.db_path
+                ))
             )
             df = df.loc[df.groupby('identity')['distance'].idxmin()]
             filtered_face_dfs.append(df)
