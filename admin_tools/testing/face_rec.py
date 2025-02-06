@@ -133,11 +133,12 @@ def cropped_detections(video, yolov4, face_iq):
         if f_num % fps == 0:
             start = time.perf_counter()
             detections = yolov4.detect(frame, 0, conf_thresh=0.65,
-                                    resize_dims=(416, 416))
+                                       resize_dims=(416, 416))
             end = time.perf_counter()
             detect_total += (end - start)
 
             person_boxes = [box[:4] for box in detections]
+            print(f'Person boxes: {person_boxes}')
 
             faces_detected = 0
 
