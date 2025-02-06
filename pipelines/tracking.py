@@ -3,163 +3,14 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
 import os
-import io_utils
-from datetime import datetime
 import numpy as np
-import utilities as utils
 from itertools import permutations
 import time
 import pickle
 import math
 
-
-class KalmanFilter:
-    def __init__(self, frame, F, Q, H, R, x_init, P_init, B=None, u=None):
-        self.F = F  # State transition matrix
-        self.Q = Q  # Process noise covariance matrix
-        self.H = H  # Measurement translation matrix
-        self.R = R  # Measurement noise covariance matrix
-        self.x = x_init  # State vector
-        self.P = P_init  # Estimate uncertainty matrix
-        self.I = np.eye(F.shape[0])  # Identity matrix
-
-        self.states = {frame: x_init}
-
-    def predict(self):
-        self.x = self.F @ self.x
-        self.P = self.F @ self.P @ self.F.T + self.Q
-        self.x = utils.restrain_boxes(self.x)
-
-    def update(self, Z):
-        Y = Z - self.H @ self.x
-
-        S = self.H @ self.P @ self.H.T + self.R
-        K = self.P @ self.H.T @ np.linalg.inv(S)
-
-        self.x = self.x + K @ Y
-        self.P = (self.I - K @ self.H) @ self.P
-    
-    def add_state(self, new_state, frame_number):
-        self.states[frame_number] = new_state
-
-
-class Track(KalmanFilter):
-    def __init__(self, detection, embedding, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.face_detections = {}
-        self.detections = {args[0]: detection}
-        self.keypoints = {}
-        self.embeddings = [embedding]
-
-        self.span = [args[0], args[0]]
-
-        self.coincident_trks = []
-        self.identity = None
-
-    def add_embedding(self, embedding, window=-20):
-        self.embeddings.append(embedding)
-        self.embeddings = self.embeddings[window:]
-
-    def add_detection(self, new_detection, frame_number):
-        self.detections[frame_number] = new_detection
-        self.span[1] = frame_number
-    
-    def add_keypoints(self, new_keypoints, frame_number):
-        self.keypoints[frame_number] = new_keypoints
-
-    def add_face_detection(self, possible_matches, frame_number):
-        self.face_detections[frame_number] = possible_matches
-
-    def calc_id_match_costs(self):
-        costs = {}
-
-        all_dfs = list(self.face_detections.values())
-        if not all_dfs:
-            return {}
-
-        merged_df = pd.concat(all_dfs, ignore_index=True)
-        grouped = merged_df.groupby('identity')
-
-        for identity, group in grouped:
-            distances = group['distance']
-            frequency = len(group)
-            
-            avg_distance = sum(distances)/frequency
-    
-            frequency_adjustment = (
-                np.log10(1 + np.exp(frequency)) * (1.025**frequency)
-            )
-            
-            cost = avg_distance / frequency_adjustment
-            costs[identity] = cost
-        
-        return costs
-    
-    def find_best_id(self):
-        id_costs = self.calc_id_match_costs()
-
-        if not id_costs:
-            self.identity = None
-            self.id_cost = None
-            return self.identity
-
-        identities, costs = zip(*id_costs.items())
-        min_idx = costs.index(min(costs))
-
-        self.identity = identities[min_idx]
-        self.id_cost = costs[min_idx]
-        
-        return self.identity
-
-    def best_single_id_frame(self, target_id=None):
-        min_distance = float('inf')
-        identity = None
-        frame = None
-
-        if not target_id:
-            for f_num, df in self.face_detections.items():
-                if not df.empty:
-                    min_row = df.loc[df['distance'].idxmin()]
-
-                    if min_row['distance'] < min_distance:
-                        min_distance = min_row['distance']
-                        frame = f_num
-                        identity = min_row['identity']
-        else:
-            identity = target_id
-            for f_num, df in self.face_detections.items():
-                df = df.loc[df['identity'] == target_id]
-                if not df.empty:
-                    target_row = df.loc[df['distance'].idxmin()]
-
-                    if target_row['distance'] < min_distance:
-                        min_distance = target_row['distance']
-                        frame = f_num
-
-        return (identity, min_distance, frame)
-
-    def get_high_keypoint_frames(self, percentile=50):
-        if not self.keypoints:
-            return None
-
-        frame_confidences = {
-            frame: self.keypoints[frame][:, 2].sum()
-            for frame in self.keypoints.keys()
-        }
-
-        confidences = np.array(list(frame_confidences.values()))
-        median_confidence = np.percentile(confidences, percentile)
-
-        qualifying_frames = [
-            frame for frame, total_conf in frame_confidences.items()
-            if total_conf >= median_confidence
-        ]
-
-        if not qualifying_frames:
-            return None
-
-        return qualifying_frames
+from utilities import io_utils
+from utilities import utilities as utils
 
 
 class TrackingPipeline:
@@ -168,7 +19,7 @@ class TrackingPipeline:
         self.video_file = video_file
         self.f_num = 0
 
-        cap = cv2.VideoCapture(os.path.join('../input_files/', video_file))
+        cap = cv2.VideoCapture(os.path.join('../files/input/', video_file))
         self.fps = int(cap.get(cv2.CAP_PROP_FPS))
         self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.resolution = [cap.get(cv2.CAP_PROP_FRAME_WIDTH),
@@ -195,7 +46,7 @@ class TrackingPipeline:
         self.keypoint_data = keypoint_data
         self.face_data = face_data
         self.embedding_path = os.path.join(
-            "../intermediate_output/",
+            "../files/output/",
             f"{os.path.splitext(video_file)[0]}_embeddings.hdf5"
         )
 
@@ -214,7 +65,7 @@ class TrackingPipeline:
         self.load_prior_tracks()
 
     def load_prior_tracks(self):
-        files = [f for f in os.listdir('../intermediate_output')
+        files = [f for f in os.listdir('../files/output')
                  if f.endswith(str(self.video_file.split('.')[0].split('_')[-1])
                                + '.pkl')]
         if not files:
@@ -607,7 +458,7 @@ class TrackingPipeline:
 
             face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
             face_boxes += (face_df[['x', 'y', 'w', 'h']].drop_duplicates()
-                        .values.tolist())
+                           .values.tolist())
 
             trk_ids = sorted(self.active_trks.keys())
             for id in trk_ids:
@@ -686,7 +537,7 @@ class TrackingPipeline:
                 _filter_by_lifespan()
                 _filter_by_keypoints()
             
-            def _get_track_images(tracks, vid_dir='../input_files/'):
+            def _get_track_images(tracks, vid_dir='../files/input/'):
                 vid_path = os.path.join(vid_dir, self.video_file)
                 cap = cv2.VideoCapture(vid_path)
                 if not cap.isOpened():
@@ -726,7 +577,9 @@ class TrackingPipeline:
 
             _finalize_and_filter()
             _get_track_images(self.all_trks)
-    
+
+        if not is_continuation:
+            print(f"Running tracking pipeline for {self.video_file}...")
 
         while self.f_num < self.total_frames:
             if self.active_trks:
@@ -1097,7 +950,7 @@ class TrackingPipeline:
 
         return all_optimal_assignments
     
-    def collect_data(self, output_dir="../output_data"):
+    def collect_data(self, output_dir="../files/output"):
         git_commit_hash = utils.get_git_commit_hash()
         clip_identifier = self.video_file.split('.')[0] + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
@@ -1156,14 +1009,169 @@ class TrackingPipeline:
         return tracks_df, config_df, performance_df
 
     def save_pipeline_state(self):
-        os.makedirs('../intermediate_output')
+        os.makedirs('../files/output')
 
         file_prefix = self.video_file.split('.')[0]
 
-        save_path = os.path.join('../intermediate_output',
+        save_path = os.path.join('../files/output',
                                  f'{file_prefix}.pkl')
         with open(save_path, "wb") as f:
             pickle.dump(self, f)
         print('Tracking pipeline saved')
 
         return
+
+
+# ----------------------------------------------------------------------------
+
+
+# Individual Track Components and Definition:
+
+
+class KalmanFilter:
+    def __init__(self, frame, F, Q, H, R, x_init, P_init, B=None, u=None):
+        self.F = F  # State transition matrix
+        self.Q = Q  # Process noise covariance matrix
+        self.H = H  # Measurement translation matrix
+        self.R = R  # Measurement noise covariance matrix
+        self.x = x_init  # State vector
+        self.P = P_init  # Estimate uncertainty matrix
+        self.I = np.eye(F.shape[0])  # Identity matrix
+
+        self.states = {frame: x_init}
+
+    def predict(self):
+        self.x = self.F @ self.x
+        self.P = self.F @ self.P @ self.F.T + self.Q
+        self.x = utils.restrain_boxes(self.x)
+
+    def update(self, Z):
+        Y = Z - self.H @ self.x
+
+        S = self.H @ self.P @ self.H.T + self.R
+        K = self.P @ self.H.T @ np.linalg.inv(S)
+
+        self.x = self.x + K @ Y
+        self.P = (self.I - K @ self.H) @ self.P
+    
+    def add_state(self, new_state, frame_number):
+        self.states[frame_number] = new_state
+
+
+class Track(KalmanFilter):
+    def __init__(self, detection, embedding, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.face_detections = {}
+        self.detections = {args[0]: detection}
+        self.keypoints = {}
+        self.embeddings = [embedding]
+
+        self.span = [args[0], args[0]]
+
+        self.coincident_trks = []
+        self.identity = None
+
+    def add_embedding(self, embedding, window=-20):
+        self.embeddings.append(embedding)
+        self.embeddings = self.embeddings[window:]
+
+    def add_detection(self, new_detection, frame_number):
+        self.detections[frame_number] = new_detection
+        self.span[1] = frame_number
+    
+    def add_keypoints(self, new_keypoints, frame_number):
+        self.keypoints[frame_number] = new_keypoints
+
+    def add_face_detection(self, possible_matches, frame_number):
+        self.face_detections[frame_number] = possible_matches
+
+    def calc_id_match_costs(self):
+        costs = {}
+
+        all_dfs = list(self.face_detections.values())
+        if not all_dfs:
+            return {}
+
+        merged_df = pd.concat(all_dfs, ignore_index=True)
+        grouped = merged_df.groupby('identity')
+
+        for identity, group in grouped:
+            distances = group['distance']
+            frequency = len(group)
+            
+            avg_distance = sum(distances)/frequency
+    
+            frequency_adjustment = (
+                np.log10(1 + np.exp(frequency)) * (1.025**frequency)
+            )
+            
+            cost = avg_distance / frequency_adjustment
+            costs[identity] = cost
+        
+        return costs
+    
+    def find_best_id(self):
+        id_costs = self.calc_id_match_costs()
+
+        if not id_costs:
+            self.identity = None
+            self.id_cost = None
+            return self.identity
+
+        identities, costs = zip(*id_costs.items())
+        min_idx = costs.index(min(costs))
+
+        self.identity = identities[min_idx]
+        self.id_cost = costs[min_idx]
+        
+        return self.identity
+
+    def best_single_id_frame(self, target_id=None):
+        min_distance = float('inf')
+        identity = None
+        frame = None
+
+        if not target_id:
+            for f_num, df in self.face_detections.items():
+                if not df.empty:
+                    min_row = df.loc[df['distance'].idxmin()]
+
+                    if min_row['distance'] < min_distance:
+                        min_distance = min_row['distance']
+                        frame = f_num
+                        identity = min_row['identity']
+        else:
+            identity = target_id
+            for f_num, df in self.face_detections.items():
+                df = df.loc[df['identity'] == target_id]
+                if not df.empty:
+                    target_row = df.loc[df['distance'].idxmin()]
+
+                    if target_row['distance'] < min_distance:
+                        min_distance = target_row['distance']
+                        frame = f_num
+
+        return (identity, min_distance, frame)
+
+    def get_high_keypoint_frames(self, percentile=50):
+        if not self.keypoints:
+            return None
+
+        frame_confidences = {
+            frame: self.keypoints[frame][:, 2].sum()
+            for frame in self.keypoints.keys()
+        }
+
+        confidences = np.array(list(frame_confidences.values()))
+        median_confidence = np.percentile(confidences, percentile)
+
+        qualifying_frames = [
+            frame for frame, total_conf in frame_confidences.items()
+            if total_conf >= median_confidence
+        ]
+
+        if not qualifying_frames:
+            return None
+
+        return qualifying_frames
