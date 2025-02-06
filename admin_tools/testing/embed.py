@@ -1,19 +1,13 @@
 import os
 import torch
 import cv2
-from ...processing import inference, io_utils
+from models.yolov4 import YOLOv4
 import cv2
 import torch.nn.functional as F
 from torchvision import transforms
 from torchvision.io import read_image
 from torchvision.transforms import ConvertImageDtype, Pad, Compose
 
-
-def cos_sim(embedding1, embedding2):
-    embedding1 = embedding1.unsqueeze(0) if embedding1.dim() == 1 else embedding1
-    embedding2 = embedding2.unsqueeze(0) if embedding2.dim() == 1 else embedding2
-    sim_tensor = F.cosine_similarity(embedding1, embedding2, dim=1)
-    return sim_tensor.item()
 
 
 def generate_detections(video_file, detector, stride=60, start=0):

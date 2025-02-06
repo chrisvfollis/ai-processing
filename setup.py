@@ -1,0 +1,40 @@
+from setuptools import setup, find_packages
+
+
+setup(
+    name="ai_processing",
+    version="0.1.0",
+    description="Ivakt Timemanager AI Processing",
+    author="Chris V. Follis",
+    author_email="chrisvfollis@gmail.com",
+    packages=find_packages(),
+    install_requires=[
+        "requests",
+        "pillow",
+        "opencv-python",
+        "notebook",
+        "matplotlib",
+        "ipython",
+        "opencv-contrib-python",
+        "numpy",
+        "pandas",
+        "polars",
+        "scipy",
+        "shapely",
+        "deepface",
+        "boto3",
+        "python-dotenv",
+        "ffmpeg-python",
+        "tqdm==4.43.0",
+        "easydict==1.9",
+        "pycocotools",
+        "torch",
+        "torchvision",
+        "torchreid",
+        "tensorflow==2.15.0",
+        "keras==2.15.0",
+        "speedtest-cli",
+        "openpyxl"
+    ],
+    python_requires="==3.10",
+)

@@ -32,3 +32,5 @@ def add_imgs_to_spreadsheet(df):
     wb.save(output_path)
 
     output_path
+
+
