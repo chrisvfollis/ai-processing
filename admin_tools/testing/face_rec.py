@@ -12,25 +12,21 @@ from models.face_iq import FaceIq
 
 
 def run_function(fx, video):
-    
-
     video_path = os.path.join('input', video)
-    
 
+    face_iq = FaceIq('Facenet512', 'retinaface', face_db='../../files/input/faces')
 
     if fx == 'whole_image':
-        whole_image(video_path)
+        whole_image(video_path, face_iq)
     elif fx == 'cropped_detections':
         weights_path = '../../models/weights/YOLOv4.pth'
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         yolov4 = YOLOv4(weights_path, device)
 
-        cropped_detections(video_path, yolov4)
+        cropped_detections(video_path, yolov4, face_iq)
 
 
-def whole_image(video):
-    face_iq = FaceIq('Facenet512', 'retinaface', face_db='../../files/input/faces')
-
+def whole_image(video, face_iq):
     id_total = 0
 
     cap = cv2.VideoCapture(video)
@@ -53,13 +49,11 @@ def whole_image(video):
             print(f_num)
 
         if f_num % fps == 0:
-            try:
-                start = time.perf_counter()
-                df_results = face_iq.identify_faces(frame, cutoff=0.8)
-                end = time.perf_counter()
-                id_total += (end - start)
-            except ValueError:
-                continue
+
+            start = time.perf_counter()
+            df_results = face_iq.identify_faces(frame, cutoff=0.999)
+            end = time.perf_counter()
+            id_total += (end - start)
 
             df_results = [df for df in df_results if not df.empty]
             print(f'Found {len(df_results)} faces')
@@ -113,11 +107,9 @@ def whole_image(video):
     face_df.to_csv(output_path, index=False)
 
 
-def cropped_detections(video, yolov4):
+def cropped_detections(video, yolov4, face_iq):
     detect_total = 0
     id_total = 0
-
-    face_iq = FaceIq('Facenet512', 'retinaface', face_db='../../files/input/faces')
 
     cap = cv2.VideoCapture(video)
 
@@ -148,28 +140,15 @@ def cropped_detections(video, yolov4):
             person_boxes = [box[:4] for box in detections]
 
             faces_detected = 0
-            for box in person_boxes:
-                x1, y1, w, h = map(int, box[:4])
-                x2, y2 = (x1 + w), (y1 + h)
 
-                cropped_image = frame[y1:y2, x1:x2]
-
-                try:
-                    start = time.perf_counter()
-                    df_results = DeepFace.find(
-                        img_path=cropped_image, db_path='../../input_files/faces', model_name='Facenet512',
-                        detector_backend='retinaface', threshold=0.999,
-                        enforce_detection=True, silent=True
-                    )
-                    end = time.perf_counter()
-                    id_total += (end - start)
-                except ValueError:
-                    continue
+            start = time.perf_counter()
+            df_results = face_iq.identify_faces(frame, cutoff=0.999, regions=person_boxes)
+            end = time.perf_counter()
+            id_total += (end - start)
                 
-                if df_results:
-                    merged_df = pd.concat(df_results, ignore_index=True)
-                    best_row = merged_df.loc[merged_df['distance'].idxmin()]
-
+            if df_results:
+                for df in df_results:
+                    best_row = df.loc[df['distance'].idxmin()]
                     try:
                         source_x = int(best_row['source_x'])
                         source_y = int(best_row['source_y'])
@@ -180,24 +159,25 @@ def cropped_detections(video, yolov4):
                         continue
 
                     x1, y1, x2, y2 = int(source_x), int(source_y), int(source_x + source_w), int(source_y + source_h)
-                    cropped_image = cropped_image[y1:y2, x1:x2]
+                    cropped_image = frame[y1:y2, x1:x2]
 
                     predicted_identity = best_row['identity']
                     cosine_distance = round(best_row['distance'], 3)
                     faces_detected += 1
-                else:
-                    continue
 
-                output_path = os.path.join('output', 'faces', f'{image_num}.jpg')
-                cv2.imwrite(output_path, cropped_image)
+                    output_path = os.path.join('output', 'faces', f'{image_num}.jpg')
+                    cv2.imwrite(output_path, cropped_image)
 
-                face_data.append({
-                    'image_num': image_num,
-                    'identity': predicted_identity,
-                    'distance': cosine_distance
-                })
+                    face_data.append({
+                        'img_num': image_num,
+                        'identity': predicted_identity,
+                        'distance': cosine_distance
+                    })
 
-                image_num += 1
+                    image_num += 1
+            else:
+                continue
+
             print(f'Found {faces_detected} faces')
 
     ex_end = time.perf_counter()
