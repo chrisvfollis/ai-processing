@@ -8,7 +8,7 @@ fi
 CONFIG_FILE="$1"
 
 RESULT=$(python3 -c "
-from utilities import ec2_public_dns
+from admin_utils import ec2_public_dns
 pem_path, remote_user, public_dns = ec2_public_dns('$CONFIG_FILE')
 print(f'{pem_path} {remote_user} {public_dns}')
 ")
