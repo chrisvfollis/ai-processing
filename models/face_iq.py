@@ -1,6 +1,7 @@
 from deepface import DeepFace
 import time
 from utilities import io_utils
+import pandas as pd
 
 
 class FaceIq:
@@ -32,17 +33,23 @@ class FaceIq:
             except ValueError:
                 return all_face_dfs
         else:
-            for region in regions:
-                x1, y1 = region[0], region[1]
-                x2, y2 = region[0] + region[2], region[1] + region[3]
-                crop = img[y1:y2, x1:x2]
+            region_crops = [img[y1:y1+h, x1:x1+w] for x1, y1, w, h in regions]
 
-                try:
-                    local_face_dfs = DeepFace.find(img_path=crop, **config)
-                    if local_face_dfs:
-                        all_face_dfs += local_face_dfs
-                except ValueError:
-                    continue
+            try:
+                batch_results = DeepFace.find(img_path=region_crops, **config,
+                                              batched=True)
+                for region_idx, image_results in enumerate(batch_results):
+                    x1, y1, _, _ = regions[region_idx]
+                    for detection in image_results:
+                        df = pd.DataFrame(detection)
+
+                        if not df.empty:
+                            df['source_x'] += x1
+                            df['source_y'] += y1
+
+                            all_face_dfs.append(df)
+            except ValueError:
+                pass
         
         filtered_face_dfs = []
         for df in all_face_dfs:
