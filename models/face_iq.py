@@ -33,25 +33,22 @@ class FaceIq:
             except ValueError:
                 return all_face_dfs
         else:
-            regions = [region[:4] for region in regions]
-            print(regions)
-            region_crops = [img[y1:y1+h, x1:x1+w] for x1, y1, w, h in regions]
+            for region in regions:
+                x1, y1 = region[0], region[1]
+                x2, y2 = region[0] + region[2], region[1] + region[3]
+                crop = img[y1:y2, x1:x2]
 
-            try:
-                batch_results = DeepFace.find(img_path=region_crops, **config,
-                                              batched=True)
-                for region_idx, image_results in enumerate(batch_results):
-                    x1, y1, _, _ = regions[region_idx]
-                    for detection in image_results:
-                        df = pd.DataFrame(detection)
+                try:
+                    local_face_dfs = DeepFace.find(img_path=crop, **config)
+                    if local_face_dfs:
+                        for df in local_face_dfs:
+                            if not df.empty:
+                                df['source_x'] += x1
+                                df['source_y'] += y1
 
-                        if not df.empty:
-                            df['source_x'] += x1
-                            df['source_y'] += y1
-
-                            all_face_dfs.append(df)
-            except ValueError as e:
-                print(f"DeepFace error: {e}")
+                                all_face_dfs.append(df)
+                except ValueError as e:
+                    print(f"DeepFace error: {e}")
         
         filtered_face_dfs = []
         for df in all_face_dfs:
