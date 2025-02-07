@@ -177,7 +177,7 @@ class InferencePipeline:
                 "YOLOv4", "YOLOv4",
                 "OSNet", "OSNet",
                 "MoveNet",
-                "FaceIq", "FaceIq"
+                "FaceIq", "FaceIq",
                 "Video",
                 "Version"
             ],
@@ -185,7 +185,7 @@ class InferencePipeline:
                 "nms_threshold", "confidence_threshold",
                 "input_shape", "output_shape",
                 "confidence_threshold",
-                "id_model", "detect_model"
+                "id_model", "detect_model",
                 "resolution",
                 "git_commit_hash"
             ],
@@ -200,6 +200,7 @@ class InferencePipeline:
         }
         config_df = pd.DataFrame(config_data)
         config_csv_path = os.path.join(output_dir, f'inference_config_{clip_identifier}.csv')
+        print(f'Saving config data to {config_csv_path}')
         config_df.to_csv(config_csv_path, index=False)
 
         performance_data = {
@@ -220,6 +221,7 @@ class InferencePipeline:
         }
         performance_df = pd.DataFrame(performance_data)
         performance_csv_path = os.path.join(output_dir, f'inference_performance_{clip_identifier}.csv')
+        print(f'Saving performance data to {performance_csv_path}')
         performance_df.to_csv(performance_csv_path, index=False)
 
         return config_df, performance_df

@@ -7,14 +7,13 @@ import h5py
 from utilities import io_utils
 import time
 
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="Cython evaluation",
+    module="torchreid.reid.metrics.rank"
+)
 from torchreid import models as reid
-
-# import warnings
-# warnings.filterwarnings(
-#     "ignore",
-#     message="Cython evaluation",
-#     module="torchreid.reid.metrics.rank"
-# )
 
 
 class OSNet:
