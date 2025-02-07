@@ -1004,20 +1004,27 @@ class Track(KalmanFilter):
         def _spatial_analysis(new_detections, frame_diag, distance_cutoff=0.5):
             def _normalized_euclidean(new_detections, frame_diag,
                                       distance_cutoff=0.5):
+                device = new_detections.device
+
+                if len(new_detections) == 0:
+                    return torch.tensor([], dtype=torch.float32, device=device)
+
                 trk_centroid = torch.tensor(
-                    self.x[:2], dtype=torch.float32, device=new_detections.device
+                    self.x[:2], dtype=torch.float32, device=device
                 ).unsqueeze(0)
 
                 det_centroids = torch.stack(
-                    [torch.tensor(utils.centroid(detection)) for detection in
-                     new_detections]
+                    [torch.tensor(utils.centroid(detection), device=device)
+                     for detection in new_detections]
                 )
 
                 distances = torch.norm(det_centroids - trk_centroid, dim=1)
                 normalized = distances / frame_diag
 
                 normalized = torch.where(normalized >= distance_cutoff,
-                                         torch.tensor(float('inf')), normalized)
+                                         torch.tensor(float('inf'),
+                                                      device=device), 
+                                         normalized)
 
                 return normalized
             
