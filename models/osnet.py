@@ -71,7 +71,7 @@ class OSNet:
 
         return embedding
 
-    def enable_buffers(self, video_file, output_dir='../intermediate_output',
+    def enable_buffers(self, video_file, output_dir='../files/output',
                        buffer_limit=100):
         '''
         Sets up buffers and an output file so the OSNet instance can use

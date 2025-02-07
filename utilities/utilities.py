@@ -53,20 +53,6 @@ def get_centroids(boxes):
     return frame_centroids
 
 
-def cos_distance(embedding1, embedding2, normalize=False):
-    embedding1 = embedding1.unsqueeze(0) if embedding1.dim() == 1 else embedding1
-    embedding2 = embedding2.unsqueeze(0) if embedding2.dim() == 1 else embedding2
-    sim_tensor = F.cosine_similarity(embedding1, embedding2, dim=1)
-
-    cosine_similarity = sim_tensor.item()
-    cosine_distance = 1 - cosine_similarity
-
-    if normalize == True:
-        return cosine_distance / 2
-    elif normalize == False:
-        return cosine_distance
-
-
 def restrain_boxes(coordinates, image_size=[1920, 1080]):
     img_width, img_height = image_size
 
