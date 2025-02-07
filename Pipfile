@@ -21,7 +21,7 @@ pandas = "*"
 polars = "*"
 scipy = "*"
 shapely = "*"
-deepface = "*"
+deepface = {git = "https://github.com/serengil/deepface.git", ref = "master"}
 boto3 = "*"
 python-dotenv = "*"
 ffmpeg-python = "*"
