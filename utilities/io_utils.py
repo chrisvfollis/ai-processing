@@ -92,6 +92,8 @@ def delete_local_files(identifier, file_types='any',
             full_path = os.path.join(path, result)
             if not os.path.isfile(full_path):
                 continue
+            elif full_path.endswith('.pkl'):
+                continue
             
             file_name, file_extension = _parse_name_and_extension(result)
             if (

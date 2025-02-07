@@ -71,15 +71,27 @@ class TrackingPipeline:
 
         self.load_prior_tracks()
 
+    def __getstate__(self):
+        'Prepare object state for pickling.'
+        state = self.__dict__.copy()
+        state["device"] = str(self.device)
+        return state
+
+    def __setstate__(self, state):
+        'Restore object state after unpickling'
+        self.__dict__.update(state)
+        self.device = torch.device(state['device'])
+
     def load_prior_tracks(self):
         files = [f for f in os.listdir('../files/output')
                  if f.endswith(str(self.video_file.split('.')[0].split('_')[-1])
                                + '.pkl')]
         if not files:
+            self.prior_pickle = ''
             return
         
-        file = sorted(files)[-1]
-        with open(file, 'rb') as f:
+        self.prior_pickle = sorted(files)[-1]
+        with open(self.prior_pickle, 'rb') as f:
             prior_pipeline = pickle.load(f)
         
         interim = (self.start_time - prior_pipeline.end_time).total_seconds()
@@ -863,12 +875,12 @@ class TrackingPipeline:
                 num_keypoints = keypoints.shape[0] if keypoints is not None else 0
 
                 track_data.append({
-                    "Track_ID": trk_id,
-                    "Frame": frame,
-                    "Detection_Confidence": detection_conf,
-                    "Cosine_Distance": cosine_distance,
-                    "Keypoint_Confidence": keypoint_conf,
-                    "Num_Keypoints": num_keypoints,
+                    "track_id": trk_id,
+                    "frame": frame,
+                    "detection_confidence": detection_conf,
+                    "facial_cos_dist": cosine_distance,
+                    "keypoint_confidence": keypoint_conf,
+                    "num_keypoints": num_keypoints,
                 })
 
         tracks_df = pd.DataFrame(track_data)
@@ -903,15 +915,19 @@ class TrackingPipeline:
 
         return tracks_df, config_df, performance_df
 
-    def save_pipeline_state(self):
-        os.makedirs('../files/output')
-
+    def save_pipeline_state(self, output_dir='../files/output'):
+        os.makedirs(output_dir, exist_ok=True)
         file_prefix = self.video_file.split('.')[0]
 
-        save_path = os.path.join('../files/output',
-                                 f'{file_prefix}.pkl')
+        save_path = os.path.join(output_dir, f'{file_prefix}.pkl')
         with open(save_path, "wb") as f:
             pickle.dump(self, f)
+        
+        if self.prior_pickle:
+            prior_path = os.path.join(output_dir, self.prior_pickle)
+            if os.path.exists(prior_path) and os.path.isfile(prior_path):
+                os.remove(prior_path)
+
         print('Tracking pipeline saved')
 
         return
@@ -961,11 +977,31 @@ class Track(KalmanFilter):
         self.detections = {args[0]: detection}
         self.keypoints = {}
         self.embedding_cache = [embedding]
+        self.embedding_cache_tensor = torch.stack(self.embedding_cache)
 
         self.span = [args[0], args[0]]
 
         self.coincident_trks = []
         self.identity = None
+    
+    def __getstate__(self):
+        'Prepare object state for pickling by moving tensors off of the GPU'
+        state = self.__dict__.copy()
+
+        state['embedding_cache'] = [emb.to('cpu') for emb in state['embedding_cache']]
+        state['embedding_cache_tensor'] = state['embedding_cache_tensor'].to('cpu')
+        return state
+
+    def __setstate__(self, state):
+        '''
+        Restore object state after unpickling by moving tensors onto the GPU
+        if one is available.
+        '''
+        self.__dict__.update(state)
+
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.embedding_cache = [emb.to(device) for emb in self.embedding_cache]
+        self.embedding_cache_tensor = self.embedding_cache_tensor.to(device)
 
     def add_embedding(self, embedding, window=-20):
         self.embedding_cache.append(embedding)
