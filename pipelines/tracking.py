@@ -1155,9 +1155,9 @@ class Track(KalmanFilter):
                     cos_distances, standard_mask
                 )
             if lowest_mask.any():
-                costs[lowest_mask] = _lowest_in_cache(cos_distances)
+                costs[lowest_mask] = _lowest_in_cache(cos_distances, lowest_mask)
             if median_mask.any():
-                costs[median_mask] = _median_in_cache(cos_distances)
+                costs[median_mask] = _median_in_cache(cos_distances, median_mask)
             
             return costs
 
