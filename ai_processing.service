@@ -1,0 +1,22 @@
+[Unit]
+Description=Ivakt Timemanager AI Processing
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+Type=simple
+ExecStart=/home/ubuntu/.local/share/virtualenvs/ai-processing-cIZ_oGug/bin/python3 /home/ubuntu/ai-processing/execution/execute_all.py    
+Restart=on-failure
+WorkingDirectory=/home/ubuntu/ai-processing/execution
+Environment="PYTHONPATH=/home/ubuntu/.local/share/virtualenvs/ai-processing-cIZ_oGug/lib/python3.10/site-packages"
+Environment="PATH=/usr/bin:/usr/local/bin:/bin:/usr/sbin:/sbin:/home/ubuntu/.local/bin:/home/ubuntu/.local/share/virtualenvs/ai-processing-cIZ_oGug/bin"
+Environment="LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib:/usr/local/cuda-12.4/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+Environment="TMPDIR=/tmp"
+Environment="PYTHONUNBUFFERED=1"
+LimitFSIZE=infinity
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target
