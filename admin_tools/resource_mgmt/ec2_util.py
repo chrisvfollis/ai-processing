@@ -1,13 +1,23 @@
 import subprocess
 import os
+from admin_tools import admin_utils
+import boto3
 
 
-def scp_download(remote_dir, local_dir, remote_host, remote_user='ubuntu',
-                 remote_path='/home/ubuntu/timemanager/', pem='timemanager.pem'):
+def scp_download(remote_dir, local_dir, config, cfg_dir=None,
+                 remote_path='/home/ubuntu/ai-processing/'):
+    if not cfg_dir:
+        pem_path, remote_user, public_dns = admin_utils.ec2_public_dns(config)
+    else:
+        pem_path, remote_user, public_dns = admin_utils.ec2_public_dns(
+            config, dir_path=cfg_dir
+        )
+    pem_path = os.path.join('../', pem_path)
+
     local_path = os.path.dirname(os.getcwd())
+    print(local_path)
 
-    codebase_dirs = ['input_files/', 'output_files/',
-                     'intermediate_output', 'admin/testing/output/']
+    codebase_dirs = ['files/input/', 'files/output/', 'admin_tools/testing/output/']
     
     if remote_dir in codebase_dirs:
         remote_path = os.path.join(remote_path, remote_dir)
@@ -24,9 +34,9 @@ def scp_download(remote_dir, local_dir, remote_host, remote_user='ubuntu',
     
     scp_command = [
         'scp',
-        '-i', pem,
+        '-i', pem_path,
         '-r',
-        f"{remote_user}@{remote_host}:{remote_path}",
+        f"{remote_user}@{public_dns}:{remote_path}",
         local_path
     ]
 

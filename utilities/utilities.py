@@ -2,7 +2,6 @@ from shapely.geometry import Polygon, box
 from datetime import datetime, timedelta
 import torch
 import torch.nn.functional as F
-import math
 import numpy as np
 import cv2
 import subprocess
@@ -55,8 +54,6 @@ def get_centroids(boxes):
 
 
 def cos_distance(embedding1, embedding2, normalize=False):
-    embedding1 = torch.tensor(embedding1)
-    embedding2 = torch.tensor(embedding2)
     embedding1 = embedding1.unsqueeze(0) if embedding1.dim() == 1 else embedding1
     embedding2 = embedding2.unsqueeze(0) if embedding2.dim() == 1 else embedding2
     sim_tensor = F.cosine_similarity(embedding1, embedding2, dim=1)
@@ -68,14 +65,6 @@ def cos_distance(embedding1, embedding2, normalize=False):
         return cosine_distance / 2
     elif normalize == False:
         return cosine_distance
-
-
-def euclidean_distance(xy_centroids):
-    x_1, y_1 = xy_centroids[0]
-    x_2, y_2 = xy_centroids[1]
-    delta_x = x_2 - x_1
-    delta_y = y_2 - y_1
-    return math.sqrt(delta_x**2 + delta_y**2)
 
 
 def restrain_boxes(coordinates, image_size=[1920, 1080]):

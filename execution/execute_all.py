@@ -48,7 +48,9 @@ def process_video(row, credentials, model_info, device, time_prefix):
     else:
         inference_output = inf_pipeline.run()
 
-    trk_pipeline = TrackingPipeline(video_file, time_prefix, *inference_output)   
+    trk_pipeline = TrackingPipeline(
+        video_file, time_prefix, *inference_output, device
+    )   
 
     trk_pipeline.run()
     trk_pipeline.assign_identities()

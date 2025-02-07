@@ -8,6 +8,8 @@ from itertools import permutations
 import time
 import pickle
 import math
+import torch
+import torch.nn.functional as F
 
 from utilities import io_utils
 from utilities import utilities as utils
@@ -15,7 +17,7 @@ from utilities import utilities as utils
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
-                 face_data):
+                 face_data, device):
         self.video_file = video_file
         self.f_num = 0
 
@@ -29,6 +31,10 @@ class TrackingPipeline:
         self.end_time = utils.frame_timestamp(time_prefix, self.total_frames,
                                               self.fps)
         cap.release()
+
+        self.frame_diag = math.dist([0, 0], self.resolution)
+
+        self.device = device
 
         self.all_trks = {}
         self.active_trks = {}
@@ -148,152 +154,29 @@ class TrackingPipeline:
             end_prediction = time.perf_counter()
             self.prediction_time += (end_prediction - start_prediction)
 
-        def _match_and_update(measurements):
-            def _construct_cost_matrix(detections, embeddings, weights=[1, 0.1]):
-                '''
-                Creates a cost matrix based on a weighted sum of geometric
-                distances and embedding distances.
-                
-                Both of the distance metrics are normalized, such that all values
-                for each are scaled within the range [0, 1]. This prevents
-                significant scale differences from unintentionally biasing how
-                each metric is weighted.
-                '''
+        def _match_and_update(new_measurements):
+            def _construct_cost_matrix(new_detections, new_embeddings):
+                active_tracks = sorted(self.active_trks.keys())
+                cost_list = []
 
-                def _distance_costs(detections, cutoff_multiplier=0.5):
-
-                    d_cntrs = utils.get_centroids(detections)
-                    t_cntrs = []
-
-                    trk_ids = sorted(self.active_trks.keys())
-                    for id in trk_ids:
-                        t_cntrs.append(self.active_trks[id].x.tolist()[:2])
-                    
-                    frame_w = self.resolution[0]
-                    frame_h = self.resolution[1]
-                    max_distance_in_frame = np.sqrt(frame_w**2 + frame_h**2)
-
-                    distance_cutoff = max_distance_in_frame * cutoff_multiplier
-
-                    rows = len(t_cntrs)
-                    cols = len(d_cntrs)
-                    cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-
-                    for i, c2 in enumerate(t_cntrs):
-                        for j, c1 in enumerate(d_cntrs):
-                            distance = utils.euclidean_distance((c1, c2))
-                            if distance < distance_cutoff:
-                                normalized = distance / max_distance_in_frame
-                                cost_matrix[i][j] = normalized
-
-                    return np.array(cost_matrix)
-
-                def _similarity_costs(embeddings, cost_methods):
-                    def _weighted_moving_avg(trk, embedding, decay_factor=0.9):
-                        '''
-                        Computes the matching cost based on a weighted average,
-                        where recent embeddings are given more weight/have a
-                        greater impact on the resulting cost value.
-
-                        
-                        Best suited for:
-                        - Ordinary association conditions with a small number
-                          of time steps between the current frame and most
-                          recent measurement
-                        - Mild to moderate changes in lighting, bounding box
-                          dimensions, etc between detections.
-                        '''
-
-                        distances = []
-                        weights = [] 
-                        num_embeddings = len(trk.embeddings)
-                        if num_embeddings == 0:
-                            return 1
-
-                        for i, trk_embedding in enumerate(trk.embeddings):
-                            dst = utils.cos_distance(trk_embedding, embedding,
-                                                     normalize=True)
-                            
-                            weight = decay_factor ** (num_embeddings - i - 1)
-                            
-                            distances.append(dst * weight)
-                            weights.append(weight)
-                        
-                        return sum(distances) / sum(weights)
-
-                    def _lowest_single_distance(trk, embedding):
-                        '''
-                        Finds the single lowest cost between any embedding in
-                        the track's embedding cache and the embedding under
-                        consideration. 
-                                    
-                        Best suited for:
-                        - Inactive track reassociation.
-                        - Assessing a possible new measurement when a large
-                          number of time steps have elapsed since the one
-                          prior.
-                        - Extreme changes in lighting, bounding box
-                          dimensions, etc between detections.
-                        '''
-        
-                        lowest = 1
-                        for trk_embedding in trk.embeddings:
-                            dst = utils.cos_distance(trk_embedding, embedding,
-                                                    normalize=True)
-                            if dst < lowest:
-                                lowest = dst
-                        return lowest
-
-
-                    trk_ids = sorted(self.active_trks.keys())
-
-                    rows = len(trk_ids)
-                    cols = len(embeddings)
-                    cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-
-                    m_i = 0
-                    for i, id in enumerate(trk_ids):
-                        for j, emb in enumerate(embeddings):
-                            if cost_methods[m_i] == 0:
-                                cost = _weighted_moving_avg(self.active_trks[id], emb)
-                            elif cost_methods[m_i] == 1:
-                                cost = _lowest_single_distance(self.active_trks[id], emb)
-
-                            cost_matrix[i][j] = cost
-
-                    return np.array(cost_matrix)
-                
-                cost_methods = []
-                trk_ids = sorted(self.active_trks.keys())
-                for trk_id in trk_ids:
-                    trk = self.active_trks[trk_id]
-                    t_d_area = math.prod(trk.detections[trk.span[1]][2:4])
-                    for detection in detections:
-                        d_area = math.prod(detection[2:4])
-                        allowed_scale_ratio = 1.2 ** (
-                            (self.f_num - trk.span[1]) / (self.fps / 10)
-                            )
-
-                        if (self.f_num - trk.span[1]) > (self.fps * 1.5): # Use method 1 if last detection was more than 1.5 seconds ago
-                            cost_methods.append(1)
-                            continue
-                        elif ( # Use method 1 if large change in bounding box scale
-                            (max(t_d_area, d_area) / min(t_d_area, d_area))
-                            > allowed_scale_ratio
-                        ):
-                            cost_methods.append(1)
-                        # elif huge lighting difference use method 1
-                        else:
-                            cost_methods.append(0)
-
-
-                distances = _distance_costs(detections)
-                similarities = _similarity_costs(embeddings, cost_methods)
-                weighted_matrix = (
-                    (distances * weights[0]) + (similarities * weights[1])
+                new_detections = torch.tensor(
+                    new_detections, dtype=torch.float32, device=self.device
                 )
 
-                return weighted_matrix
+                video_info = [self.f_num, self.fps, self.frame_diag]
+
+                for trk_id in active_tracks:
+                    trk = self.active_trks[trk_id]
+
+                    cost_vector = trk.calc_assn_costs(
+                        new_detections, new_embeddings, *video_info
+                    )
+                    cost_list.append(cost_vector)
+                
+                tensorized_costs = torch.stack(cost_list)
+                cost_matrix = tensorized_costs.numpy()
+
+                return cost_matrix
 
             def _assign_matches(cost_matrix):
                 def _filter_sparse_rows(cost_matrix):
@@ -394,10 +277,9 @@ class TrackingPipeline:
             start_match = time.perf_counter()
 
             trk_ids = sorted(self.active_trks.keys())
-            detections, embeddings, keypoints = measurements
+            detections, embeddings, keypoints = new_measurements
 
-            cost_matrix = _construct_cost_matrix(detections, embeddings,
-                                                weights=[1, 0.1])
+            cost_matrix = _construct_cost_matrix(detections, embeddings)
             assignments = _assign_matches(cost_matrix)
 
             matched = []
@@ -408,9 +290,9 @@ class TrackingPipeline:
                 matched.append(measurement_index)
 
                 box = detections[measurement_index]
-                c_x, c_y = utils.centroid(box)
+                x, y = utils.centroid(box)
                 w, h = box[2:4]
-                measurement = np.array([c_x, c_y, w, h])
+                measurement = np.array([x, y, w, h])
 
                 trk.update(measurement)
                 trk.add_detection(box[:4], self.f_num)
@@ -587,7 +469,9 @@ class TrackingPipeline:
 
             try:
                 detections = self.detection_data[self.f_num]
-                embeddings = io_utils.read_embeddings(self.embedding_path, self.f_num)
+                embeddings = io_utils.read_embeddings(
+                    self.embedding_path, self.f_num, self.device
+                )
                 keypoints = self.keypoint_data.get(self.f_num, None)
                 measurements = [detections, embeddings, keypoints]
             except KeyError:
@@ -856,7 +740,7 @@ class TrackingPipeline:
 
         trk_id_costs = {}
         for trk_id, trk in self.all_trks.items():
-            id_costs = trk.calc_id_match_costs()
+            id_costs = trk.calc_id_costs()
 
             if not id_costs:
                 continue
@@ -1065,7 +949,7 @@ class Track(KalmanFilter):
         self.face_detections = {}
         self.detections = {args[0]: detection}
         self.keypoints = {}
-        self.embeddings = [embedding]
+        self.embedding_cache = [embedding]
 
         self.span = [args[0], args[0]]
 
@@ -1073,8 +957,9 @@ class Track(KalmanFilter):
         self.identity = None
 
     def add_embedding(self, embedding, window=-20):
-        self.embeddings.append(embedding)
-        self.embeddings = self.embeddings[window:]
+        self.embedding_cache.append(embedding)
+        self.embedding_cache = self.embedding_cache[window:]
+        self.embedding_cache_tensor = torch.stack(self.embedding_cache)
 
     def add_detection(self, new_detection, frame_number):
         self.detections[frame_number] = new_detection
@@ -1085,8 +970,180 @@ class Track(KalmanFilter):
 
     def add_face_detection(self, possible_matches, frame_number):
         self.face_detections[frame_number] = possible_matches
+    
+    def calc_cos_distances(self, new_embeddings, normalize=True):
+        cached_embeddings = self.embedding_cache_tensor
+        cos_sims = F.cosine_similarity(
+            cached_embeddings.unsqueeze(1),
+            new_embeddings.unsqueeze(0),
+            dim=2
+        )
+        cos_distances = 1 - cos_sims
 
-    def calc_id_match_costs(self):
+        return (cos_distances / 2) if normalize else cos_distances
+    
+    def calc_assn_costs(self, new_detections, new_embeddings, f_num, fps,
+                        frame_diag, max_scale_ratio=1.5, max_pixel_delta=100):
+        '''
+        Returns the association costs between the track and each of the new
+        measurements. Depending on certain factors, different methods are
+        used to compute these costs.
+        '''
+
+        def _spatial_analysis(new_detections, frame_diag, distance_cutoff=0.5):
+            def _normalized_euclidean(new_detections, frame_diag, distance_cutoff=0.5):
+                trk_centroid = torch.tensor(self.x[:2], dtype=torch.float32,
+                                            device=new_detections.device).unsqueeze()
+
+                det_centroids = torch.stack(
+                    [torch.tensor(utils.centroid(detection)) for detection in
+                     new_detections]
+                )
+
+                distances = torch.norm(det_centroids - trk_centroid, dim=1)
+                normalized = distances / frame_diag
+
+                normalized = torch.where(normalized >= distance_cutoff,
+                                         torch.tensor(float('inf')), normalized)
+
+                return normalized
+            
+            def _normalized_area():
+                pass
+
+            euclidean_dists = _normalized_euclidean(
+                new_detections, frame_diag, distance_cutoff=distance_cutoff
+            )
+
+            costs = euclidean_dists
+            return costs
+
+        def _feature_analysis(new_embeddings, methods):
+            def _weighted_moving_avg(cos_distances, mask,
+                                     decay_factor=0.9):
+                '''
+                Best suited for:
+                - Ordinary association conditions with a small number
+                    of time steps between the current frame and most
+                    recent measurement
+                - Mild to moderate changes in lighting, bounding box
+                    dimensions, etc between detections.
+                '''
+                indices = mask.nonzero(as_tuple=True)[0]
+                masked_distances = cos_distances[:, indices]
+
+                num_cached = cos_distances.shape[0]
+
+                weights = torch.tensor(
+                    [decay_factor ** (num_cached - i - 1)
+                     for i in range(num_cached)],
+                    device=cos_distances.device,
+                    dtype=cos_distances.dtype
+                ).unsqueeze(1) # shape: (num_cached, 1)
+
+                weighted_distances = (
+                    (masked_distances * weights).sum(dim=0) / weights.sum()
+                )
+                
+                return weighted_distances
+
+            def _lowest_in_cache(cos_distances, mask):
+                ''' 
+                Best suited for:
+                - Inactive track reassociation.
+                - When a large number of time steps have elapsed since the last
+                  associated detection.
+                - Extreme changes in lighting, bounding box dimensions, etc
+                  between detections.
+                '''
+
+                indices = mask.nonzero(as_tuple=True)[0]
+                masked_distances = cos_distances[:, indices]
+
+                return masked_distances.min(dim=0).values
+
+            def _median_in_cache(cos_distances, mask):
+                ''' 
+                Best suited for:
+                - Cases where a balance between extreme values is needed.
+                - Reducing sensitivity to outliers in embedding comparisons.
+                - When neither the lowest nor weighted moving average distance is ideal.
+                '''
+
+                indices = mask.nonzero(as_tuple=True)[0]
+                masked_distances = cos_distances[:, indices]
+
+                return masked_distances.median(dim=0).values
+            
+            num_cached = len(self.embedding_cache)
+            num_new = new_embeddings.shape[0]
+            if num_cached == 0:
+                return torch.full((num_new,), float('inf'))
+
+            cos_distances = self.calc_cos_distances(new_embeddings)
+
+            method_map = {'standard': 0, 'lowest': 1, 'median': 2}
+            methods = torch.tensor(
+                [method_map[m] for m in methods], device=cos_distances.device
+            )
+            standard_mask = methods == 0
+            lowest_mask = methods == 1
+            median_mask = methods == 2
+
+            costs = torch.full(
+                (num_new,), float('inf'), device=cos_distances.device
+            )
+
+            if standard_mask.any():
+                costs[standard_mask] = _weighted_moving_avg(
+                    cos_distances, standard_mask
+                )
+            if lowest_mask.any():
+                costs[lowest_mask] = _lowest_in_cache(cos_distances)
+            if median_mask.any():
+                costs[median_mask] = _median_in_cache(cos_distances)
+            
+            return costs
+
+        spatial_costs = _spatial_analysis(new_detections, frame_diag,
+                                          distance_cutoff=0.5)
+        
+        cost_methods = []
+        last_detected = self.span[1]
+        if (f_num - last_detected) <= (fps * 1.5):
+            weights = [1, 0.2]
+    
+            expected_area = math.prod(self.x[2:4])
+            expected_pixel_stat = 0
+
+            for new_det in new_detections:
+                measured_area = math.prod(new_det[2:4])
+                measured_pixel_stat = 0
+                area_vals = [expected_area, measured_area]
+                color_vals = [expected_pixel_stat, measured_pixel_stat]
+
+                if (
+                    math.sqrt(max(area_vals) / min(area_vals)) >
+                    max_scale_ratio
+                ):
+                    cost_methods.append('lowest')
+                elif (max(color_vals) - min(color_vals)) > max_pixel_delta:
+                    cost_methods.append('lowest')
+                else:
+                    cost_methods.append('standard')     
+        else:
+            weights = [1, 0.5]
+            cost_methods = ['lowest'] * len(new_embeddings)
+        
+        dissimilarity_costs = _feature_analysis(new_embeddings, cost_methods)
+
+        weighted_costs = (
+            (spatial_costs * weights[0]) + (dissimilarity_costs * weights[1])
+        )
+
+        return weighted_costs
+
+    def calc_id_costs(self):
         costs = {}
 
         all_dfs = list(self.face_detections.values())
@@ -1102,58 +1159,15 @@ class Track(KalmanFilter):
             
             avg_distance = sum(distances)/frequency
     
-            frequency_adjustment = (
+            freq_weighting = (
                 np.log10(1 + np.exp(frequency)) * (1.025**frequency)
             )
             
-            cost = avg_distance / frequency_adjustment
+            cost = avg_distance / freq_weighting
             costs[identity] = cost
         
         return costs
     
-    def find_best_id(self):
-        id_costs = self.calc_id_match_costs()
-
-        if not id_costs:
-            self.identity = None
-            self.id_cost = None
-            return self.identity
-
-        identities, costs = zip(*id_costs.items())
-        min_idx = costs.index(min(costs))
-
-        self.identity = identities[min_idx]
-        self.id_cost = costs[min_idx]
-        
-        return self.identity
-
-    def best_single_id_frame(self, target_id=None):
-        min_distance = float('inf')
-        identity = None
-        frame = None
-
-        if not target_id:
-            for f_num, df in self.face_detections.items():
-                if not df.empty:
-                    min_row = df.loc[df['distance'].idxmin()]
-
-                    if min_row['distance'] < min_distance:
-                        min_distance = min_row['distance']
-                        frame = f_num
-                        identity = min_row['identity']
-        else:
-            identity = target_id
-            for f_num, df in self.face_detections.items():
-                df = df.loc[df['identity'] == target_id]
-                if not df.empty:
-                    target_row = df.loc[df['distance'].idxmin()]
-
-                    if target_row['distance'] < min_distance:
-                        min_distance = target_row['distance']
-                        frame = f_num
-
-        return (identity, min_distance, frame)
-
     def get_high_keypoint_frames(self, percentile=50):
         if not self.keypoints:
             return None

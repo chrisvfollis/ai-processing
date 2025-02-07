@@ -70,9 +70,14 @@ def initial_s3_setup(config, obj_keys=None, output_dir=None):
         return s3_client, bucket, obj_keys
 
 
-def ec2_public_dns(config):
+def ec2_public_dns(config, dir_path=None):
     if isinstance(config, str):
-        config = read_aws_config(config)
+        if not dir_path:
+            config = read_aws_config(config)
+        else:
+            config = read_aws_config(
+                config, dir_path=dir_path
+            )
     
     region = config['region']
     instance_id = config['instance_id']

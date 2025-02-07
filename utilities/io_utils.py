@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import requests
 import pandas as pd
 from utilities import utilities as utils
+import torch
 
 
 # ----------------------------------------------------------------------------
@@ -61,12 +62,12 @@ def write_embeddings(hdf5_file, embeddings, frames, box_indices):
     box_indices_dataset[-box_indices.shape[0]:] = box_indices
 
 
-def read_embeddings(hdf5_file, target_frame):
+def read_embeddings(hdf5_file, target_frame, device):
     with h5py.File(hdf5_file, 'r') as file:
         frames = file['frames']
         indices = np.where(frames[:] == target_frame)[0]
         target_embeddings = file['embeddings'][sorted(indices)]
-        return target_embeddings
+        return torch.from_numpy(target_embeddings).to(device)
 
 
 def delete_local_files(identifier, file_types='any',
