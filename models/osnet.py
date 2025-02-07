@@ -1,4 +1,3 @@
-import torchreid
 import torch
 import numpy as np
 import cv2
@@ -8,13 +7,14 @@ import h5py
 from utilities import io_utils
 import time
 
-import warnings
-warnings.filterwarnings(
-    "ignore",
-    message="Cython evaluation",
-    module="torchreid.reid.metrics.rank"
-)
-import torchreid
+from torchreid import models as reid
+
+# import warnings
+# warnings.filterwarnings(
+#     "ignore",
+#     message="Cython evaluation",
+#     module="torchreid.reid.metrics.rank"
+# )
 
 
 class OSNet:
@@ -22,7 +22,7 @@ class OSNet:
                  output_shape=(512,), num_classes=751, loss='triplet'):
         self.device = device
 
-        self.model = torchreid.models.osnet.osnet_x1_0(
+        self.model = reid.osnet.osnet_x1_0(
             num_classes=num_classes, pretrained=False, loss='triplet'
         )
         self.input_shape = input_shape

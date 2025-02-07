@@ -64,6 +64,7 @@ class TrackingPipeline:
         self.p_noise = [50 * self.variance_scaling_factor] * 4
         self.dt = 1/self.fps
 
+        self.reading_time = 0
         self.matching_time = 0
         self.prediction_time = 0
         self.id_assign_time = 0
@@ -457,6 +458,13 @@ class TrackingPipeline:
             
             self.save_pipeline_state()
 
+            print(f'{self.video_file} reading time: {self.reading_time}')
+            print(f'{self.video_file} matching time: {self.matching_time}')
+            print(f'{self.video_file} prediction time: {self.prediction_time}')
+            print(f'{self.video_file} ID assignment time: {self.id_assign_time}')
+
+            self.collect_data()
+
             _finalize_and_filter()
             _get_track_images(self.all_trks)
 
@@ -469,9 +477,12 @@ class TrackingPipeline:
 
             try:
                 detections = self.detection_data[self.f_num]
+                start_read = time.perf_counter()
                 embeddings = io_utils.read_embeddings(
                     self.embedding_path, self.f_num, self.device
                 )
+                end_read = time.perf_counter()
+                self.reading_time += (end_read - start_read)
                 keypoints = self.keypoint_data.get(self.f_num, None)
                 measurements = [detections, embeddings, keypoints]
             except KeyError:
@@ -834,7 +845,7 @@ class TrackingPipeline:
 
         return all_optimal_assignments
     
-    def collect_data(self, output_dir="../files/output"):
+    def collect_data(self, output_dir="../files/output/runtime_data"):
         git_commit_hash = utils.get_git_commit_hash()
         clip_identifier = self.video_file.split('.')[0] + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
@@ -991,9 +1002,11 @@ class Track(KalmanFilter):
         '''
 
         def _spatial_analysis(new_detections, frame_diag, distance_cutoff=0.5):
-            def _normalized_euclidean(new_detections, frame_diag, distance_cutoff=0.5):
-                trk_centroid = torch.tensor(self.x[:2], dtype=torch.float32,
-                                            device=new_detections.device).unsqueeze()
+            def _normalized_euclidean(new_detections, frame_diag,
+                                      distance_cutoff=0.5):
+                trk_centroid = torch.tensor(
+                    self.x[:2], dtype=torch.float32, device=new_detections.device
+                ).unsqueeze(0)
 
                 det_centroids = torch.stack(
                     [torch.tensor(utils.centroid(detection)) for detection in

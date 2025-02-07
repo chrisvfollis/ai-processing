@@ -6,6 +6,9 @@ from dotenv import load_dotenv
 import signal
 import sys
 from utilities import io_utils
+
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
