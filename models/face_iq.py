@@ -19,7 +19,7 @@ class FaceIq:
             config = {
                 'db_path': self.face_dir, 'model_name': self.id_model,
                 'detector_backend': self.detect_model, 'threshold': cutoff,
-                'enforce_detection': True, 'silent': True
+                'enforce_detection': False, 'silent': True
             }
             return config
 
@@ -30,7 +30,8 @@ class FaceIq:
         if not regions:
             try:
                 all_face_dfs = DeepFace.find(img_path=img, **config)
-            except ValueError:
+            except Exception as e:
+                print(f"DeepFace error: {e}")
                 return all_face_dfs
         else:
             for region in regions:
@@ -47,7 +48,7 @@ class FaceIq:
                                 df['source_y'] += y1
 
                                 all_face_dfs.append(df)
-                except ValueError as e:
+                except Exception as e:
                     print(f"DeepFace error: {e}")
         
         filtered_face_dfs = []
