@@ -315,3 +315,60 @@ def is_grayscale(frame, threshold=10):
     mean_diff = np.mean([np.mean(diff_rg), np.mean(diff_rb), np.mean(diff_gb)])
     
     return mean_diff < threshold
+
+
+import numpy as np
+import cv2
+
+def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, max_height=1080):
+    """
+    Clusters bounding boxes into the minimum number of non-overlapping image regions.
+    
+    Parameters:
+    - bboxes: List of bounding boxes in the format (x, y, w, h, c) where x, y are top-left.
+    - img_width: Width of the original image.
+    - img_height: Height of the original image.
+    - max_width: Maximum allowable width for a region (default: 1920).
+    - max_height: Maximum allowable height for a region (default: 1080).
+
+    Returns:
+    - List of region coordinates [(x1, y1, x2, y2)] representing the cropped regions.
+    """
+
+    # Convert bounding boxes to (x1, y1, x2, y2) format
+    bbox_coords = [(x, y, x + w, y + h) for x, y, w, h, c in bboxes]
+    bbox_coords = np.array(bbox_coords)
+
+    # Sort bounding boxes from top to bottom, then left to right
+    bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]
+
+    regions = []
+    used = set()
+
+    for i, (x1, y1, x2, y2) in enumerate(bbox_coords):
+        if i in used:
+            continue
+
+        # Start a new region
+        region_x1, region_y1 = x1, y1
+        region_x2, region_y2 = x2, y2
+
+        # Try to expand region while keeping it within max limits
+        for j, (bx1, by1, bx2, by2) in enumerate(bbox_coords[i+1:], start=i+1):
+            if j in used:
+                continue
+
+            # Check if adding this bbox would exceed the max size
+            new_x1, new_y1 = min(region_x1, bx1), min(region_y1, by1)
+            new_x2, new_y2 = max(region_x2, bx2), max(region_y2, by2)
+
+            if (new_x2 - new_x1) <= max_width and (new_y2 - new_y1) <= max_height:
+                # Expand region to include this bbox
+                region_x1, region_y1 = new_x1, new_y1
+                region_x2, region_y2 = new_x2, new_y2
+                used.add(j)
+
+        # Store the computed region
+        regions.append((region_x1, region_y1, region_x2, region_y2))
+
+    return regions

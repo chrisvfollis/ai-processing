@@ -33,6 +33,7 @@ class FaceIq:
             except ValueError:
                 return all_face_dfs
         else:
+            regions = [region[:4] for region in regions]
             region_crops = [img[y1:y1+h, x1:x1+w] for x1, y1, w, h in regions]
 
             try:
