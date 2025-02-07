@@ -317,9 +317,6 @@ def is_grayscale(frame, threshold=10):
     return mean_diff < threshold
 
 
-import numpy as np
-import cv2
-
 def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, max_height=1080):
     """
     Clusters bounding boxes into the minimum number of non-overlapping image regions.
@@ -335,9 +332,7 @@ def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, m
     - List of region coordinates [(x1, y1, x2, y2)] representing the cropped regions.
     """
 
-    # Convert bounding boxes to (x1, y1, x2, y2) format
-    bbox_coords = [(x, y, x + w, y + h) for x, y, w, h, c in bboxes]
-    bbox_coords = np.array(bbox_coords)
+    bbox_coords = np.array([(x, y, x + w, y + h) for x, y, w, h, _ in bboxes])
 
     # Sort bounding boxes from top to bottom, then left to right
     bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]

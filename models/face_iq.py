@@ -34,6 +34,7 @@ class FaceIq:
                 return all_face_dfs
         else:
             regions = [region[:4] for region in regions]
+            print(regions)
             region_crops = [img[y1:y1+h, x1:x1+w] for x1, y1, w, h in regions]
 
             try:
@@ -49,8 +50,8 @@ class FaceIq:
                             df['source_y'] += y1
 
                             all_face_dfs.append(df)
-            except ValueError:
-                pass
+            except ValueError as e:
+                print(f"DeepFace error: {e}")
         
         filtered_face_dfs = []
         for df in all_face_dfs:
