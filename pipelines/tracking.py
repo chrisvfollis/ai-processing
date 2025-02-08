@@ -83,7 +83,8 @@ class TrackingPipeline:
         self.device = torch.device(state['device'])
 
     def load_prior_tracks(self):
-        files = [f for f in os.listdir('../files/output')
+        output_dir = '../files/output'
+        files = [f for f in os.listdir(output_dir)
                  if f.endswith(str(self.video_file.split('.')[0].split('_')[-1])
                                + '.pkl')]
         if not files:
@@ -91,7 +92,8 @@ class TrackingPipeline:
             return
         
         self.prior_pickle = sorted(files)[-1]
-        with open(self.prior_pickle, 'rb') as f:
+        pickle_path = os.path.join(output_dir, self.prior_pickle)
+        with open(pickle_path, 'rb') as f:
             prior_pipeline = pickle.load(f)
         
         interim = (self.start_time - prior_pipeline.end_time).total_seconds()
@@ -862,8 +864,10 @@ class TrackingPipeline:
         clip_identifier = self.video_file.split('.')[0] + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
+        all_tracks = {**self.active_trks, **self.trk_cache}
+
         track_data = []
-        for trk_id, trk in self.all_trks.items():
+        for trk_id, trk in all_tracks.items():
             for frame, detection in trk.detections.items():
                 detection_conf = detection[-1] if len(detection) == 5 else None
                 face_detections = trk.face_detections.get(frame, None)

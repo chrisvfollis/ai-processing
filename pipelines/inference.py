@@ -71,7 +71,7 @@ class InferencePipeline:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
 
     def run(self):
-        def _process_frame(frame, focus='local'):
+        def _process_frame(frame, focus='global'):
             if self.f_num % self.track_stride == 0:
                 bboxes = self.yolov4.detect(frame, 0, conf_thresh=0.65,
                                             resize_dims=(416, 416))
@@ -90,6 +90,7 @@ class InferencePipeline:
                     )
                 if face_dfs:
                     self.face_data[self.f_num] = face_dfs
+                    print(f'Found {len(face_dfs)} faces')
         
             if self.f_num % self.kp_stride == 0:
                 all_keypoints = self.movenet.detection_batch(frame, bboxes)
