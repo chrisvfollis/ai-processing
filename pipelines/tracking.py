@@ -861,7 +861,7 @@ class TrackingPipeline:
     
     def collect_data(self, output_dir="../files/output/runtime_data"):
         git_commit_hash = utils.get_git_commit_hash()
-        clip_identifier = self.video_file.split('.')[0] + git_commit_hash
+        clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
         all_tracks = {**self.active_trks, **self.trk_cache}
@@ -1183,6 +1183,7 @@ class Track(KalmanFilter):
                 color_vals = [expected_pixel_stat, measured_pixel_stat]
 
                 if (
+                    (min(area_vals) > 0) and
                     math.sqrt(max(area_vals) / min(area_vals)) >
                     max_scale_ratio
                 ):

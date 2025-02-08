@@ -162,7 +162,7 @@ class InferencePipeline:
                 break
             prev_frame = current_frame
 
-            _process_frame(frame, focus='local')
+            _process_frame(frame, focus='global')
             _continue()
 
         _wrap_up()
@@ -170,7 +170,7 @@ class InferencePipeline:
     
     def collect_data(self, output_dir="../files/output/runtime_data"):
         git_commit_hash = utils.get_git_commit_hash()
-        clip_identifier = self.video_file.split('.')[0] + git_commit_hash
+        clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
         config_data = {
