@@ -310,7 +310,7 @@ class TrackingPipeline:
                 measurement = np.array([x, y, w, h])
 
                 trk.update(measurement)
-                trk.add_detection(box[:4], self.f_num)
+                trk.add_detection(box, self.f_num)
                 trk.add_embedding(embeddings[measurement_index])
     
                 if keypoints:
@@ -361,7 +361,7 @@ class TrackingPipeline:
             for id in trk_ids:
                 trk = self.active_trks[id]
                 try:
-                    box = trk.detections[self.f_num]
+                    box = trk.detections[self.f_num][:4]
                 except KeyError:
                     state = trk.x[:4]
                     x, y = utils.centroid(state, reverse=True)
