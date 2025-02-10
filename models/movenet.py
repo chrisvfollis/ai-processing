@@ -5,15 +5,15 @@ import time
 
 
 class MoveNet:
-    def __init__(self, model_dir):
+    def __init__(self, model_dir, conf_thresh=0.35):
         model = tf.saved_model.load(model_dir)
         self.model = model.signatures['serving_default']
 
         self.detection_time = 0
+        self.conf_thresh = conf_thresh
     
     def detect(self, img, conf_thresh=0.35, max_only=False):
         def _preprocess_img(img):
-            self.conf_thresh = conf_thresh
             original_dims = img.shape[:2][::-1]
             w, h = original_dims
             
