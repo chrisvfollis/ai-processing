@@ -638,12 +638,14 @@ class TrackingPipeline:
                 return np.array(filtered_matrix), keep
 
             start_assign = time.perf_counter()
+            print('Assigning identities')
 
             trk_id_costs = {}
             for trk_id, trk in self.all_trks.items():
                 id_costs = trk.calc_id_costs()
 
                 if not id_costs:
+                    print('No ID costs')
                     continue
 
                 trk_id_costs[trk_id] = id_costs
@@ -819,7 +821,7 @@ class TrackingPipeline:
             print(f'{self.video_file} matching time: {self.matching_time}')
             print(f'{self.video_file} prediction time: {self.prediction_time}')
             print(f'{self.video_file} ID assignment time: {self.id_assign_time}')
-
+            
             self.all_trks = self.trk_cache
             _assign_identities()
             _get_track_images(self.all_trks)
