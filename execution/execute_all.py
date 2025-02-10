@@ -56,7 +56,6 @@ def process_video(row, credentials, model_info, device, time_prefix):
     )   
 
     trk_pipeline.run()
-    trk_pipeline.assign_identities()
 
     all_trks = trk_pipeline.all_trks
     fps = inf_pipeline.fps

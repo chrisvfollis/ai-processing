@@ -90,7 +90,6 @@ class InferencePipeline:
                     )
                 if face_dfs:
                     self.face_data[self.f_num] = face_dfs
-                    print(f'Found {len(face_dfs)} faces')
         
             if self.f_num % self.kp_stride == 0:
                 all_keypoints = self.movenet.detection_batch(frame, bboxes)
