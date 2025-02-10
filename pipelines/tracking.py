@@ -347,6 +347,8 @@ class TrackingPipeline:
 
                 return np.array(cost_matrix)
             
+            start_associate = time.perf_counter()
+
             if (self.face_data is None) or (self.face_data.empty):
                 return None
     
@@ -390,6 +392,9 @@ class TrackingPipeline:
                 ]
 
                 self.active_trks[id].add_face_detection(f_matches, self.f_num)
+            
+            end_associate = time.perf_counter()
+            self.id_assign_time = (end_associate - start_associate)
         
         def _assign_identities():
             def _group_tracks(trk_ids: list = 'all'):
