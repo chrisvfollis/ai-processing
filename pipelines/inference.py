@@ -24,8 +24,12 @@ class InferencePipeline:
 
         self.video_file = video_file
         self.cap = cv2.VideoCapture('../files/input/' + video_file)
+        if not self.cap.isOpened():
+            raise ValueError("Failed to open video file")
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
+        if self.fps == 0:
+            raise ValueError("FPS returned as 0. Check the video file or OpenCV installation.")
         self.resolution = (
             int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
             int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

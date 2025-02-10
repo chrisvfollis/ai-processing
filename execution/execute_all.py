@@ -43,8 +43,11 @@ def process_video(row, credentials, model_info, device, time_prefix):
     from pipelines.inference import InferencePipeline
     from pipelines.tracking import TrackingPipeline
 
-
-    inf_pipeline = InferencePipeline(video_file, model_info, device)
+    try:
+        inf_pipeline = InferencePipeline(video_file, model_info, device)
+    except ValueError:
+        print(f'Issue with {video_file}. Skipping...')
+        return False
     if not inf_pipeline.skim():
         io_utils.delete_s3_footage(video_file, credentials)
         return False
