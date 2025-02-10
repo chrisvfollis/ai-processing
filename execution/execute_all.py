@@ -66,6 +66,9 @@ def process_video(row, credentials, model_info, device, time_prefix):
     io_utils.save_track_info(
         time_prefix, camera, all_trks, fps=fps
     )
+
+    trk_pipeline.generate_output_vid()
+
     print(f"Processed {video_file}")
 
     return True

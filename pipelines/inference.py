@@ -146,15 +146,9 @@ class InferencePipeline:
             self.cap.release()
 
             self.face_data = _format_face_data(self.face_data)
-
-            print(f'{self.video_file} obj detection time: {self.yolov4.detection_time}')
-            print(f'{self.video_file} pose estimation time: {self.movenet.detection_time}')
-            print(f'{self.video_file} extraction time: {self.osnet.extraction_time}')
-            print(f'{self.video_file} flush time: {self.osnet.flush_time}')
-            print(f'{self.video_file} identification time: {self.face_iq.identification_time}')
             
             self.collect_data()
-        
+
         print(f"Running inference pipeline for {self.video_file}...")
 
         self.f_num = 0

@@ -39,9 +39,7 @@ class TrackingPipeline:
         self.all_trks = {}
         self.active_trks = {}
         self.trk_cache = {}
-
-        self.lifespan_filtered = {}
-        self.keypoint_filtered = {}
+        self.filtered_trks = {}
     
         self.trk_id = 0
 
@@ -750,10 +748,13 @@ class TrackingPipeline:
                             (lifespan < self.min_lifespan) and
                             (not trk.face_detections)
                         ):
-                            self.lifespan_filtered[id] = trk
+                            self.filtered_trks[id] = trk
                     
-                    for id in self.lifespan_filtered.keys():
-                        del self.all_trks[id]
+                    for id in self.filtered_trks.keys():
+                        try:
+                            del self.all_trks[id]
+                        except KeyError:
+                            continue
             
                 def _filter_by_keypoints(expected_kps=3, expected_conf=.55):
                     expected_avg = (expected_kps * expected_conf) / 17
@@ -764,7 +765,7 @@ class TrackingPipeline:
                         n_frames = len(trk.keypoints.keys())
                         if n_frames == 0:
                             trk.kp_avg = 0
-                            self.keypoint_filtered[id] = trk
+                            self.filtered_trks[id] = trk
                             continue
         
                         total_conf = sum(trk.keypoints[f][:, 2].sum()
@@ -772,13 +773,14 @@ class TrackingPipeline:
                         trk.kp_avg = total_conf / (n_frames * 17)
 
                         if trk.kp_avg < expected_avg:
-                            self.keypoint_filtered[id] = trk
+                            self.filtered_trks[id] = trk
                     
-                    for id in self.keypoint_filtered.keys():
-                        del self.all_trks[id]
-                
-                del self.active_trks
-                
+                    for id in self.filtered_trks.keys():
+                        try:
+                            del self.all_trks[id]
+                        except KeyError:
+                            continue
+                                
                 _filter_by_lifespan()
                 _filter_by_keypoints()
             
@@ -793,11 +795,10 @@ class TrackingPipeline:
 
                     percentile = 75
                     clear_frames = None
-                    while (not clear_frames) and (percentile >= 5):
+                    while (not clear_frames) and (percentile >= 25):
                         clear_frames = trk.get_high_keypoint_frames(percentile=percentile)
                         percentile -= 10
-                    
-        
+
                     if clear_frames:
                         frames = [clear_frames[0], clear_frames[-1]]
                     else:
@@ -823,11 +824,6 @@ class TrackingPipeline:
             self.all_trks = self.trk_cache
             _assign_identities()
             _get_track_images(self.all_trks)
-
-            print(f'{self.video_file} reading time: {self.reading_time}')
-            print(f'{self.video_file} matching time: {self.matching_time}')
-            print(f'{self.video_file} prediction time: {self.prediction_time}')
-            print(f'{self.video_file} ID assignment time: {self.id_assign_time}')
 
             self.collect_data()
             _finalize_and_filter()
@@ -942,6 +938,48 @@ class TrackingPipeline:
         print('Tracking pipeline saved')
 
         return
+
+    def generate_output_vid(self, input_dir='../files/input/', output_dir='../files/output/videos'):
+        print(f'Generating output video for {self.video_file}')
+
+        all_trks = {**self.active_trks, **self.trk_cache, **self.filtered_trks}
+
+        cap = cv2.VideoCapture(os.path.join(input_dir, self.video_file))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        fw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        fh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        prefix = self.video_file.split('.')[0]
+        out = cv2.VideoWriter(os.path.join(output_dir, f'{prefix}_boxes.mp4'),
+                              cv2.VideoWriter_fourcc(*'mp4v'), fps, (fw, fh))
+        
+        color = (245, 104, 17)
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            f_num = cap.get(cv2.CAP_PROP_POS_FRAMES)
+
+            for trk_id, trk in all_trks.items():
+                box = trk.detections.get(f_num, None)
+                if not box:
+                    continue
+
+                x1, y1, w, h = map(int, box)
+                x2, y2 = x1 + w, y1 + h
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(frame, f'trk_{trk_id}', (x1 + 5, y1 + 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+                if trk.identity:
+                    cv2.putText(frame, f'{trk.identity}', (x2 - 5, y2 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            
+            out.write(frame)
+        
+        out.release()
+        cap.release()
 
 
 # ----------------------------------------------------------------------------
