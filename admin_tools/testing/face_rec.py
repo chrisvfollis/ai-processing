@@ -8,6 +8,7 @@ import numpy as np
 import time
 from models.yolov4 import YOLOv4
 from models.face_iq import FaceIq
+from utilities import utilities as utils
 
 
 
@@ -116,6 +117,11 @@ def cropped_detections(video, yolov4, face_iq):
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    resolution = (
+        int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+        int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    )
+
     f_num = -1
 
     image_num = 0
@@ -139,6 +145,7 @@ def cropped_detections(video, yolov4, face_iq):
             detect_total += (end - start)
 
             person_boxes = [box[:4] for box in detections]
+            regions = utils.cluster_bboxes_into_regions(person_boxes, *resolution)
 
             faces_detected = 0
 

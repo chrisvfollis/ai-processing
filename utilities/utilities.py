@@ -329,7 +329,7 @@ def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, m
     - max_height: Maximum allowable height for a region (default: 1080).
 
     Returns:
-    - List of region coordinates [(x1, y1, x2, y2)] representing the cropped regions.
+    - List of region coordinates [(x1, y1, w, h)] representing the cropped regions.
     """
 
     bbox_coords = np.array([(x, y, x + w, y + h) for x, y, w, h, _ in bboxes])
@@ -347,23 +347,33 @@ def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, m
         # Start a new region
         region_x1, region_y1 = x1, y1
         region_x2, region_y2 = x2, y2
+        region_bboxes = [(x1, y1, x2, y2)]
 
         # Try to expand region while keeping it within max limits
         for j, (bx1, by1, bx2, by2) in enumerate(bbox_coords[i+1:], start=i+1):
             if j in used:
                 continue
 
-            # Check if adding this bbox would exceed the max size
+            # Compute new potential region bounds
             new_x1, new_y1 = min(region_x1, bx1), min(region_y1, by1)
             new_x2, new_y2 = max(region_x2, bx2), max(region_y2, by2)
 
-            if (new_x2 - new_x1) <= max_width and (new_y2 - new_y1) <= max_height:
-                # Expand region to include this bbox
+            # Check if adding this bbox would exceed the max size
+            if (new_x2 - new_x1) > max_width or (new_y2 - new_y1) > max_height:
+                continue  # Skip this bbox if it would make the region too large
+
+            # Ensure all bounding boxes remain fully within the region
+            for rx1, ry1, rx2, ry2 in region_bboxes:
+                if not (new_x1 <= rx1 and new_y1 <= ry1 and new_x2 >= rx2 and new_y2 >= ry2):
+                    break  # One bbox would be split, so skip this expansion
+            else:
+                # If all are still contained, expand the region
                 region_x1, region_y1 = new_x1, new_y1
                 region_x2, region_y2 = new_x2, new_y2
+                region_bboxes.append((bx1, by1, bx2, by2))
                 used.add(j)
 
         # Store the computed region
-        regions.append((region_x1, region_y1, region_x2, region_y2))
+        regions.append((region_x1, region_y1, (region_x2 - region_x1), (region_y2 - region_y1)))
 
     return regions
