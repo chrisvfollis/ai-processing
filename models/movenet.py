@@ -13,6 +13,7 @@ class MoveNet:
     
     def detect(self, img, conf_thresh=0.35, max_only=False):
         def _preprocess_img(img):
+            self.conf_thresh = conf_thresh
             original_dims = img.shape[:2][::-1]
             w, h = original_dims
             
