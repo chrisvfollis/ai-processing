@@ -389,7 +389,8 @@ class TrackingPipeline:
                     (face_df['h'] == face_box[3])
                 ]
 
-                self.active_trks[id].add_face_detection(f_matches, self.f_num)     
+                self.active_trks[id].add_face_detection(f_matches, self.f_num)
+                print(f'{len(f_matches)} possible face matches added')
         
         def _assign_identities():
             def _group_tracks(trk_ids: list = 'all'):
