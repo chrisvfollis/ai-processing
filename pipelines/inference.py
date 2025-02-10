@@ -37,7 +37,7 @@ class InferencePipeline:
         
         self.f_num = 0
 
-        self.track_stride = self.fps // 10
+        self.track_stride = max(1, self.fps // 10)
         self.id_stride = (self.fps // self.track_stride) * self.track_stride
         self.kp_stride = self.id_stride * 3
 
