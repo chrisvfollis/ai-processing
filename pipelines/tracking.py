@@ -40,7 +40,10 @@ class TrackingPipeline:
         self.active_trks = {}
         self.trk_cache = {}
         self.filtered_trks = {}
-    
+
+        self.kp_filtered = 0
+        self.lifespan_filtered = 0
+
         self.trk_id = 0
 
         self.min_lifespan = self.fps * 15
@@ -740,7 +743,7 @@ class TrackingPipeline:
     
         def _wrap_up():
             def _finalize_and_filter():
-                def _filter_by_lifespan():                
+                def _filter_by_lifespan():
                     for id, trk in self.all_trks.items():
                         lifespan = trk.span[1] - trk.span[0]
 
@@ -749,6 +752,7 @@ class TrackingPipeline:
                             (not trk.face_detections)
                         ):
                             self.filtered_trks[id] = trk
+                            self.lifespan_filtered += 1
                     
                     for id in self.filtered_trks.keys():
                         try:
@@ -774,7 +778,8 @@ class TrackingPipeline:
 
                         if trk.kp_avg < expected_avg:
                             self.filtered_trks[id] = trk
-                    
+                            self.kp_filtered += 1
+
                     for id in self.filtered_trks.keys():
                         try:
                             del self.all_trks[id]
@@ -861,12 +866,12 @@ class TrackingPipeline:
         if not is_continuation:
             _wrap_up()
     
-    def collect_data(self, output_dir="../files/output/runtime_data"):
+    def collect_data(self, output_dir='../files/output/runtime_data'):
         git_commit_hash = utils.get_git_commit_hash()
         clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
-        all_tracks = {**self.active_trks, **self.trk_cache}
+        all_tracks = {**self.active_trks, **self.trk_cache, **self.filtered_trks}
 
         track_data = []
         for trk_id, trk in all_tracks.items():
@@ -881,43 +886,52 @@ class TrackingPipeline:
                 num_keypoints = keypoints.shape[0] if keypoints is not None else 0
 
                 track_data.append({
-                    "track_id": trk_id,
-                    "frame": frame,
-                    "detection_confidence": detection_conf,
-                    "facial_cos_dist": cosine_distance,
-                    "keypoint_confidence": keypoint_conf,
-                    "num_keypoints": num_keypoints,
+                    'track_id': trk_id,
+                    'frame': frame,
+                    'detection_confidence': detection_conf,
+                    'facial_cos_dist': cosine_distance,
+                    'keypoint_confidence': keypoint_conf,
+                    'num_keypoints': num_keypoints,
                 })
+        
+        stats_data = {
+            'stat_name': ['tracks', 'kp_fltr_tracks', 'span_fltr_tracks'],
+            'stat_value': [len(all_tracks.keys()), self.kp_filtered,
+                        self.lifespan_filtered]
+        }
+        stats_df = pd.DataFrame(stats_data)
 
         tracks_df = pd.DataFrame(track_data)
-        tracks_csv_path = os.path.join(output_dir, f"tracking_output_{clip_identifier}.csv")
-        tracks_df.to_csv(tracks_csv_path, index=False)
 
         config_data = {
-            "Module": ["KalmanFilter", "KalmanFilter", "KalmanFilter",
-                       "KalmanFilter", "Video", "Version"],
-            "Parameter": [
-                "Initial_Uncertainty", "Measurement_Noise",
-                "Process_Noise", "Time_Step", "Resolution_FPS",
-                "Git_Commit_Hash"
+            'module': ['KalmanFilter', 'KalmanFilter', 'KalmanFilter',
+                    'KalmanFilter', 'Video', 'Version'],
+            'parameter': [
+                'Initial_Uncertainty', 'Measurement_Noise',
+                'Process_Noise', 'Time_Step', 'Resolution_FPS',
+                'Git_Commit_Hash'
             ],
-            "Value": [
+            'value': [
                 self.initial_uncertainty, self.m_noise, self.p_noise, self.dt,
-                f"{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps",
+                f'{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps',
                 git_commit_hash
             ]
         }
         config_df = pd.DataFrame(config_data)
-        config_csv_path = os.path.join(output_dir, f"tracking_config_{clip_identifier}.csv")
-        config_df.to_csv(config_csv_path, index=False)
 
         performance_data = {
-            "Metric": ["ID_Assignment_Time", "Prediction_Time", "Track_Matching_Time"],
-            "Value": [self.id_assign_time, self.prediction_time, self.matching_time],
+            'Metric': ['ID_Assignment_Time', 'Prediction_Time', 'Track_Matching_Time'],
+            'Value': [self.id_assign_time, self.prediction_time, self.matching_time],
         }
         performance_df = pd.DataFrame(performance_data)
-        performance_csv_path = os.path.join(output_dir, f"tracking_performance_{clip_identifier}.csv")
-        performance_df.to_csv(performance_csv_path, index=False)
+
+        excel_path = os.path.join(output_dir, f'tracking_data_{clip_identifier}.xlsx')
+
+        with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+            tracks_df.to_excel(writer, sheet_name='Tracking Data', index=False)
+            config_df.to_excel(writer, sheet_name='Configuration', index=False)
+            performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
+            stats_df.to_excel(writer, sheet_name='Stats', index=False)
 
         return tracks_df, config_df, performance_df
 
