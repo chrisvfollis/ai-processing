@@ -390,7 +390,6 @@ class TrackingPipeline:
                 ]
 
                 self.active_trks[id].add_face_detection(f_matches, self.f_num)
-                print(f'{len(f_matches)} possible face matches added')
         
         def _assign_identities():
             def _group_tracks(trk_ids: list = 'all'):
@@ -638,7 +637,6 @@ class TrackingPipeline:
                 return np.array(filtered_matrix), keep
 
             start_assign = time.perf_counter()
-            print('Assigning identities')
 
             trk_id_costs = {}
             for trk_id, trk in self.all_trks.items():
@@ -816,15 +814,15 @@ class TrackingPipeline:
                 cap.release()
             
             self.save_pipeline_state()
+            
+            self.all_trks = self.trk_cache
+            _assign_identities()
+            _get_track_images(self.all_trks)
 
             print(f'{self.video_file} reading time: {self.reading_time}')
             print(f'{self.video_file} matching time: {self.matching_time}')
             print(f'{self.video_file} prediction time: {self.prediction_time}')
             print(f'{self.video_file} ID assignment time: {self.id_assign_time}')
-            
-            self.all_trks = self.trk_cache
-            _assign_identities()
-            _get_track_images(self.all_trks)
 
             self.collect_data()
             _finalize_and_filter()
