@@ -29,7 +29,7 @@ class InferencePipeline:
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
         if self.fps == 0:
-            raise ValueError("FPS returned as 0. Check the video file or OpenCV installation.")
+            raise ValueError("FPS returned as 0, check the video file")
         self.resolution = (
             int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
             int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
