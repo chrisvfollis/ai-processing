@@ -83,6 +83,7 @@ class InferencePipeline:
                 if bboxes:
                     self.person_data[self.f_num] = bboxes
 
+            face_dfs = []
             if self.f_num % self.id_stride == 0:
                 if focus == 'local':
                     if bboxes:
