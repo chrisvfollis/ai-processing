@@ -968,24 +968,25 @@ class TrackingPipeline:
         fh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         prefix = self.video_file.split('.')[0]
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         out = cv2.VideoWriter(os.path.join(output_dir, f'{prefix}_boxes.mp4'),
-                              cv2.VideoWriter_fourcc(*'mp4v'), fps, (fw, fh))
+                              fourcc, fps, (fw, fh))
         
         color = (245, 104, 17)
 
+        f_num = 0
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
-            f_num = cap.get(cv2.CAP_PROP_POS_FRAMES)
-
             for trk_id, trk in all_trks.items():
-                box = trk.detections.get(f_num, None)
+                box = trk.states.get(f_num, None)
                 if not box:
                     continue
 
-                x1, y1, w, h = map(int, box)
+                cx, cy, w, h = map(int, box)
+                x1, y1 = int(cx - (w / 2)), int(cy - (h / 2))
                 x2, y2 = x1 + w, y1 + h
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(frame, f'trk_{trk_id}', (x1 + 5, y1 + 5),
@@ -995,6 +996,7 @@ class TrackingPipeline:
                                 cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             
             out.write(frame)
+            f_num += 1
         
         out.release()
         cap.release()
