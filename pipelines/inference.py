@@ -89,9 +89,9 @@ class InferencePipeline:
                         regions = utils.cluster_bboxes_into_regions(
                             bboxes, *self.resolution
                         )
-                    face_dfs = self.face_iq.identify_faces(
-                        frame, cutoff=0.8, regions=regions
-                    )
+                        face_dfs = self.face_iq.identify_faces(
+                            frame, cutoff=0.8, regions=regions
+                        )
                 elif focus == 'global':
                     face_dfs = self.face_iq.identify_faces(
                         frame, cutoff=0.8
