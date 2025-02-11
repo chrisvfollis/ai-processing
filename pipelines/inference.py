@@ -173,6 +173,7 @@ class InferencePipeline:
         git_commit_hash = utils.get_git_commit_hash()
         clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
+        print(f"[DEBUG] Output directory: {output_dir}")
 
         config_data = {
             "module": [
@@ -201,6 +202,7 @@ class InferencePipeline:
             ]
         }
         config_df = pd.DataFrame(config_data)
+        print(f"[DEBUG] Config Data Shape: {config_df.shape}")
 
         performance_data = {
             "metric": [
@@ -219,12 +221,16 @@ class InferencePipeline:
             ]
         }
         performance_df = pd.DataFrame(performance_data)
+        print(f"[DEBUG] Performance Data Shape: {performance_df.shape}")
 
         excel_path = os.path.join(output_dir, f'inference_data_{clip_identifier}.xlsx')
-
-        with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
-            config_df.to_excel(writer, sheet_name='Inference Configuration', index=False)
-            performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
+        try:
+            with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+                config_df.to_excel(writer, sheet_name='Inference Configuration', index=False)
+                performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
+            print(f"[DEBUG] Saved inference data to: {excel_path}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save Excel file: {e}")
 
         print(f'Saved inference data to {excel_path}')
         return config_df, performance_df

@@ -928,11 +928,14 @@ class TrackingPipeline:
 
         excel_path = os.path.join(output_dir, f'tracking_data_{clip_identifier}.xlsx')
 
-        with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
-            tracks_df.to_excel(writer, sheet_name='Tracking Data', index=False)
-            config_df.to_excel(writer, sheet_name='Configuration', index=False)
-            performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
-            stats_df.to_excel(writer, sheet_name='Stats', index=False)
+        try:
+            with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+                tracks_df.to_excel(writer, sheet_name='Tracking Data', index=False)
+                config_df.to_excel(writer, sheet_name='Configuration', index=False)
+                performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
+                stats_df.to_excel(writer, sheet_name='Stats', index=False)
+        except Exception as e:
+            print(f"[ERROR] Failed to save Excel file: {e}")
 
         return tracks_df, config_df, performance_df
 
