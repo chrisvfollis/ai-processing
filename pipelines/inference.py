@@ -85,9 +85,10 @@ class InferencePipeline:
 
             if self.f_num % self.id_stride == 0:
                 if focus == 'local':
-                    regions = utils.cluster_bboxes_into_regions(
-                        bboxes, *self.resolution
-                    )
+                    if bboxes:
+                        regions = utils.cluster_bboxes_into_regions(
+                            bboxes, *self.resolution
+                        )
                     face_dfs = self.face_iq.identify_faces(
                         frame, cutoff=0.8, regions=regions
                     )
