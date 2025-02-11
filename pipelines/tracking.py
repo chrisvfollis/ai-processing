@@ -986,7 +986,7 @@ class TrackingPipeline:
 
             for trk_id, trk in all_trks.items():
                 box = trk.states.get(f_num, None)
-                if not box:
+                if (box is None) or (box.size == 0):
                     continue
 
                 cx, cy, w, h = map(int, box)
