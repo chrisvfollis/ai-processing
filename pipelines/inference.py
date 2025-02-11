@@ -105,16 +105,16 @@ class InferencePipeline:
 
             return True
     
-        def _continue():
-            if self.f_num % self.checkpoint_stride == 0:
-                progress = int(round((self.f_num / self.total_frames) * 100, 0))
-                print(f'{progress}%')
-    
+        def _continue():    
             if self.track_stride <= 15:
                 self.f_num += 1
             else:
                 self.f_num += self.track_stride
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
+            
+            if self.f_num % self.checkpoint_stride == 0:
+                progress = int(round((self.f_num / self.total_frames) * 100, 0))
+                print(f'{progress}%')
         
         def _wrap_up():
             def _format_face_data(face_data):
@@ -169,20 +169,21 @@ class InferencePipeline:
         return self.person_data, self.keypoint_data, self.face_data
 
     def collect_data(self, output_dir="../files/output/runtime_data"):
+        print('Collecting inference data')
         git_commit_hash = utils.get_git_commit_hash()
         clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
         config_data = {
-            "Module": [
-                "YOLOv4", "YOLOv4",
-                "OSNet", "OSNet",
-                "MoveNet",
-                "FaceIq", "FaceIq",
-                "Video",
-                "Version"
+            "module": [
+                "yolov4", "yolov4",
+                "osnet", "osnet",
+                "movenet",
+                "faceiq", "faceiq",
+                "video",
+                "version"
             ],
-            "Parameter": [
+            "parameter": [
                 "nms_threshold", "confidence_threshold",
                 "input_shape", "output_shape",
                 "confidence_threshold",
@@ -190,7 +191,7 @@ class InferencePipeline:
                 "resolution",
                 "git_commit_hash"
             ],
-            "Value": [
+            "value": [
                 self.yolov4.nms_thresh, self.yolov4.conf_thresh,
                 self.osnet.input_shape, self.osnet.output_shape,
                 self.movenet.conf_thresh,
@@ -202,14 +203,14 @@ class InferencePipeline:
         config_df = pd.DataFrame(config_data)
 
         performance_data = {
-            "Metric": [
+            "metric": [
                 "object_detection_time",
                 "pose_estimation_time",
                 "feature_extraction_time",
                 "extraction_flush_time",
                 "identification_time",
             ],
-            "Value": [
+            "value": [
                 self.yolov4.detection_time,
                 self.movenet.detection_time,
                 self.osnet.extraction_time,

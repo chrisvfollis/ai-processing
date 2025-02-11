@@ -867,6 +867,7 @@ class TrackingPipeline:
             _wrap_up()
     
     def collect_data(self, output_dir='../files/output/runtime_data'):
+        print('Collecting tracking data')
         git_commit_hash = utils.get_git_commit_hash()
         clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
         os.makedirs(output_dir, exist_ok=True)
@@ -920,8 +921,8 @@ class TrackingPipeline:
         config_df = pd.DataFrame(config_data)
 
         performance_data = {
-            'Metric': ['id_assignment_time', 'prediction_time', 'track_matching_time'],
-            'Value': [self.id_assign_time, self.prediction_time, self.matching_time],
+            'metric': ['id_assignment_time', 'prediction_time', 'track_matching_time'],
+            'value': [self.id_assign_time, self.prediction_time, self.matching_time],
         }
         performance_df = pd.DataFrame(performance_data)
 
