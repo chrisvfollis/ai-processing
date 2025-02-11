@@ -904,12 +904,12 @@ class TrackingPipeline:
         tracks_df = pd.DataFrame(track_data)
 
         config_data = {
-            'module': ['KalmanFilter', 'KalmanFilter', 'KalmanFilter',
-                    'KalmanFilter', 'Video', 'Version'],
+            'module': ['kalman_filter', 'kalman_filter', 'kalman_filter',
+                    'kalman_filter', 'video', 'version'],
             'parameter': [
-                'Initial_Uncertainty', 'Measurement_Noise',
-                'Process_Noise', 'Time_Step', 'Resolution_FPS',
-                'Git_Commit_Hash'
+                'initial_uncertainty', 'measurement_index',
+                'process_noise', 'time_step', 'resolution_fps',
+                'git_commit_hash'
             ],
             'value': [
                 self.initial_uncertainty, self.m_noise, self.p_noise, self.dt,
@@ -920,7 +920,7 @@ class TrackingPipeline:
         config_df = pd.DataFrame(config_data)
 
         performance_data = {
-            'Metric': ['ID_Assignment_Time', 'Prediction_Time', 'Track_Matching_Time'],
+            'Metric': ['id_assignment_time', 'prediction_time', 'track_matching_time'],
             'Value': [self.id_assign_time, self.prediction_time, self.matching_time],
         }
         performance_df = pd.DataFrame(performance_data)

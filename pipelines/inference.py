@@ -167,7 +167,7 @@ class InferencePipeline:
 
         _wrap_up()
         return self.person_data, self.keypoint_data, self.face_data
-    
+
     def collect_data(self, output_dir="../files/output/runtime_data"):
         git_commit_hash = utils.get_git_commit_hash()
         clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
@@ -200,9 +200,6 @@ class InferencePipeline:
             ]
         }
         config_df = pd.DataFrame(config_data)
-        config_csv_path = os.path.join(output_dir, f'inference_config_{clip_identifier}.csv')
-        print(f'Saving config data to {config_csv_path}')
-        config_df.to_csv(config_csv_path, index=False)
 
         performance_data = {
             "Metric": [
@@ -221,8 +218,12 @@ class InferencePipeline:
             ]
         }
         performance_df = pd.DataFrame(performance_data)
-        performance_csv_path = os.path.join(output_dir, f'inference_performance_{clip_identifier}.csv')
-        print(f'Saving performance data to {performance_csv_path}')
-        performance_df.to_csv(performance_csv_path, index=False)
 
+        excel_path = os.path.join(output_dir, f'inference_data_{clip_identifier}.xlsx')
+
+        with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+            config_df.to_excel(writer, sheet_name='Inference Configuration', index=False)
+            performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
+
+        print(f'Saved inference data to {excel_path}')
         return config_df, performance_df
