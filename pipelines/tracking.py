@@ -935,7 +935,7 @@ class TrackingPipeline:
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
                 stats_df.to_excel(writer, sheet_name='Stats', index=False)
         except Exception as e:
-            print(f"[ERROR] Failed to save Excel file: {e}")
+            print(f"Failed to save Excel file: {e}")
 
         return tracks_df, config_df, performance_df
 
