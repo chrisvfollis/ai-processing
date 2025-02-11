@@ -989,7 +989,7 @@ class TrackingPipeline:
                 if (box is None) or (box.size == 0):
                     continue
 
-                cx, cy, w, h = map(int, box)
+                cx, cy, w, h = map(int, box[:4])
                 x1, y1 = int(cx - (w / 2)), int(cy - (h / 2))
                 x2, y2 = x1 + w, y1 + h
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
