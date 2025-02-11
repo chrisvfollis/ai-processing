@@ -36,6 +36,7 @@ keras = "==2.15.0"
 speedtest-cli = "*"
 openpyxl = "*"
 facenet-pytorch = "*"
+xlsxwriter = "*"
 
 [dev-packages]
 
