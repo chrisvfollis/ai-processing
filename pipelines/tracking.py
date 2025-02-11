@@ -359,6 +359,7 @@ class TrackingPipeline:
             face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
             face_boxes += (face_df[['x', 'y', 'w', 'h']].drop_duplicates()
                            .values.tolist())
+            print(f'Associating {len(face_boxes)} faces')
 
             trk_ids = sorted(self.active_trks.keys())
             for id in trk_ids:
@@ -643,16 +644,19 @@ class TrackingPipeline:
                 return np.array(filtered_matrix), keep
 
             start_assign = time.perf_counter()
-
+            no_id_c = 0
+            id_c = 0
             trk_id_costs = {}
             for trk_id, trk in self.all_trks.items():
                 id_costs = trk.calc_id_costs()
 
                 if not id_costs:
-                    print('No ID costs')
+                    no_id_c += 1
                     continue
-
+                id_c += 1
                 trk_id_costs[trk_id] = id_costs
+            print(f'No ID costs: {no_id_c}')
+            print(f'ID Costs: {id_c}')
             
             trk_ids = sorted(trk_id_costs.keys())
             groups, meta_sets, track_sets = _group_tracks(trk_ids)
@@ -968,7 +972,7 @@ class TrackingPipeline:
         fh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         prefix = self.video_file.split('.')[0]
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(os.path.join(output_dir, f'{prefix}_boxes.mp4'),
                               fourcc, fps, (fw, fh))
         
@@ -1274,6 +1278,7 @@ class Track(KalmanFilter):
 
         all_dfs = list(self.face_detections.values())
         if not all_dfs:
+            print(f'{len(self.face_detections.keys())} face detections')
             return {}
 
         merged_df = pd.concat(all_dfs, ignore_index=True)

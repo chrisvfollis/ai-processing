@@ -162,7 +162,7 @@ class InferencePipeline:
                 break
             prev_frame = current_frame
 
-            _process_frame(frame, focus='global')
+            _process_frame(frame, focus='local')
             _continue()
 
         _wrap_up()
