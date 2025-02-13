@@ -6,6 +6,7 @@ from models.yolov4 import YOLOv4
 from models.osnet import OSNet
 from models.movenet import MoveNet
 from models.face_iq import FaceIq
+import pickle
 
 
 class InferencePipeline:
@@ -232,3 +233,18 @@ class InferencePipeline:
 
         print(f'Saved inference data to {excel_path}')
         return config_df, performance_df
+
+    def save_inference_data(self, output_dir='../files/output'):
+        os.makedirs(output_dir, exist_ok=True)
+        file_prefix = self.video_file.split('.')[0]
+
+        data = {'people': self.person_data, 'keypoints': self.keypoint_data,
+                'faces': self.face_data, 'embeddings': self.osnet.output_path}
+
+        save_path = os.path.join(output_dir, f'{file_prefix}_inference_data.pkl')
+        with open(save_path, "wb") as f:
+            pickle.dump(data, f)
+
+        print('Inference data saved')
+
+        return

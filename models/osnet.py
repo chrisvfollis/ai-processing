@@ -78,11 +78,11 @@ class OSNet:
         '''
         
         hdf5_file = video_file.split('.')[0] + '_embeddings.hdf5'
-        output_path = os.path.join(output_dir, hdf5_file)
-        if os.path.exists(output_path):
-            os.remove(output_path)
+        self.output_path = os.path.join(output_dir, hdf5_file)
+        if os.path.exists(self.output_path):
+            os.remove(self.output_path)
 
-        self.hdf5_file = h5py.File(output_path, 'a')
+        self.hdf5_file = h5py.File(self.output_path, 'a')
 
         self.embedding_buffer = []
         self.frame_buffer = []

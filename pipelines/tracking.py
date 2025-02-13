@@ -17,7 +17,7 @@ from utilities import utilities as utils
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
-                 face_data, device):
+                 face_data, device, continuity=True):
         self.video_file = video_file
         self.f_num = 0
 
@@ -70,7 +70,9 @@ class TrackingPipeline:
         self.prediction_time = 0
         self.id_assign_time = 0
 
-        self.load_prior_tracks()
+        self.continuity = continuity
+        if continuity:
+            self.load_prior_tracks()
 
     def __getstate__(self):
         'Prepare object state for pickling.'
@@ -828,7 +830,8 @@ class TrackingPipeline:
 
                 cap.release()
             
-            self.save_pipeline_state()
+            if self.continuity:
+                self.save_pipeline_state()
             
             self.all_trks = self.trk_cache
             _assign_identities()
