@@ -67,13 +67,6 @@ def run_processing():
                     os.environ.get('AWS_SECRET_KEY')]
 
         return credentials, model_info, device
-    
-    def _finalize(queue_block, time_prefix, timestamp, credentials):
-        io_utils.post_events_to_webapp(time_prefix)
-
-        video_files = [row[0] for row in queue_block]
-        for video_file in video_files:
-            io_utils.delete_s3_footage(video_file, credentials)
 
     multiprocessing.set_start_method("spawn")
     start_vars = _prepare()
@@ -87,8 +80,6 @@ def run_processing():
             pool.starmap(
                 process_video, tasks
             )
-
-        _finalize(*qb_results, start_vars[0])
 
 
 if __name__ == '__main__':
