@@ -13,12 +13,11 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 
-def generate_inf_data(row, credentials, model_info, device):
-    video_file = row[0]
-    camera = video_file.split('.')[0].split('_')[-1]
-
-    if not io_utils.download_s3_footage(video_file, credentials):
-        return False
+def generate_inf_data(video_file, credentials, model_info, device,
+                      location='../files/input'):
+    if location == 's3':
+        if not io_utils.download_s3_footage(video_file, credentials):
+            return False
 
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
@@ -72,19 +71,23 @@ def run_process(vid_files='input_dir', inf_params=None):
     start_vars = _prepare()
 
     if vid_files == 'input_dir':
-        # Get files from input directory
-        pass
+        results = os.listdir('../files/input')
+        vid_files = [f for f in results if f.endswith('.mp4')]
+        tasks = [(vid_file, *start_vars) for vid_file in vid_files]
     elif vid_files == 'queue':
         qb_results = io_utils.get_queue_block()
         if qb_results:
-            q_block, t_prefix, _ = qb_results
+            q_block = qb_results[0]
+            tasks = [(row[0], *start_vars) for row in q_block]
+    else:
+        results = os.listdir(vid_files)
+        vid_files = [f for f in results if f.endswith('.mp4')]
+        tasks = [(vid_file, *start_vars) for vid_file in vid_files]
 
-            tasks = [(row, *start_vars, t_prefix) for row in q_block]
-            with multiprocessing.Pool(processes=3) as pool:
-                pool.starmap(
-                    generate_inf_data, tasks
-                )
-
+    with multiprocessing.Pool(processes=3) as pool:
+        pool.starmap(
+            generate_inf_data, tasks
+        )
 
 
 if __name__ == '__main__':
