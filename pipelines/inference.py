@@ -10,7 +10,8 @@ import pickle
 
 
 class InferencePipeline:
-    def __init__(self, video_file, model_info, device, buffer_limit=100):
+    def __init__(self, video_file, model_info, device, buffer_limit=100,
+                 config=None):
 
         self.yolov4 = YOLOv4(model_info[0], device, nms_thresh=0.5)
         self.osnet = OSNet(model_info[1], device)

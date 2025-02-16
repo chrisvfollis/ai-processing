@@ -17,7 +17,7 @@ from utilities import utilities as utils
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
-                 face_data, device, continuity=True):
+                 face_data, device, continuity=True, config=None):
         self.video_file = video_file
         self.f_num = 0
 

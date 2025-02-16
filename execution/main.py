@@ -67,8 +67,6 @@ def process_video(row, credentials, model_info, device, time_prefix):
         time_prefix, camera, all_trks, fps=fps
     )
 
-    trk_pipeline.generate_output_vid()
-
     print(f"Processed {video_file}")
 
     return True
