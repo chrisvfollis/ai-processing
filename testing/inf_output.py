@@ -109,6 +109,6 @@ if __name__ == '__main__':
     }
 
     if len(all_args) == 2:
-        run_process(vid_files=sys.argv[1])
+        run_process(vid_files=sys.argv[1], params=params)
     else:
-        run_process()
+        run_process(params=params)
