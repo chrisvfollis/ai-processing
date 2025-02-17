@@ -471,7 +471,7 @@ class TrackingPipeline:
 
                     return groups
                 
-                track_graph = _construct_track_graph(tracks, trk_ids)
+                track_graph = _construct_track_graph(trk_ids)
                 track_sets = _build_sets(track_graph)
 
                 meta_graph = _construct_meta_graph(track_sets)
