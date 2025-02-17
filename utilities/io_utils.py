@@ -11,6 +11,7 @@ import requests
 import pandas as pd
 from utilities import utilities as utils
 import torch
+import re
 
 
 # ----------------------------------------------------------------------------
@@ -33,6 +34,26 @@ def get_unique_filename(dir_path, base_name):
         counter += 1
 
     return new_name
+
+
+def get_latest_file(dir_path, base_name):
+    '''Find the latest version of a file by checking for appended digits.'''
+
+    filename, ext = os.path.splitext(base_name)
+    pattern = re.compile(re.escape(filename) + r'(?:_(\d+))?' + re.escape(ext) + '$')
+
+    latest_version = -1
+    latest_file = None
+
+    for f in os.listdir(dir_path):
+        match = pattern.match(f)
+        if match:
+            version = int(match.group(1)) if match.group(1) is not None else 0
+            if version > latest_version:
+                latest_version = version
+                latest_file = f
+
+    return latest_file
 
 
 def save_event_image(img, img_dir='../files/output/event_imgs/'):

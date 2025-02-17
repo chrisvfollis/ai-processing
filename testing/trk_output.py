@@ -14,10 +14,13 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 
-def process_inf_output(video_file, device):
+def process_inf_output(video_file, device, output_dir='../files/output'):
     file_prefix = video_file.split('.')[0]
     t_prefix = utils.parse_clip_filename(video_file, data='time')
-    data_path = os.path.join('../files/output', f'{file_prefix}_inference_data.pkl')
+    filename = io_utils.get_latest_file(
+        output_dir, f'{file_prefix}_inference_data.pkl'
+    )
+    data_path = os.path.join(output_dir, filename)
 
     with open(data_path, 'rb') as f:
         inference_output = pickle.load(f)
