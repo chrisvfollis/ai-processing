@@ -89,7 +89,7 @@ def run_process(vid_files='input_dir', params=None):
     stop_event = threading.Event()
 
     time_logging = threading.Thread(
-        target=utils.log_elapsed_time, args=(start_time, stop_event), daemon=True
+        target=utils.log_elapsed_time, args=(start_time, stop_event, 300, True), daemon=True
     )
     time_logging.start()
 

@@ -9,14 +9,23 @@ import os
 import time
 
 
-def log_elapsed_time(start_time, stop_event, frequency=300):
+def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=False):
     while not stop_event.is_set():
         elapsed = (time.time() - start_time) / 60
-        print(f"Elapsed time: {elapsed:.2f} minutes")
-        time.sleep(frequency)
-    
+        if include_timestamp == False:
+            print(f"Elapsed time: {elapsed:.2f} minutes")
+            time.sleep(frequency)
+        elif include_timestamp == True:
+            current_time = datetime.now().strftime('%H:%M:%S')
+            print(f"[{current_time}] Elapsed time: {elapsed:.2f} minutes")
+            time.sleep(frequency)
+
     total_elapsed =  (time.time() - start_time) / 60
-    print(f"Total elapsed time: {total_elapsed:.2f} minutes")
+    if include_timestamp == False:
+        print(f"Total elapsed time: {total_elapsed:.2f} minutes")
+    elif include_timestamp == True:
+        current_time = datetime.now().strftime('%H:%M:%S')
+        print(f"[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes")
 
 
 def get_git_commit_hash(cfg_dir_path='../config'):

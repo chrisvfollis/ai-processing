@@ -16,11 +16,11 @@ import tensorflow as tf
 
 def process_inf_output(video_file, device):
     file_prefix = video_file.split('.')[0]
+    t_prefix = utils.parse_clip_filename(video_file, data='time')
     data_path = os.path.join('../files/output', f'{file_prefix}_inference_data.pkl')
+
     with open(data_path, 'rb') as f:
         inference_output = pickle.load(f)
-
-    t_prefix = utils.parse_clip_filename(video_file, data='time')
 
     from pipelines.tracking import TrackingPipeline
 
@@ -52,7 +52,7 @@ def run_processing():
     stop_event = threading.Event()
 
     time_logging = threading.Thread(
-        target=utils.log_elapsed_time, args=(start_time, stop_event), daemon=True
+        target=utils.log_elapsed_time, args=(start_time, stop_event, 30, True), daemon=True
     )
     time_logging.start()
 
