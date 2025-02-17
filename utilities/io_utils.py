@@ -19,6 +19,22 @@ import torch
 # File Read/Write Functions:
 
 
+def get_unique_filename(dir_path, base_name):
+    '''Append a number to the filename if it already exists.'''
+
+    filename, ext = os.path.splitext(base_name)
+    counter = 1
+    file_path = os.path.join(dir_path, base_name)
+
+    new_name = base_name
+    while os.path.exists(file_path):
+        new_name = f"{filename}_{counter}{ext}"
+        file_path = os.path.join(dir_path, new_name)
+        counter += 1
+
+    return new_name
+
+
 def save_event_image(img, img_dir='../files/output/event_imgs/'):
     if img is None:
         return None

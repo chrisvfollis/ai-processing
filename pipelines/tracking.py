@@ -403,7 +403,7 @@ class TrackingPipeline:
             self.id_assign_time = (end_associate - start_associate)
         
         def _assign_identities():
-            def _group_tracks(trk_ids: list = 'all'):
+            def _group_tracks(trk_ids):
                 def _construct_track_graph(trk_ids):
                     track_graph = np.diag([1] * len(trk_ids)).tolist()
 
@@ -472,10 +472,7 @@ class TrackingPipeline:
 
                     return groups
                 
-                if trk_ids == 'all':
-                    trk_ids = sorted(self.all_trks.keys())
-
-                track_graph = _construct_track_graph(trk_ids)
+                track_graph = _construct_track_graph(tracks, trk_ids)
                 track_sets = _build_sets(track_graph)
 
                 meta_graph = _construct_meta_graph(track_sets)
@@ -653,12 +650,12 @@ class TrackingPipeline:
             trk_id_costs = {}
             for trk_id, trk in self.all_trks.items():
                 id_costs = trk.calc_id_costs()
-
                 if not id_costs:
                     no_id_c += 1
                     continue
                 id_c += 1
                 trk_id_costs[trk_id] = id_costs
+    
             print(f'No ID costs: {no_id_c}')
             print(f'ID Costs: {id_c}')
             
@@ -748,99 +745,6 @@ class TrackingPipeline:
             self.id_assign_time = (end_assign - start_assign)
 
             return all_optimal_assignments
-    
-        def _wrap_up():
-            def _finalize_and_filter():
-                def _filter_by_lifespan():
-                    for id, trk in self.all_trks.items():
-                        lifespan = trk.span[1] - trk.span[0]
-
-                        if (
-                            (lifespan < self.min_lifespan) and
-                            (not trk.face_detections)
-                        ):
-                            self.filtered_trks[id] = trk
-                            self.lifespan_filtered += 1
-                    
-                    for id in self.filtered_trks.keys():
-                        try:
-                            del self.all_trks[id]
-                        except KeyError:
-                            continue
-            
-                def _filter_by_keypoints(expected_kps=3, expected_conf=.55):
-                    expected_avg = (expected_kps * expected_conf) / 17
-
-                    for id, trk in self.all_trks.items():
-                        if trk.face_detections:
-                            continue
-                        n_frames = len(trk.keypoints.keys())
-                        if n_frames == 0:
-                            trk.kp_avg = 0
-                            self.filtered_trks[id] = trk
-                            continue
-        
-                        total_conf = sum(trk.keypoints[f][:, 2].sum()
-                                        for f in trk.keypoints.keys())
-                        trk.kp_avg = total_conf / (n_frames * 17)
-
-                        if trk.kp_avg < expected_avg:
-                            self.filtered_trks[id] = trk
-                            self.kp_filtered += 1
-
-                    for id in self.filtered_trks.keys():
-                        try:
-                            del self.all_trks[id]
-                        except KeyError:
-                            continue
-                                
-                _filter_by_lifespan()
-                _filter_by_keypoints()
-            
-            def _get_track_images(tracks, vid_dir='../files/input/'):
-                vid_path = os.path.join(vid_dir, self.video_file)
-                cap = cv2.VideoCapture(vid_path)
-                if not cap.isOpened():
-                    return None
-
-                for trk in tracks.values():
-                    images = []
-
-                    percentile = 75
-                    clear_frames = None
-                    while (not clear_frames) and (percentile >= 25):
-                        clear_frames = trk.get_high_keypoint_frames(percentile=percentile)
-                        percentile -= 10
-
-                    if clear_frames:
-                        frames = [clear_frames[0], clear_frames[-1]]
-                    else:
-                        frames = trk.span
-
-                    for f in frames:
-                        x, y, w, h = trk.detections[f][:4]
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, f)
-                        ret, frame = cap.read()
-                        if not ret:
-                            images.append(None)
-                            continue
-                        cropped = frame[y:y+h, x:x+w]
-                        images.append(cropped)
-
-                    trk.start_img = io_utils.save_event_image(images[0])
-                    trk.end_img = io_utils.save_event_image(images[1])
-
-                cap.release()
-            
-            if self.continuity:
-                self.save_pipeline_state()
-            
-            self.all_trks = self.trk_cache
-            _assign_identities()
-            _get_track_images(self.all_trks)
-
-            self.collect_data()
-            _finalize_and_filter()
 
         if not is_continuation:
             print(f"Running tracking pipeline for {self.video_file}...")
@@ -872,9 +776,106 @@ class TrackingPipeline:
 
             self.f_num += 1
 
-        if not is_continuation:
-            _wrap_up()
+        if (not is_continuation) and (self.continuity == True):
+            self.all_trks = self.trk_cache
+            _assign_identities()
+            self.handle_results()
     
+        elif (not is_continuation) and (self.continuity == False):
+            self.all_trks = {**self.active_trks, **self.trk_cache}
+            _assign_identities()
+    
+    def handle_results(self):
+        def _finalize_and_filter():
+            def _filter_by_lifespan():
+                for id, trk in self.all_trks.items():
+                    lifespan = trk.span[1] - trk.span[0]
+
+                    if (
+                        (lifespan < self.min_lifespan) and
+                        (not trk.face_detections)
+                    ):
+                        self.filtered_trks[id] = trk
+                        self.lifespan_filtered += 1
+                
+                for id in self.filtered_trks.keys():
+                    try:
+                        del self.all_trks[id]
+                    except KeyError:
+                        continue
+        
+            def _filter_by_keypoints(expected_kps=3, expected_conf=.55):
+                expected_avg = (expected_kps * expected_conf) / 17
+
+                for id, trk in self.all_trks.items():
+                    if trk.face_detections:
+                        continue
+                    n_frames = len(trk.keypoints.keys())
+                    if n_frames == 0:
+                        trk.kp_avg = 0
+                        self.filtered_trks[id] = trk
+                        continue
+
+                    total_conf = sum(trk.keypoints[f][:, 2].sum()
+                                    for f in trk.keypoints.keys())
+                    trk.kp_avg = total_conf / (n_frames * 17)
+
+                    if trk.kp_avg < expected_avg:
+                        self.filtered_trks[id] = trk
+                        self.kp_filtered += 1
+
+                for id in self.filtered_trks.keys():
+                    try:
+                        del self.all_trks[id]
+                    except KeyError:
+                        continue
+                            
+            _filter_by_lifespan()
+            _filter_by_keypoints()
+        
+        def _get_track_images(tracks, vid_dir='../files/input/'):
+            vid_path = os.path.join(vid_dir, self.video_file)
+            cap = cv2.VideoCapture(vid_path)
+            if not cap.isOpened():
+                return None
+
+            for trk in tracks.values():
+                images = []
+
+                percentile = 75
+                clear_frames = None
+                while (not clear_frames) and (percentile >= 25):
+                    clear_frames = trk.get_high_keypoint_frames(percentile=percentile)
+                    percentile -= 10
+
+                if clear_frames:
+                    frames = [clear_frames[0], clear_frames[-1]]
+                else:
+                    frames = trk.span
+
+                for f in frames:
+                    x, y, w, h = trk.detections[f][:4]
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, f)
+                    ret, frame = cap.read()
+                    if not ret:
+                        images.append(None)
+                        continue
+                    cropped = frame[y:y+h, x:x+w]
+                    images.append(cropped)
+
+                trk.start_img = io_utils.save_event_image(images[0])
+                trk.end_img = io_utils.save_event_image(images[1])
+
+            cap.release()
+        
+        if self.continuity:
+            self.save_pipeline_state()
+
+        _get_track_images(self.all_trks)
+
+        self.collect_data()
+        _finalize_and_filter()
+
     def collect_data(self, output_dir='../files/output/runtime_data'):
         print('Collecting tracking data')
         git_commit_hash = utils.get_git_commit_hash()
@@ -953,6 +954,7 @@ class TrackingPipeline:
         file_prefix = self.video_file.split('.')[0]
 
         print(f'{len(self.active_trks.keys())} tracks saved to be continued')
+
         save_path = os.path.join(output_dir, f'{file_prefix}.pkl')
         with open(save_path, "wb") as f:
             pickle.dump(self, f)
@@ -977,8 +979,10 @@ class TrackingPipeline:
         fh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         prefix = self.video_file.split('.')[0]
+        filename = io_utils.get_unique_filename(output_dir, f'{prefix}_boxes.mp4')
+        
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(os.path.join(output_dir, f'{prefix}_boxes.mp4'),
+        out = cv2.VideoWriter(os.path.join(output_dir, filename),
                               fourcc, fps, (fw, fh))
         
         color = (245, 104, 17)
