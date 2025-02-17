@@ -753,7 +753,9 @@ class TrackingPipeline:
                 _predict_or_cache()
 
             try:
-                detections = self.detection_data[self.f_num]
+                detection_tensor = torch.tensor(self.detection_data[self.f_num])
+                conf_mask = detection_tensor[:, 4] > self.conf_thresh
+
                 start_read = time.perf_counter()
                 embeddings = io_utils.read_embeddings(
                     self.embedding_path, self.f_num, self.device
@@ -761,11 +763,9 @@ class TrackingPipeline:
                 end_read = time.perf_counter()
                 self.reading_time += (end_read - start_read)
 
-                detections, embeddings = zip(*[
-                    (d, e) for d, e in zip(detections, embeddings)
-                    if d[4] > self.conf_thresh
-                ]) if detections else ([], [])
-
+                detections = detection_tensor[conf_mask].tolist()
+                embeddings = embeddings[conf_mask]
+        
                 keypoints = self.keypoint_data.get(self.f_num, None)
                 measurements = [detections, embeddings, keypoints]
             except KeyError:
