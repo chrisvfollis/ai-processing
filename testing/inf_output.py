@@ -29,7 +29,6 @@ def generate_inf_data(video_file, credentials, model_info, device,
         except RuntimeError as e:
             print(f"Error configuring TensorFlow GPU memory: {e}")
 
-
     from pipelines.inference import InferencePipeline
 
     try:
@@ -37,12 +36,9 @@ def generate_inf_data(video_file, credentials, model_info, device,
     except ValueError:
         print(f'Issue with {video_file}. Skipping...')
         return False
-    if not inf_pipeline.skim():
-        io_utils.delete_s3_footage(video_file, credentials)
-        return False
-    else:
-        inf_pipeline.run()
-        inf_pipeline.save_inference_data()
+
+    inf_pipeline.run()
+    inf_pipeline.save_inference_data()
 
     print(f"Processed {video_file}")
 
@@ -80,9 +76,7 @@ def run_process(vid_files='input_dir', inf_params=None):
             q_block = qb_results[0]
             tasks = [(row[0], *start_vars) for row in q_block]
     else:
-        results = os.listdir(vid_files)
-        vid_files = [f for f in results if f.endswith('.mp4')]
-        tasks = [(vid_file, *start_vars) for vid_file in vid_files]
+        return None
 
     with multiprocessing.Pool(processes=3) as pool:
         pool.starmap(

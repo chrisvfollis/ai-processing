@@ -239,8 +239,7 @@ class InferencePipeline:
         os.makedirs(output_dir, exist_ok=True)
         file_prefix = self.video_file.split('.')[0]
 
-        data = {'people': self.person_data, 'keypoints': self.keypoint_data,
-                'faces': self.face_data, 'embeddings': self.osnet.output_path}
+        data = [self.person_data, self.keypoint_data, self.face_data]
 
         save_path = os.path.join(output_dir, f'{file_prefix}_inference_data.pkl')
         with open(save_path, "wb") as f:

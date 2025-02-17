@@ -1,11 +1,10 @@
 import torch
 import multiprocessing
-import time
 import os
 from dotenv import load_dotenv
-import signal
-import sys
 from utilities import io_utils
+from utilities import utilities as utils
+import pickle
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -13,33 +12,23 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 
-def handle_sigterm(signum, frame):
-    print("Received SIGTERM. Cleaning up...")
+def process_inf_output(video_file, device):
+    file_prefix = video_file.split('.')[0]
+    data_path = os.path.join('../files/output', f'{file_prefix}_inference_data.pkl')
+    with open(data_path, 'rb') as f:
+        inference_output = pickle.load(f)
 
-    io_utils.clear_track_info('all')
-    io_utils.delete_local_files('all')
-
-    sys.exit(0)
-
-
-def process_inf_data(row, device, inference_output, time_prefix):
-    video_file = row[0]
-    camera = video_file.split('.')[0].split('_')[-1]
+    t_prefix = utils.parse_clip_filename(video_file, data='time')
 
     from pipelines.tracking import TrackingPipeline
 
     trk_pipeline = TrackingPipeline(
-        video_file, time_prefix, *inference_output, device
+        video_file, t_prefix, *inference_output, device, continuity=False
     )
 
     trk_pipeline.run()
 
     all_trks = trk_pipeline.all_trks
-    fps = trk_pipeline.fps
-
-    io_utils.save_track_info(
-        time_prefix, camera, all_trks, fps=fps
-    )
 
     trk_pipeline.generate_output_vid()
 
@@ -49,37 +38,17 @@ def process_inf_data(row, device, inference_output, time_prefix):
 
 
 def run_processing():
-    def _prepare():
-        
-
-        load_dotenv()
-        credentials = [os.environ.get('AWS_ACCESS_KEY'),
-                       os.environ.get('AWS_SECRET_KEY')]
-
-        io_utils.clear_track_info('all')
-        io_utils.delete_local_files('all')
-
-        return credentials, device
-
-    signal.signal(signal.SIGTERM, handle_sigterm)
     multiprocessing.set_start_method("spawn")
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    while True:
-        qb_results = io_utils.get_queue_block()
-        if qb_results:
-            q_block, t_prefix, _ = qb_results
-        else:
-            time.sleep(60)
-            continue
+    results = os.listdir('../files/input')
+    vid_files = [f for f in results if f.endswith('.mp4')]
 
-        tasks = [(row, device, t_prefix) for row in q_block]
-        with multiprocessing.Pool(processes=3) as pool:
-            pool.starmap(
-                process_inf_output, tasks
-            )
-
-         io_utils.delete_local_files(t_prefix)
+    tasks = [(vid_file, device) for vid_file in vid_files]
+    with multiprocessing.Pool(processes=3) as pool:
+        pool.starmap(
+            process_inf_output, tasks
+        )
 
 
 if __name__ == '__main__':

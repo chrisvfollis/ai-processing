@@ -1002,6 +1002,7 @@ class TrackingPipeline:
                     cv2.putText(frame, f'{trk.identity}', (x2 - 5, y2 - 5),
                                 cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             
+            frame = cv2.resize(frame, (1920, 1080))
             out.write(frame)
             f_num += 1
         
