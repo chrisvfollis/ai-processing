@@ -59,12 +59,16 @@ class TrackingPipeline:
 
         self.unmatched = []
 
+        self.dt = 1/self.fps
         self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
+        self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
+                                                            # with an arbitrary dt of 0.5
         self.initial_uncertainty = [5 * self.variance_scaling_factor] * 8
         self.m_noise = [500 * self.variance_scaling_factor] * 4
-        self.p_noise = [50 * self.variance_scaling_factor] * 4
-        self.dt = 1/self.fps
-
+        self.p_noise = [
+            (50 * self.timestep_scaling_factor) * self.variance_scaling_factor
+        ] * 4
+        
         self.conf_thresh = conf_thresh
 
         self.reading_time = 0
