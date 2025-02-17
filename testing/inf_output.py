@@ -71,7 +71,7 @@ def run_process(vid_files='input_dir', inf_params=None):
 
     if vid_files == 'input_dir':
         results = os.listdir('../files/input')
-        vid_files = [f for f in results if f.endswith('.mp4')]
+        vid_files = sorted([f for f in results if f.endswith('.mp4')])
         tasks = [(vid_file, *start_vars) for vid_file in vid_files]
     elif vid_files == 'queue':
         qb_results = io_utils.get_queue_block()

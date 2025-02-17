@@ -44,7 +44,7 @@ def run_processing():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     results = os.listdir('../files/input')
-    vid_files = [f for f in results if f.endswith('.mp4')]
+    vid_files = sorted([f for f in results if f.endswith('.mp4')])
 
     tasks = [(vid_file, device) for vid_file in vid_files]
 
