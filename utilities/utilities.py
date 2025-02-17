@@ -6,6 +6,14 @@ import numpy as np
 import cv2
 import subprocess
 import os
+import time
+
+
+def log_elapsed_time(start_time, stop_event, frequency=300):
+    while not stop_event.is_set():
+        elapsed = (time.time() - start_time) / 60
+        print(f"Elapsed time: {elapsed:.2f} minutes")
+        time.sleep(frequency)
 
 
 def get_git_commit_hash(cfg_dir_path='../config'):

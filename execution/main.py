@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 import signal
 import sys
 from utilities import io_utils
+from utilities import utilities as utils
+import threading
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -115,12 +117,21 @@ def run_processing_cycle():
             time.sleep(60)
             continue
 
+        start_time = time.time()
+        stop_event = threading.Event()
+        cycle_time_logging = threading.Thread(
+            target=utils.log_elapsed_time, args=(start_time, stop_event),
+            daemon=True
+        )
+        cycle_time_logging.start()
+
         tasks = [(row, *start_vars, t_prefix) for row in q_block]
         with multiprocessing.Pool(processes=3) as pool:
             pool.starmap(
                 process_video, tasks
             )
-
+        
+        stop_event.set()
         _finalize(*qb_results, start_vars[0])
 
 

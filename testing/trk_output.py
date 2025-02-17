@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from utilities import io_utils
 from utilities import utilities as utils
 import pickle
+import time
+import threading
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -45,10 +47,21 @@ def run_processing():
     vid_files = [f for f in results if f.endswith('.mp4')]
 
     tasks = [(vid_file, device) for vid_file in vid_files]
+
+    start_time = time.time()
+    stop_event = threading.Event()
+
+    time_logging = threading.Thread(
+        target=utils.log_elapsed_time, args=(start_time, stop_event), daemon=True
+    )
+    time_logging.start()
+
     with multiprocessing.Pool(processes=3) as pool:
         pool.starmap(
             process_inf_output, tasks
         )
+    
+    stop_event.set()
 
 
 if __name__ == '__main__':

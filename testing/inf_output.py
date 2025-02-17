@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 import signal
 import sys
 from utilities import io_utils
+from utilities import utilities as utils
+import threading
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -78,11 +80,21 @@ def run_process(vid_files='input_dir', inf_params=None):
             tasks = [(row[0], *start_vars, 's3') for row in q_block]
     else:
         return None
+    
+    start_time = time.time()
+    stop_event = threading.Event()
+
+    time_logging = threading.Thread(
+        target=utils.log_elapsed_time, args=(start_time, stop_event), daemon=True
+    )
+    time_logging.start()
 
     with multiprocessing.Pool(processes=3) as pool:
         pool.starmap(
             generate_inf_data, tasks
         )
+    
+    stop_event.set()
 
 
 if __name__ == '__main__':
