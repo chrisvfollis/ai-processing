@@ -980,15 +980,13 @@ class TrackingPipeline:
 
         cap = cv2.VideoCapture(os.path.join(input_dir, self.video_file))
         fps = cap.get(cv2.CAP_PROP_FPS)
-        fw = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        fh = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         prefix = self.video_file.split('.')[0]
         filename = io_utils.get_unique_filename(output_dir, f'{prefix}_boxes.mp4')
         
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(os.path.join(output_dir, filename),
-                              fourcc, fps, (fw, fh))
+                              fourcc, fps, (1920, 1080))
         
         color = (245, 104, 17)
 
@@ -1293,7 +1291,6 @@ class Track(KalmanFilter):
 
         all_dfs = list(self.face_detections.values())
         if not all_dfs:
-            print(f'{len(self.face_detections.keys())} face detections')
             return {}
 
         merged_df = pd.concat(all_dfs, ignore_index=True)
