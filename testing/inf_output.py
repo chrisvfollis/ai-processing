@@ -15,7 +15,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 
-def generate_inf_data(video_file, credentials, model_info, device,
+def generate_inf_data(video_file, credentials, model_info, device, params=None,
                       location='../files/input'):
     if location == 's3':
         print('Attempting download...')
@@ -35,7 +35,11 @@ def generate_inf_data(video_file, credentials, model_info, device,
     from pipelines.inference import InferencePipeline
 
     try:
-        inf_pipeline = InferencePipeline(video_file, model_info, device)
+        if not params:
+            inf_pipeline = InferencePipeline(video_file, model_info, device)
+        else:
+            inf_pipeline = InferencePipeline(video_file, model_info, device,
+                                             **params)
     except ValueError:
         print(f'Issue with {video_file}. Skipping...')
         return False
@@ -48,7 +52,7 @@ def generate_inf_data(video_file, credentials, model_info, device,
     return True
 
 
-def run_process(vid_files='input_dir', inf_params=None):
+def run_process(vid_files='input_dir', params=None):
     def _prepare():
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -72,12 +76,12 @@ def run_process(vid_files='input_dir', inf_params=None):
     if vid_files == 'input_dir':
         results = os.listdir('../files/input')
         vid_files = sorted([f for f in results if f.endswith('.mp4')])
-        tasks = [(vid_file, *start_vars) for vid_file in vid_files]
+        tasks = [(vid_file, *start_vars, params) for vid_file in vid_files]
     elif vid_files == 'queue':
         qb_results = io_utils.get_queue_block()
         if qb_results:
             q_block = qb_results[0]
-            tasks = [(row[0], *start_vars, 's3') for row in q_block]
+            tasks = [(row[0], *start_vars, params, 's3') for row in q_block]
     else:
         return None
     
@@ -99,6 +103,10 @@ def run_process(vid_files='input_dir', inf_params=None):
 
 if __name__ == '__main__':
     all_args = sys.argv
+
+    params = {
+        'yolo_params': {'conf_thresh': 0.5}
+    }
 
     if len(all_args) == 2:
         run_process(vid_files=sys.argv[1])

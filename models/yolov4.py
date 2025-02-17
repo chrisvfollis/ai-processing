@@ -10,7 +10,8 @@ import sys
 
 
 class YOLOv4:
-    def __init__(self, weights_path, device, nms_thresh=0.5):
+    def __init__(self, weights_path, device, nms_thresh=0.5, conf_thresh=0.65,
+                 resize_dims=(416, 416)):
         self.device = device
 
         self.model = Yolov4Model(inference=True)
@@ -21,11 +22,23 @@ class YOLOv4:
         self.model.eval()
 
         self.nms_thresh = nms_thresh
-        self.conf_thresh = 0.70
-        self.resize_dims = (416, 416)
+        self.conf_thresh = conf_thresh
+        self.resize_dims = resize_dims
+
         self.detection_time = 0
         
-    def detect(self, img, class_num, conf_thresh=0.70, resize_dims=(416, 416)):
+    def detect(self, img, class_num, nms_thresh=None, conf_thresh=None,
+               resize_dims=None):
+        def _assign_params(nms_thresh, conf_thresh, resize_dims):
+            if not nms_thresh:
+                nms_thresh = self.nms_thresh
+            if not conf_thresh:
+                conf_thresh = self.conf_thresh
+            if not resize_dims:
+                resize_dims = self.resize_dims
+
+            return nms_thresh, conf_thresh, resize_dims
+
         def _preprocess_img(img, resize_dims):
             '''
             resize_dims — the width and height to resize the image to. YOLOv4
@@ -49,7 +62,7 @@ class YOLOv4:
 
             return img_tensor, original_dims
         
-        def _postprocess_output(output):
+        def _postprocess_output(output, conf_thresh):
             def _nms_filter(boxes, confs):
                 x1 = boxes[:, 0]
                 y1 = boxes[:, 1]
@@ -101,7 +114,7 @@ class YOLOv4:
             max_id = np.argmax(confs, axis=1)
 
             # Filter by confidence threshold
-            argwhere = max_conf > self.conf_thresh
+            argwhere = max_conf > conf_thresh
             l_box_array = box_array[argwhere, :]
             l_max_conf = max_conf[argwhere]
             l_max_id = max_id[argwhere]
@@ -152,9 +165,10 @@ class YOLOv4:
 
         start_detect = time.perf_counter()
 
-        self.conf_thresh = conf_thresh
+        params = _assign_params(nms_thresh, conf_thresh, resize_dims)
+        nms_thresh, conf_thresh, resize_dims = params
 
-        img, original_dims = _preprocess_img(img, resize_dims)
+        img, original_dims = _preprocess_img(img, self.resize_dims)
         with torch.no_grad():
             raw_output = self.model(img)
         detections = _postprocess_output(raw_output)

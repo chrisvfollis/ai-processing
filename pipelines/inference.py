@@ -11,12 +11,41 @@ import pickle
 
 class InferencePipeline:
     def __init__(self, video_file, model_info, device, buffer_limit=100,
-                 config=None):
+                 yolo_params=None, osnet_params=None, movenet_params=None,
+                 faceiq_params=None):
+        def _instantiate_models(model_info, device, yolo_params, osnet_params,
+                                movenet_params, faceiq_params):
+            if not yolo_params:
+                yolov4 = YOLOv4(model_info[0], device)
+            else:
+                yolov4 = YOLOv4(model_info[0], device, **yolo_params)
+            
+            if not osnet_params:
+                osnet = OSNet(model_info[1], device)
+            else:
+                osnet = OSNet(model_info[1], device, **osnet_params)
+            
+            if not movenet_params:
+                movenet = MoveNet(model_info[2])
+            else:
+                movenet = MoveNet(model_info[2], **movenet_params)
+            
+            if not faceiq_params:
+                face_iq = FaceIq(*model_info[3])
+            else:
+                face_iq = FaceIq(*model_info[3], **faceiq_params)
+            
+            return yolov4, osnet, movenet, face_iq
+        
+        yolov4, osnet, movenet, face_iq = _instantiate_models(
+            model_info, device, yolo_params, osnet_params, movenet_params,
+            faceiq_params
+        )
 
-        self.yolov4 = YOLOv4(model_info[0], device, nms_thresh=0.5)
-        self.osnet = OSNet(model_info[1], device)
-        self.movenet = MoveNet(model_info[2])
-        self.face_iq = FaceIq(*model_info[3])
+        self.yolov4 = yolov4
+        self.osnet = osnet
+        self.movenet = movenet
+        self.face_iq = face_iq
 
         self.osnet.enable_buffers(video_file, buffer_limit=buffer_limit)
 
@@ -79,8 +108,7 @@ class InferencePipeline:
     def run(self):
         def _process_frame(frame, focus='global'):
             if self.f_num % self.track_stride == 0:
-                bboxes = self.yolov4.detect(frame, 0, conf_thresh=0.65,
-                                            resize_dims=(416, 416))
+                bboxes = self.yolov4.detect(frame, 0)
                 self.osnet.extraction_batch(frame, bboxes, self.f_num)
                 if bboxes:
                     self.person_data[self.f_num] = bboxes
