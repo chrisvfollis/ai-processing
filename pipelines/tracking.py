@@ -17,7 +17,7 @@ from utilities import utilities as utils
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
-                 face_data, device, continuity=True, config=None):
+                 face_data, device, continuity=True, conf_thresh=0.65):
         self.video_file = video_file
         self.f_num = 0
 
@@ -64,6 +64,8 @@ class TrackingPipeline:
         self.m_noise = [500 * self.variance_scaling_factor] * 4
         self.p_noise = [50 * self.variance_scaling_factor] * 4
         self.dt = 1/self.fps
+
+        self.conf_thresh = conf_thresh
 
         self.reading_time = 0
         self.matching_time = 0
@@ -848,7 +850,7 @@ class TrackingPipeline:
                 _predict_or_cache()
 
             try:
-                detections = self.detection_data[self.f_num]
+                detections = [d for d in self.detection_data[self.f_num] if d[4] > self.conf_thresh]
                 start_read = time.perf_counter()
                 embeddings = io_utils.read_embeddings(
                     self.embedding_path, self.f_num, self.device

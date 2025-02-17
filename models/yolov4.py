@@ -62,8 +62,8 @@ class YOLOv4:
 
             return img_tensor, original_dims
         
-        def _postprocess_output(output, conf_thresh):
-            def _nms_filter(boxes, confs):
+        def _postprocess_output(output, nms_thresh, conf_thresh):
+            def _nms_filter(boxes, confs, nms_thresh):
                 x1 = boxes[:, 0]
                 y1 = boxes[:, 1]
                 x2 = boxes[:, 2]
@@ -90,7 +90,7 @@ class YOLOv4:
                     inter = w * h
                     over = inter / (areas[order[0]] + areas[order[1:]] - inter)
 
-                    inds = np.where(over <= self.nms_thresh)[0]
+                    inds = np.where(over <= nms_thresh)[0]
                     order = order[inds + 1]
                 
                 return np.array(keep)
@@ -126,7 +126,7 @@ class YOLOv4:
                 ll_box_array = l_box_array[cls_argwhere, :]
                 ll_max_conf = l_max_conf[cls_argwhere]
 
-                keep = _nms_filter(ll_box_array, ll_max_conf)
+                keep = _nms_filter(ll_box_array, ll_max_conf, nms_thresh)
 
                 if keep.size > 0:
                     ll_box_array = ll_box_array[keep, :]
@@ -168,10 +168,10 @@ class YOLOv4:
         params = _assign_params(nms_thresh, conf_thresh, resize_dims)
         nms_thresh, conf_thresh, resize_dims = params
 
-        img, original_dims = _preprocess_img(img, self.resize_dims)
+        img, original_dims = _preprocess_img(img, resize_dims)
         with torch.no_grad():
             raw_output = self.model(img)
-        detections = _postprocess_output(raw_output)
+        detections = _postprocess_output(raw_output, nms_thresh, conf_thresh)
 
         filtered = []
         for detection in detections:
