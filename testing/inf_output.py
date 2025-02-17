@@ -16,6 +16,7 @@ import tensorflow as tf
 def generate_inf_data(video_file, credentials, model_info, device,
                       location='../files/input'):
     if location == 's3':
+        print('Attempting download...')
         if not io_utils.download_s3_footage(video_file, credentials):
             return False
 
@@ -74,7 +75,7 @@ def run_process(vid_files='input_dir', inf_params=None):
         qb_results = io_utils.get_queue_block()
         if qb_results:
             q_block = qb_results[0]
-            tasks = [(row[0], *start_vars) for row in q_block]
+            tasks = [(row[0], *start_vars, 's3') for row in q_block]
     else:
         return None
 

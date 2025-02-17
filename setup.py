@@ -34,7 +34,9 @@ setup(
         "tensorflow==2.15.0",
         "keras==2.15.0",
         "speedtest-cli",
-        "openpyxl"
+        "openpyxl",
+        "facenet-pytorch",
+        "xlsxwriter"
     ],
     python_requires=">=3.10,<3.11",
 )
