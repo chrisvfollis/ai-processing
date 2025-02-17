@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import cv2
 from utilities import utilities as utils
+from utilities import io_utils
 from models.yolov4 import YOLOv4
 from models.osnet import OSNet
 from models.movenet import MoveNet
@@ -251,8 +252,9 @@ class InferencePipeline:
             ]
         }
         performance_df = pd.DataFrame(performance_data)
-
-        excel_path = os.path.join(output_dir, f'inference_data_{clip_identifier}.xlsx')
+        
+        filename = io_utils.get_unique_filename(output_dir, f'inference_data_{clip_identifier}.xlsx')
+        excel_path = os.path.join(output_dir, filename)
         try:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
                 config_df.to_excel(writer, sheet_name='Inference Configuration', index=False)
@@ -269,7 +271,11 @@ class InferencePipeline:
 
         data = [self.person_data, self.keypoint_data, self.face_data]
 
-        save_path = os.path.join(output_dir, f'{file_prefix}_inference_data.pkl')
+        filename = io_utils.get_unique_filename(
+            output_dir, f'{file_prefix}_inference_data.pkl'
+        )
+
+        save_path = os.path.join(output_dir, filename)
         with open(save_path, "wb") as f:
             pickle.dump(data, f)
 

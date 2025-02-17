@@ -941,7 +941,8 @@ class TrackingPipeline:
         }
         performance_df = pd.DataFrame(performance_data)
 
-        excel_path = os.path.join(output_dir, f'tracking_data_{clip_identifier}.xlsx')
+        filename = io_utils.get_unique_filename(output_dir, f'tracking_data_{clip_identifier}.xlsx')
+        excel_path = os.path.join(output_dir, filename)
 
         try:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
