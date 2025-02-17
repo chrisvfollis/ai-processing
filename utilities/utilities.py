@@ -14,6 +14,9 @@ def log_elapsed_time(start_time, stop_event, frequency=300):
         elapsed = (time.time() - start_time) / 60
         print(f"Elapsed time: {elapsed:.2f} minutes")
         time.sleep(frequency)
+    
+    total_elapsed =  (time.time() - start_time) / 60
+    print(f"Total elapsed time: {total_elapsed:.2f} minutes")
 
 
 def get_git_commit_hash(cfg_dir_path='../config'):
