@@ -363,7 +363,6 @@ class TrackingPipeline:
             face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
             face_boxes += (face_df[['x', 'y', 'w', 'h']].drop_duplicates()
                            .values.tolist())
-            print(f'Associating {len(face_boxes)} faces')
 
             trk_ids = sorted(self.active_trks.keys())
             for id in trk_ids:
@@ -754,13 +753,19 @@ class TrackingPipeline:
                 _predict_or_cache()
 
             try:
-                detections = [d for d in self.detection_data[self.f_num] if d[4] > self.conf_thresh]
+                detections = self.detection_data[self.f_num]
                 start_read = time.perf_counter()
                 embeddings = io_utils.read_embeddings(
                     self.embedding_path, self.f_num, self.device
                 )
                 end_read = time.perf_counter()
                 self.reading_time += (end_read - start_read)
+
+                detections, embeddings = zip(*[
+                    (d, e) for d, e in zip(detections, embeddings)
+                    if d[4] > self.conf_thresh
+                ]) if detections else ([], [])
+
                 keypoints = self.keypoint_data.get(self.f_num, None)
                 measurements = [detections, embeddings, keypoints]
             except KeyError:
