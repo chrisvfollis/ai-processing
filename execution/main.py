@@ -132,6 +132,7 @@ def run_processing_cycle():
             )
         
         stop_event.set()
+        cycle_time_logging.join()
         _finalize(*qb_results, start_vars[0])
 
 

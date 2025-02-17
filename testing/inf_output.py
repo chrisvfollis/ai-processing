@@ -99,6 +99,7 @@ def run_process(vid_files='input_dir', params=None):
         )
     
     stop_event.set()
+    time_logging.join()
 
 
 if __name__ == '__main__':

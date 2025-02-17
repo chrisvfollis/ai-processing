@@ -62,6 +62,7 @@ def run_processing():
         )
     
     stop_event.set()
+    time_logging.join()
 
 
 if __name__ == '__main__':
