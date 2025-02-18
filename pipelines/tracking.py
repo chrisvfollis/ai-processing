@@ -1019,8 +1019,9 @@ class TrackingPipeline:
                 
                 det_box = trk.detections.get(f_num, None)
                 if det_box is not None:
-                    x1, y1, w, h = det_box
-                    x2, y2 = x1 + w, y1 + h
+                    x, y, w, h = det_box
+                    x1, y1 = int(x), int(y)
+                    x2, y2 = int(x1 + w), int(y1 + h)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
 
             frame = cv2.resize(frame, (1920, 1080))
