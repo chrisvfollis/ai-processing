@@ -1003,6 +1003,7 @@ class TrackingPipeline:
 
             for trk_id, trk in all_trks.items():
                 box = trk.states.get(f_num, None)
+                
                 if (box is None) or (box.size == 0):
                     continue
 
@@ -1015,11 +1016,17 @@ class TrackingPipeline:
                 if trk.identity:
                     cv2.putText(frame, f'{trk.identity}', (x2 - 5, y2 - 5),
                                 cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-            
+                
+                det_box = trk.detections.get(f_num, None)
+                if det_box is not None:
+                    x1, y1, w, h = det_box
+                    x2, y2 = x1 + w, y1 + h
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
+
             frame = cv2.resize(frame, (1920, 1080))
             out.write(frame)
             f_num += 1
-        
+
         out.release()
         cap.release()
 
