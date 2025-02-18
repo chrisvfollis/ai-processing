@@ -145,7 +145,7 @@ class TrackingPipeline:
             for i, detection in enumerate(detections):
                 box = detection[:4]
                 c_x, c_y = utils.centroid(box)
-                measurement = [c_x, c_y] + box[2:]
+                measurement = [c_x, c_y] + box[2:4]
         
                 kf_args = utils.format_cv2D_kf(
                     measurement, self.m_noise, self.p_noise,
@@ -1020,6 +1020,7 @@ class TrackingPipeline:
                 det_box = trk.detections.get(f_num, None)
                 if det_box is not None:
                     x, y, w, h = det_box[:4]
+                    print(f'Detection: {box[:4]}, State: {det_box[:4]}')
                     x1, y1 = int(x), int(y)
                     x2, y2 = int(x1 + w), int(y1 + h)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
