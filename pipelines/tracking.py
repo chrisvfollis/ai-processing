@@ -63,7 +63,7 @@ class TrackingPipeline:
         self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
         self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
                                                             # with an arbitrary dt of 0.5
-        self.initial_uncertainty = [5 * self.variance_scaling_factor] * 8
+        self.initial_uncertainty = [5] * 8
         self.m_noise = [500 * self.variance_scaling_factor] * 4
         self.p_noise = [
             (50 * self.timestep_scaling_factor) * self.variance_scaling_factor
