@@ -64,7 +64,7 @@ class TrackingPipeline:
         self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
                                                             # with an arbitrary dt of 0.5
         self.initial_uncertainty = [5] * 8
-        self.m_noise = [500 * self.variance_scaling_factor] * 4
+        self.m_noise = [250 * self.variance_scaling_factor] * 4
         aspect_ratio = self.resolution[0] / self.resolution[1]
         self.p_noise = [
             (50 * aspect_ratio * self.timestep_scaling_factor) * self.variance_scaling_factor,
@@ -1025,7 +1025,6 @@ class TrackingPipeline:
                 det_box = trk.detections.get(f_num, None)
                 if det_box is not None:
                     x, y, w, h = det_box[:4]
-                    print(f'Detection: {list(map(int, det_box[:4]))}, State: {list(map(int, box[:4]))}')
                     x1, y1 = int(x), int(y)
                     x2, y2 = int(x1 + w), int(y1 + h)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
