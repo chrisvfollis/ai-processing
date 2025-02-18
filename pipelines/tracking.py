@@ -1020,7 +1020,7 @@ class TrackingPipeline:
                 det_box = trk.detections.get(f_num, None)
                 if det_box is not None:
                     x, y, w, h = det_box[:4]
-                    print(f'Detection: {box[:4]}, State: {det_box[:4]}')
+                    print(f'Detection: {map(int, det_box[:4])}, State: {map(int, box[:4])}')
                     x1, y1 = int(x), int(y)
                     x2, y2 = int(x1 + w), int(y1 + h)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
