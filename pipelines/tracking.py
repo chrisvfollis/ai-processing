@@ -19,6 +19,7 @@ class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
                  face_data, device, continuity=True, conf_thresh=0.65):
         self.video_file = video_file
+        self.cam = video_file.split('.')[0].split('_')[-1]
         self.f_num = 0
 
         cap = cv2.VideoCapture(os.path.join('../files/input/', video_file))
@@ -160,7 +161,7 @@ class TrackingPipeline:
                 )
 
                 new_track = Track(box, embeddings[i], self.f_num, *kf_args)
-                print(f'[trk {self.trk_id}] Start: {new_track.x}')
+                print(f'[c{self.cam} trk {self.trk_id}] Start: {new_track.x}')
                 if keypoints:
                     new_track.add_keypoints(keypoints[i], self.f_num)
     
@@ -328,7 +329,7 @@ class TrackingPipeline:
 
                 prediction = list(map(int, trk.x[:4]))
                 trk.update(measurement)
-                print(f'[trk {self.trk_id}] Prediction: {prediction}, Update: {list(map(int, trk.x[:4]))}')
+                print(f'[c{self.cam} trk {id}] Prediction: {prediction}, Update: {list(map(int, trk.x[:4]))}')
                 trk.add_state(trk.x, self.f_num)
                 trk.add_detection(box, self.f_num)
                 trk.add_embedding(embeddings[measurement_index])
