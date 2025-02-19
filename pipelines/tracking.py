@@ -177,6 +177,9 @@ class TrackingPipeline:
             for id, trk in self.active_trks.items():
                 if (self.f_num - trk.span[1]) <= self.max_absence:
                     trk.predict()
+                    trk.x = utils.restrain_boxes(
+                        trk.x, image_size=self.resolution
+                    )
                     trk.add_state(trk.x, self.f_num)
                 else:
                     self.trk_cache[id] = trk
@@ -1065,7 +1068,6 @@ class KalmanFilter:
     def predict(self):
         self.x = self.F @ self.x
         self.P = self.F @ self.P @ self.F.T + self.Q
-        self.x = utils.restrain_boxes(self.x)
 
     def update(self, Z):
         Y = Z - self.H @ self.x
