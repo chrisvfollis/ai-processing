@@ -61,8 +61,7 @@ class TrackingPipeline:
 
         self.dt = 1/self.fps
         self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
-        self.timestep_scaling_factor = 1
-        # self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
+        self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
                                                             # with an arbitrary dt of 0.5
 
         self.initial_uncertainty = [5] * 8
@@ -161,6 +160,7 @@ class TrackingPipeline:
                 )
 
                 new_track = Track(box, embeddings[i], self.f_num, *kf_args)
+                print(f'[trk {self.trk_id}] Start: {new_track.x}')
                 if keypoints:
                     new_track.add_keypoints(keypoints[i], self.f_num)
     
@@ -326,7 +326,9 @@ class TrackingPipeline:
                 w, h = box[2:4]
                 measurement = np.array([x, y, w, h])
 
+                prediction = list(map(int, trk.x[:4]))
                 trk.update(measurement)
+                print(f'[trk {self.trk_id}] Prediction: {prediction}, Update: {list(map(int, trk.x[:4]))}')
                 trk.add_state(trk.x, self.f_num)
                 trk.add_detection(box, self.f_num)
                 trk.add_embedding(embeddings[measurement_index])
