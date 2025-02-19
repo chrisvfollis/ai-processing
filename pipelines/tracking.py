@@ -66,16 +66,12 @@ class TrackingPipeline:
                                                             # with an arbitrary dt of 0.5
 
         self.initial_uncertainty = [5] * 8
-        # self.m_noise = [250 * self.variance_scaling_factor] * 4
-        aspect_ratio = self.resolution[0] / self.resolution[1]
+        self.m_noise = [250 * self.variance_scaling_factor] * 4
         self.p_noise = [
-            (50 * aspect_ratio * self.timestep_scaling_factor) * self.variance_scaling_factor,
-            (50 * self.timestep_scaling_factor) * self.variance_scaling_factor,
-            (50 * self.timestep_scaling_factor) * self.variance_scaling_factor,
             (50 * self.timestep_scaling_factor) * self.variance_scaling_factor
-        ]
+        ] * 4
 
-        self.m_noise = [500] * 4
+        # self.m_noise = [500] * 4
         
         self.conf_thresh = conf_thresh
 
