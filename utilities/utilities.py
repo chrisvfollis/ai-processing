@@ -284,30 +284,23 @@ def format_cv2D_kf(measurement, m_noise, p_noise, initial_uncertainty,
         ])
 
     # Q values:
-    position_var = (dt**4)/4 # Position variance
-    velocity_var = (dt**2) # Velocity variance
+    position_var = (dt**4)/4    # Position variance
+    velocity_var = (dt**2)      # Velocity variance
+    cross_var = (dt**3)/2       # Cross-coupling term
 
-    x_noise, y_noise, w_noise, h_noise = p_noise
-
-    x_pvar = position_var * x_noise
-    y_pvar = position_var * y_noise
-    w_pvar = position_var * w_noise
-    h_pvar = position_var * h_noise
-
-    x_vvar = velocity_var * x_noise
-    y_vvar = velocity_var * y_noise
-    w_vvar = velocity_var * w_noise
-    h_vvar = velocity_var * h_noise
+    x_pvar, y_pvar, w_pvar, h_pvar =  np.array(p_noise) * position_var
+    x_vvar, y_vvar, w_vvar, h_vvar = np.array(p_noise) * velocity_var
+    x_cvar, y_cvar, w_cvar, h_cvar = np.array(p_noise) * cross_var
 
     Q = np.array([
-        [x_pvar, 0, 0, 0, 0, 0, 0, 0],
-        [0, y_pvar, 0, 0, 0, 0, 0, 0],
-        [0, 0, w_pvar, 0, 0, 0, 0, 0],
-        [0, 0, 0, h_pvar, 0, 0, 0, 0],
-        [0, 0, 0, 0, x_vvar, 0, 0, 0],
-        [0, 0, 0, 0, 0, y_vvar, 0, 0],
-        [0, 0, 0, 0, 0, 0, w_vvar, 0],
-        [0, 0, 0, 0, 0, 0, 0, h_vvar]
+        [x_pvar, 0, 0, 0, x_cvar, 0, 0, 0],
+        [0, y_pvar, 0, 0, 0, y_cvar, 0, 0],
+        [0, 0, w_pvar, 0, 0, 0, w_cvar, 0],
+        [0, 0, 0, h_pvar, 0, 0, 0, h_cvar],
+        [x_cvar, 0, 0, 0, x_vvar, 0, 0, 0],
+        [0, y_cvar, 0, 0, 0, y_vvar, 0, 0],
+        [0, 0, w_cvar, 0, 0, 0, w_vvar, 0],
+        [0, 0, 0, h_cvar, 0, 0, 0, h_vvar]
         ])
 
     H = np.array([
