@@ -228,7 +228,7 @@ def flag_entryway_events(all_trks, entryways, threshold=.4):
 
 
 def format_cv2D_kf(measurement, m_noise, p_noise, initial_uncertainty,
-                            xy_vel=[0, 0], wh_vel=[0, 0], dt=1.0):
+                   xy_vel=[0, 0], wh_vel=[0, 0], dt=1.0):
     
     '''
     Formats the necessary matrices for modeling constant velocity in 2D space
@@ -284,9 +284,9 @@ def format_cv2D_kf(measurement, m_noise, p_noise, initial_uncertainty,
         ])
 
     # Q values:
-    position_var = (dt**4)/4    # Position variance
+    position_var = (dt**4) / 4  # Position variance
     velocity_var = (dt**2)      # Velocity variance
-    cross_var = (dt**3)/2       # Cross-coupling term
+    cross_var = (dt**3) / 2     # Cross-coupling term
 
     x_pvar, y_pvar, w_pvar, h_pvar =  np.array(p_noise) * position_var
     x_vvar, y_vvar, w_vvar, h_vvar = np.array(p_noise) * velocity_var

@@ -326,9 +326,7 @@ class TrackingPipeline:
                 w, h = box[2:4]
                 measurement = np.array([x, y, w, h])
 
-                prediction = list(map(int, trk.x[:4]))
                 trk.update(measurement)
-                print(f'[c{self.cam} trk {id}] Prediction: {prediction}, Update: {list(map(int, trk.x[:4]))}')
                 trk.add_state(trk.x, self.f_num)
                 trk.add_detection(box, self.f_num)
                 trk.add_embedding(embeddings[measurement_index])
@@ -874,7 +872,7 @@ class TrackingPipeline:
                     frames = trk.span
 
                 for f in frames:
-                    x, y, w, h = trk.detections[f][:4]
+                    x, y, w, h = map(int, trk.detections[f][:4])
                     cap.set(cv2.CAP_PROP_POS_FRAMES, f)
                     ret, frame = cap.read()
                     if not ret:

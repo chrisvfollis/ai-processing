@@ -1,0 +1,4 @@
+INSTANCE_ID=i-0c64dbfcd4423bd21
+REGION=us-west-1
+PEM_PATH=timemanager.pem
+REMOTE_USER=ubuntu
