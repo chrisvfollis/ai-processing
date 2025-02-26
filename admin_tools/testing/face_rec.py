@@ -150,7 +150,7 @@ def cropped_detections(video, yolov4, face_iq):
             faces_detected = 0
 
             start = time.perf_counter()
-            df_results = face_iq.identify_faces(frame, cutoff=0.999, regions=person_boxes)
+            df_results = face_iq.identify_faces(frame, cutoff=0.999, regions=regions)
             end = time.perf_counter()
             id_total += (end - start)
                 
