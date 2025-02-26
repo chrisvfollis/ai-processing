@@ -59,6 +59,7 @@ class TrackingPipeline:
         )
 
         self.unmatched = []
+        self.cost_method_data = []
 
         self.dt = 1/self.fps
         self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
@@ -795,6 +796,8 @@ class TrackingPipeline:
 
         if (not is_continuation) and (self.continuity == True):
             self.all_trks = self.trk_cache
+            for trk in self.all_trks.values():
+                self.cost_method_data.extend(trk.cost_method_data)
             _assign_identities()
             self.handle_results()
     
@@ -931,6 +934,8 @@ class TrackingPipeline:
 
         tracks_df = pd.DataFrame(track_data)
 
+        cost_method_df = pd.DataFrame(self.cost_method_data)
+
         config_data = {
             'module': ['kalman_filter', 'kalman_filter', 'kalman_filter',
                     'kalman_filter', 'video', 'version'],
@@ -959,9 +964,10 @@ class TrackingPipeline:
         try:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
                 tracks_df.to_excel(writer, sheet_name='Tracking Data', index=False)
+                stats_df.to_excel(writer, sheet_name='Stats', index=False)
+                cost_method_df.to_excel(writer, sheet_name='Association Data', index=False)
                 config_df.to_excel(writer, sheet_name='Configuration', index=False)
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
-                stats_df.to_excel(writer, sheet_name='Stats', index=False)
         except Exception as e:
             print(f"Failed to save Excel file: {e}")
 
@@ -1089,6 +1095,8 @@ class Track(KalmanFilter):
 
         self.coincident_trks = []
         self.identity = None
+
+        self.cost_method_data = []
     
     def __getstate__(self):
         'Prepare object state for pickling by moving tensors off of the GPU'
@@ -1177,8 +1185,9 @@ class Track(KalmanFilter):
                 new_detections, frame_diag, distance_cutoff=distance_cutoff
             )
 
-            costs = euclidean_dists
-            return costs
+            self.cost_method_data[-1]['spatial_costs'] = euclidean_dists.tolist()
+
+            return euclidean_dists
 
         def _feature_analysis(new_embeddings, methods):
             def _weighted_moving_avg(cos_distances, mask,
@@ -1265,7 +1274,19 @@ class Track(KalmanFilter):
             if median_mask.any():
                 costs[median_mask] = _median_in_cache(cos_distances, median_mask)
             
+            self.cost_method_data[-1]['dissimilarity_costs'] = costs.tolist()
+            self.cost_method_data[-1]['cost_methods'] = methods.tolist()
+
             return costs
+
+        self.cost_method_data.append({
+            'frame': f_num,
+            'track_id': id(self),
+            'detection_count': len(new_detections),
+            'spatial_costs': [],
+            'dissimilarity_costs': [],
+            'cost_methods': []
+        })
 
         spatial_costs = _spatial_analysis(new_detections, frame_diag,
                                           distance_cutoff=0.5)
