@@ -13,7 +13,7 @@
 scratch.py
 
 .env
-.pem
+*.pem
 
 .DS_Store
 .idea/
