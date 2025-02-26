@@ -144,7 +144,7 @@ def cropped_detections(video, yolov4, face_iq):
             end = time.perf_counter()
             detect_total += (end - start)
 
-            person_boxes = [box[:4] for box in detections]
+            person_boxes = [box for box in detections]
             regions = utils.cluster_bboxes_into_regions(person_boxes, *resolution)
 
             faces_detected = 0
