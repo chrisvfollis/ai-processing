@@ -157,7 +157,6 @@ class TrackingPipeline:
                 )
 
                 new_track = Track(box, embeddings[i], self.f_num, *kf_args)
-                print(f'[c{self.cam} trk {self.trk_id}] Start: {new_track.x}')
                 if keypoints:
                     new_track.add_keypoints(keypoints[i], self.f_num)
     
