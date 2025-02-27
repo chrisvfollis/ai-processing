@@ -44,6 +44,7 @@ class TrackingPipeline:
 
         self.kp_filtered = 0
         self.lifespan_filtered = 0
+        self.size_filtered = 0
 
         self.trk_id = 0
 
@@ -849,9 +850,28 @@ class TrackingPipeline:
                         del self.all_trks[id]
                     except KeyError:
                         continue
-                            
+
+            def _filter_by_size():
+                expected_avg = (self.resolution[0] / 24) * (self.resolution[1] / 12)
+                for id, trk in self.all_trks.items():
+                    if trk.identity:
+                        continue
+                    box_sizes = [math.prod(detection[2:4]) for detection in trk.detections.values()]
+                    avg = sum(box_sizes) / len(box_sizes)
+
+                    if avg < expected_avg:
+                        self.filtered_trks[id] = trk
+                        self.size_filtered += 1
+                
+                for id in self.filtered_trks.keys():
+                    try:
+                        del self.all_trks[id]
+                    except KeyError:
+                        continue
+
             _filter_by_lifespan()
             _filter_by_keypoints()
+            _filter_by_size()
         
         def _get_track_images(tracks, vid_dir='../files/input/'):
             vid_path = os.path.join(vid_dir, self.video_file)
