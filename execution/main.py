@@ -81,7 +81,7 @@ def run_processing_cycle():
         yolov4_weights = '../models/weights/YOLOv4.pth'
         osnet_weights = '../models/weights/OSNet.pth.tar-250'
         movenet_dir = '../models/weights/movenet'
-        face_models = ['Facenet512', 'retinaface']
+        face_models = ['Facenet512', 'centerface']
 
         model_info = [yolov4_weights, osnet_weights, movenet_dir,
                       face_models]

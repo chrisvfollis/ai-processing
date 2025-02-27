@@ -9,13 +9,13 @@ import time
 from models.yolov4 import YOLOv4
 from models.face_iq import FaceIq
 from utilities import utilities as utils
-
+import math
 
 
 def run_function(fx, video):
     video_path = os.path.join('input', video)
 
-    face_iq = FaceIq('Facenet512', 'retinaface', face_dir='../../files/input/faces',
+    face_iq = FaceIq('Facenet512', 'centerface', face_dir='../../files/input/faces',
                      db_path='../../files/data.db')
 
     if fx == 'whole_image':
@@ -144,7 +144,7 @@ def cropped_detections(video, yolov4, face_iq):
             end = time.perf_counter()
             detect_total += (end - start)
 
-            person_boxes = [box for box in detections]
+            person_boxes = [box for box in detections if (math.prod(box[2:4]) > 6400)]
             regions = utils.cluster_bboxes_into_regions(person_boxes, *resolution)
 
             faces_detected = 0
