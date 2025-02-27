@@ -946,9 +946,10 @@ class TrackingPipeline:
                 })
         
         stats_data = {
-            'stat_name': ['tracks', 'kp_fltr_tracks', 'span_fltr_tracks'],
+            'stat_name': ['tracks', 'kp_fltr_tracks', 'span_fltr_tracks',
+                          'size_fltr_tracks'],
             'stat_value': [len(all_tracks.keys()), self.kp_filtered,
-                        self.lifespan_filtered]
+                           self.lifespan_filtered, self.size_filtered]
         }
         stats_df = pd.DataFrame(stats_data)
 
