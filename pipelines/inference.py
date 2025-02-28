@@ -121,9 +121,6 @@ class InferencePipeline:
                         regions = utils.cluster_bboxes_into_regions(
                             bboxes, *self.resolution
                         )
-                        print(f'Found {len(regions)} regions')
-                        for region in regions:
-                            print(f'Region size: {region[2] * region[3]}')
                         face_dfs = self.face_iq.identify_faces(
                             frame, cutoff=0.8, regions=regions
                         )

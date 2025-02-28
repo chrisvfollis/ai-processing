@@ -668,9 +668,6 @@ class TrackingPipeline:
                     continue
                 id_c += 1
                 trk_id_costs[trk_id] = id_costs
-    
-            print(f'No ID costs: {no_id_c}')
-            print(f'ID Costs: {id_c}')
             
             trk_ids = sorted(trk_id_costs.keys())
             groups, meta_sets, track_sets = _group_tracks(trk_ids)

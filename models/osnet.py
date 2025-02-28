@@ -71,7 +71,7 @@ class OSNet:
         return embedding
 
     def enable_buffers(self, video_file, output_dir='../files/output',
-                       buffer_limit=100):
+                       buffer_limit=50):
         '''
         Sets up buffers and an output file so the OSNet instance can use
         bulk processing features like extraction batches.
