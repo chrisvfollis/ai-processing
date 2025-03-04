@@ -210,6 +210,7 @@ class TrackingPipeline:
                 
                 tensorized_costs = torch.stack(cost_list)
                 cost_matrix = tensorized_costs.cpu().numpy()
+                print(f'Cost matrix size: {cost_matrix.size}')
 
                 return cost_matrix
 
