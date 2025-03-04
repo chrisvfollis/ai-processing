@@ -7,6 +7,8 @@ import signal
 import sys
 from utilities import io_utils
 from utilities import utilities as utils
+import psutil
+import threading
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -22,6 +24,39 @@ def handle_sigterm(signum, frame):
     io_utils.delete_local_files('all')
 
     sys.exit(0)
+
+
+def log_top_memory_processes():
+    '''
+    Logs the top memory-consuming processes.
+    '''
+    print("\n[OOM WARNING] SYSTEM MEMORY CRITICAL - Logging top memory consumers")
+    processes = [(p.info['pid'], p.info['name'], p.info['memory_info'].rss / 1e6) 
+                 for p in psutil.process_iter(attrs=['pid', 'name', 'memory_info'])]
+    
+    processes = sorted(processes, key=lambda x: x[2], reverse=True)
+    
+    for pid, name, mem in processes[:5]:
+        print(f"PID {pid} - {name}: {mem:.2f} MB")
+
+
+def monitor_memory_for_oom(oom_threshold_mb=500, interval=2):
+    '''
+    Continuously checks free memory and logs top memory-consuming processes before OOM kill.
+    '''
+    while True:
+        try:
+            mem_info = psutil.virtual_memory()
+            free_mb = mem_info.available / 1e6
+            
+            if free_mb < oom_threshold_mb:
+                log_top_memory_processes()
+                time.sleep(10)
+            
+        except Exception as e:
+            print(f"Error in OOM monitor: {e}")
+
+        time.sleep(interval)
 
 
 def process_video(row, credentials, model_info, device, time_prefix):
@@ -141,4 +176,7 @@ def run_processing_cycle():
         
 
 if __name__ == '__main__':
+    oom_watchdog = threading.Thread(target=monitor_memory_for_oom, daemon=True)
+    oom_watchdog.start()
+
     run_processing_cycle()
