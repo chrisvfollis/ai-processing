@@ -7,8 +7,6 @@ import cv2
 import subprocess
 import os
 import time
-import threading
-import tracemalloc
 
 
 def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=False):

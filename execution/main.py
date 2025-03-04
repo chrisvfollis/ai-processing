@@ -7,8 +7,6 @@ import signal
 import sys
 from utilities import io_utils
 from utilities import utilities as utils
-import tracemalloc
-import threading
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -16,7 +14,6 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import gc
 
-tracemalloc.start()
 
 def handle_sigterm(signum, frame):
     print("Received SIGTERM. Cleaning up...")
@@ -27,31 +24,9 @@ def handle_sigterm(signum, frame):
     sys.exit(0)
 
 
-def monitor_memory(interval=5):
-    '''
-    Logs the top 5 memory-consuming lines every `interval` seconds.
-    '''
-    while True:
-        time.sleep(interval)
-
-        snapshot = tracemalloc.take_snapshot()
-        top_stats = snapshot.statistics("lineno")
-
-        print("\n[MEMORY MONITOR] Top memory-consuming lines:")
-        for stat in top_stats[:5]:
-            print(stat)
-
-
 def process_video(row, credentials, model_info, device, time_prefix):
     video_file = row[0]
     camera = video_file.split('.')[0].split('_')[-1]
-
-    memory_monitoring = threading.Thread(
-        target=monitor_memory,
-        args=(2,),
-        daemon=True
-    )
-    memory_monitoring.start()
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -103,6 +78,8 @@ def process_video(row, credentials, model_info, device, time_prefix):
 
     print(f"Processed {video_file}")
 
+    del inference_output
+    del trk_pipeline
     K.clear_session()
     gc.collect()
 
@@ -152,16 +129,8 @@ def run_processing_cycle():
             time.sleep(60)
             continue
 
-        # start_time = time.time()
-        # stop_event = threading.Event()
-        # cycle_time_logging = threading.Thread(
-        #     target=utils.log_elapsed_time, args=(start_time, stop_event),
-        #     daemon=True
-        # )
-        # cycle_time_logging.start()
-
         tasks = [(row, *start_vars, t_prefix) for row in q_block]
-        with multiprocessing.Pool(processes=1) as pool:
+        with multiprocessing.Pool(processes=2) as pool:
             pool.starmap(
                 process_video, tasks
             )
@@ -169,15 +138,7 @@ def run_processing_cycle():
             pool.join()
         
         _finalize(*qb_results, start_vars[0])
-
-        # stop_event.set()
-        # cycle_time_logging.join()
         
 
 if __name__ == '__main__':
-    # stop_memory_monitoring = threading.Event()
-
     run_processing_cycle()
-
-    # stop_memory_monitoring.set()
-    # memory_monitoring.join()
