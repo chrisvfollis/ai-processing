@@ -7,7 +7,8 @@ import signal
 import sys
 from utilities import io_utils
 from utilities import utilities as utils
-# import threading
+import tracemalloc
+import threading
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -15,6 +16,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import gc
 
+tracemalloc.start()
 
 def handle_sigterm(signum, frame):
     print("Received SIGTERM. Cleaning up...")
@@ -23,6 +25,21 @@ def handle_sigterm(signum, frame):
     io_utils.delete_local_files('all')
 
     sys.exit(0)
+
+
+def monitor_memory(interval=5):
+    '''
+    Logs the top 5 memory-consuming lines every `interval` seconds.
+    '''
+    while True:
+        time.sleep(interval)
+
+        snapshot = tracemalloc.take_snapshot()
+        top_stats = snapshot.statistics("lineno")
+
+        print("\n[MEMORY MONITOR] Top memory-consuming lines:")
+        for stat in top_stats[:5]:
+            print(stat)
 
 
 def process_video(row, credentials, model_info, device, time_prefix):
@@ -152,12 +169,12 @@ def run_processing_cycle():
 
 if __name__ == '__main__':
     # stop_memory_monitoring = threading.Event()
-    # memory_monitoring = threading.Thread(
-    #     target=utils.monitor_memory,
-    #     args=(stop_memory_monitoring, 0.05, 0.25),
-    #     daemon=True
-    # )
-    # memory_monitoring.start()
+    memory_monitoring = threading.Thread(
+        target=monitor_memory,
+        args=(2,),
+        daemon=True
+    )
+    memory_monitoring.start()
 
     run_processing_cycle()
 
