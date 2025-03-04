@@ -26,7 +26,7 @@ def handle_sigterm(signum, frame):
     sys.exit(0)
 
 
-def log_top_memory_processes():
+def log_top_memory_consumers():
     '''
     Logs the top memory-consuming processes.
     '''
@@ -40,7 +40,7 @@ def log_top_memory_processes():
         print(f"PID {pid} - {name}: {mem:.2f} MB")
 
 
-def monitor_memory_for_oom(oom_threshold_mb=500, interval=2):
+def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
     '''
     Continuously checks free memory and logs top memory-consuming processes before OOM kill.
     '''
@@ -50,7 +50,7 @@ def monitor_memory_for_oom(oom_threshold_mb=500, interval=2):
             free_mb = mem_info.available / 1e6
             
             if free_mb < oom_threshold_mb:
-                log_top_memory_processes()
+                log_top_memory_consumers()
                 time.sleep(10)
             
         except Exception as e:

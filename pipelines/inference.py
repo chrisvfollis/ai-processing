@@ -8,6 +8,7 @@ from models.osnet import OSNet
 from models.movenet import MoveNet
 from models.face_iq import FaceIq
 import pickle
+import gc
 
 
 class InferencePipeline:
@@ -196,6 +197,8 @@ class InferencePipeline:
             prev_frame = current_frame
 
             _process_frame(frame, focus='local')
+            del frame
+            gc.collect()
             _continue()
 
         _wrap_up()
