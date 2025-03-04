@@ -1,6 +1,5 @@
 import torch
-# import multiprocessing
-from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 import time
 import os
 from dotenv import load_dotenv
@@ -107,6 +106,7 @@ def run_processing_cycle():
         io_utils.delete_local_files(time_prefix)
 
     signal.signal(signal.SIGTERM, handle_sigterm)
+    multiprocessing.set_start_method('spawn')
     start_vars = _prepare()
 
     while True:
@@ -126,9 +126,9 @@ def run_processing_cycle():
         cycle_time_logging.start()
 
         tasks = [(row, *start_vars, t_prefix) for row in q_block]
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            executor.map(
-                lambda args: process_video(*args), tasks
+        with multiprocessing.Pool(processes=3) as pool:
+            pool.starmap(
+                process_video, tasks
             )
         
         stop_event.set()
