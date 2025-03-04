@@ -46,6 +46,13 @@ def process_video(row, credentials, model_info, device, time_prefix):
     video_file = row[0]
     camera = video_file.split('.')[0].split('_')[-1]
 
+    memory_monitoring = threading.Thread(
+        target=monitor_memory,
+        args=(2,),
+        daemon=True
+    )
+    memory_monitoring.start()
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -169,12 +176,6 @@ def run_processing_cycle():
 
 if __name__ == '__main__':
     # stop_memory_monitoring = threading.Event()
-    memory_monitoring = threading.Thread(
-        target=monitor_memory,
-        args=(2,),
-        daemon=True
-    )
-    memory_monitoring.start()
 
     run_processing_cycle()
 
