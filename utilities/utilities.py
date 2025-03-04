@@ -73,24 +73,42 @@ def get_centroids(boxes):
     return frame_centroids
 
 
-def restrain_boxes(coordinates, image_size=[1920, 1080]):
-    img_width, img_height = image_size
+def out_of_bounds(coordinates, img_dims=[1920, 1080]):
+    img_w, img_h = img_dims
+    margin_x, margin_y = img_w / 32, img_h / 32
+
+    c_x, c_y, w, h = coordinates[:4]
+
+    x_min, x_max = c_x - w / 2, c_x + w / 2
+    y_min, y_max = c_y - h / 2, c_y + h / 2
+
+    result = (
+        (x_max < -margin_x) or (x_min > img_w + margin_x) or
+        (y_max < -margin_y) or (y_min > img_h + margin_y)
+    )
+    if result:
+        print('Out of bounds...')
+    return result
+
+
+def restrain_boxes(coordinates, img_dims=[1920, 1080]):
+    img_w, img_h = img_dims
 
     # Restrain width and height to not exceed the dimensions of
     # the image:
-    coordinates[2] = min(img_width, coordinates[2])
-    coordinates[3] = min(img_height, coordinates[3])
+    coordinates[2] = min(img_w, coordinates[2])
+    coordinates[3] = min(img_h, coordinates[3])
 
     # Restrain centroids so that box can go no further than right
     # outside of the frame.
-    half_width = coordinates[2] / 2
-    half_height = coordinates[3] / 2
+    half_w = coordinates[2] / 2
+    half_h = coordinates[3] / 2
 
-    coordinates[0] = min((img_width + half_width), coordinates[0])
-    coordinates[0] = max((0 - half_width), coordinates[0])
+    coordinates[0] = min((img_w + half_w), coordinates[0])
+    coordinates[0] = max((0 - half_w), coordinates[0])
 
-    coordinates[1] = min((img_height + half_height), coordinates[1])
-    coordinates[1] = max((0 - half_height), coordinates[1])
+    coordinates[1] = min((img_h + half_h), coordinates[1])
+    coordinates[1] = max((0 - half_h), coordinates[1])
 
     return coordinates
 

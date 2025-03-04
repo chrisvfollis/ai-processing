@@ -173,10 +173,11 @@ class TrackingPipeline:
             cached = []
             for id, trk in self.active_trks.items():
                 if (self.f_num - trk.span[1]) <= self.max_absence:
-                    trk.predict()
-                    trk.x = utils.restrain_boxes(
-                        trk.x, image_size=self.resolution
-                    )
+                    if not utils.out_of_bounds(trk.x, img_dims=self.resolution):
+                        trk.predict()
+                        trk.x = utils.restrain_boxes(
+                            trk.x, img_dims=self.resolution
+                        )
                     trk.add_state(trk.x, self.f_num)
                 else:
                     self.trk_cache[id] = trk
