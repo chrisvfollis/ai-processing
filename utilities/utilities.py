@@ -7,6 +7,7 @@ import cv2
 import subprocess
 import os
 import time
+import psutil
 
 
 def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=False):
@@ -26,6 +27,43 @@ def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=Fa
     elif include_timestamp == True:
         current_time = datetime.now().strftime('%H:%M:%S')
         print(f"[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes")
+
+
+def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
+    def _log_top_memory_consumers():
+        print("\n[OOM WARNING] SYSTEM MEMORY CRITICAL - Logging top memory consumers")
+
+        processes = []
+        for p in psutil.process_iter(attrs=['pid', 'name', 'memory_info'], ad_value=None):
+            try:
+                info = p.as_dict(attrs=['pid', 'name', 'memory_info'])
+                if info['memory_info']:
+                    processes.append((info['pid'], info['name'], info['memory_info'].rss / 1e6))
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+
+        processes.sort(key=lambda x: x[2], reverse=True)
+
+        for pid, name, mem in processes[:5]:
+            print(f"PID {pid} - {name}: {mem:.2f} MB")
+
+        del processes
+        gc.collect()
+
+    while True:
+        try:
+            mem_info = psutil.virtual_memory()
+            free_mb = mem_info.available / 1e6
+            
+            if free_mb < oom_threshold_mb:
+                _log_top_memory_consumers()
+                gc.collect()
+                time.sleep(10)
+            else:
+                time.sleep(interval)
+            
+        except Exception as e:
+            print(f"Error in OOM monitor: {e}")
 
 
 def get_git_commit_hash(cfg_dir_path='../config'):

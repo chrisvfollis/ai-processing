@@ -7,7 +7,6 @@ import signal
 import sys
 from utilities import io_utils
 from utilities import utilities as utils
-import psutil
 import threading
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
@@ -24,50 +23,6 @@ def handle_sigterm(signum, frame):
     io_utils.delete_local_files('all')
 
     sys.exit(0)
-
-
-def log_top_memory_consumers():
-    '''
-    Logs the top memory-consuming processes.
-    '''
-    print("\n[OOM WARNING] SYSTEM MEMORY CRITICAL - Logging top memory consumers")
-
-    processes = []
-    for p in psutil.process_iter(attrs=['pid', 'name', 'memory_info'], ad_value=None):
-        try:
-            info = p.as_dict(attrs=['pid', 'name', 'memory_info'])
-            if info['memory_info']:
-                processes.append((info['pid'], info['name'], info['memory_info'].rss / 1e6))
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            continue
-
-    processes.sort(key=lambda x: x[2], reverse=True)
-
-    for pid, name, mem in processes[:5]:
-        print(f"PID {pid} - {name}: {mem:.2f} MB")
-
-    del processes
-    gc.collect()
-
-
-def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
-    '''
-    Continuously checks free memory and logs top memory-consuming processes before OOM kill.
-    '''
-    while True:
-        try:
-            mem_info = psutil.virtual_memory()
-            free_mb = mem_info.available / 1e6
-            
-            if free_mb < oom_threshold_mb:
-                log_top_memory_consumers()
-                gc.collect()
-                time.sleep(10)
-            else:
-                time.sleep(interval)
-            
-        except Exception as e:
-            print(f"Error in OOM monitor: {e}")
 
 
 def process_video(row, credentials, model_info, device, time_prefix):
@@ -128,7 +83,6 @@ def process_video(row, credentials, model_info, device, time_prefix):
     del trk_pipeline
     K.clear_session()
     gc.collect()
-
 
 
 def run_processing_cycle():
@@ -196,7 +150,9 @@ def run_processing_cycle():
         
 
 if __name__ == '__main__':
-    oom_watchdog = threading.Thread(target=monitor_memory_for_oom, daemon=True)
+    oom_watchdog = threading.Thread(
+        target=utils.monitor_memory_for_oom, daemon=True
+    )
     oom_watchdog.start()
 
     run_processing_cycle()

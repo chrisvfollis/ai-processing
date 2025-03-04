@@ -964,7 +964,7 @@ class TrackingPipeline:
 
         config_data = {
             'module': ['kalman_filter', 'kalman_filter', 'kalman_filter',
-                    'kalman_filter', 'video', 'version'],
+                       'kalman_filter', 'video', 'version'],
             'parameter': [
                 'initial_uncertainty', 'measurement_index',
                 'process_noise', 'time_step', 'resolution_fps',
