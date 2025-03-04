@@ -130,7 +130,7 @@ def run_processing_cycle():
             continue
 
         tasks = [(row, *start_vars, t_prefix) for row in q_block]
-        with multiprocessing.Pool(processes=2) as pool:
+        with multiprocessing.Pool(processes=3) as pool:
             pool.starmap(
                 process_video, tasks
             )
