@@ -8,12 +8,13 @@ import sys
 from utilities import io_utils
 from utilities import utilities as utils
 import threading
-import tracemalloc
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
+import gc
+
 
 
 def handle_sigterm(signum, frame):
@@ -28,6 +29,10 @@ def handle_sigterm(signum, frame):
 def process_video(row, credentials, model_info, device, time_prefix):
     video_file = row[0]
     camera = video_file.split('.')[0].split('_')[-1]
+
+    K = tf.keras.backend
+    K.clear_session()
+    gc.collect()
 
     if not io_utils.download_s3_footage(video_file, credentials):
         return False
@@ -71,6 +76,9 @@ def process_video(row, credentials, model_info, device, time_prefix):
     )
 
     print(f"Processed {video_file}")
+
+    K.clear_session()
+    gc.collect()
 
     return True
 
@@ -118,14 +126,6 @@ def run_processing_cycle():
             time.sleep(60)
             continue
 
-        stop_memory_monitoring = threading.Event()
-        memory_monitoring = threading.Thread(
-            target=utils.monitor_memory,
-            args=(stop_memory_monitoring, 0.05, 0.25),
-            daemon=True
-        )
-        memory_monitoring.start()
-
         start_time = time.time()
         stop_event = threading.Event()
         cycle_time_logging = threading.Thread(
@@ -139,14 +139,25 @@ def run_processing_cycle():
             pool.starmap(
                 process_video, tasks
             )
+            pool.close()
+            pool.join()
         
         _finalize(*qb_results, start_vars[0])
 
         stop_event.set()
-        stop_memory_monitoring.set()
-
         cycle_time_logging.join()
-        memory_monitoring.join()
+        
 
 if __name__ == '__main__':
+    stop_memory_monitoring = threading.Event()
+    memory_monitoring = threading.Thread(
+        target=utils.monitor_memory,
+        args=(stop_memory_monitoring, 0.05, 0.25),
+        daemon=True
+    )
+    memory_monitoring.start()
+
     run_processing_cycle()
+
+    stop_memory_monitoring.set()
+    memory_monitoring.join()
