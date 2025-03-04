@@ -31,13 +31,23 @@ def log_top_memory_consumers():
     Logs the top memory-consuming processes.
     '''
     print("\n[OOM WARNING] SYSTEM MEMORY CRITICAL - Logging top memory consumers")
-    processes = [(p.info['pid'], p.info['name'], p.info['memory_info'].rss / 1e6) 
-                 for p in psutil.process_iter(attrs=['pid', 'name', 'memory_info'])]
-    
-    processes = sorted(processes, key=lambda x: x[2], reverse=True)
-    
+
+    processes = []
+    for p in psutil.process_iter(attrs=['pid', 'name', 'memory_info'], ad_value=None):
+        try:
+            info = p.as_dict(attrs=['pid', 'name', 'memory_info'])
+            if info['memory_info']:
+                processes.append((info['pid'], info['name'], info['memory_info'].rss / 1e6))
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    processes.sort(key=lambda x: x[2], reverse=True)
+
     for pid, name, mem in processes[:5]:
         print(f"PID {pid} - {name}: {mem:.2f} MB")
+
+    del processes
+    gc.collect()
 
 
 def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
@@ -51,12 +61,13 @@ def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
             
             if free_mb < oom_threshold_mb:
                 log_top_memory_consumers()
+                gc.collect()
                 time.sleep(10)
+            else:
+                time.sleep(interval)
             
         except Exception as e:
             print(f"Error in OOM monitor: {e}")
-
-        time.sleep(interval)
 
 
 def process_video(row, credentials, model_info, device, time_prefix):
