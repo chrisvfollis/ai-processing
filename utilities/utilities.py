@@ -7,6 +7,8 @@ import cv2
 import subprocess
 import os
 import time
+import threading
+import tracemalloc
 
 
 def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=False):
@@ -28,11 +30,40 @@ def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=Fa
         print(f"[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes")
 
 
+def monitor_memory(stop_memory_monitoring, spike_threshold, check_interval):
+    '''
+    Monitors memory usage and logs if a sudden increase is detected.
+    '''
+    prev_mem = 0
+
+    while not stop_memory_monitoring.is_set():
+        current, peak = tracemalloc.get_traced_memory()
+        
+        if prev_mem == 0:
+            prev_mem = current
+        
+        change_percent = (current - prev_mem) / prev_mem if prev_mem else 0
+
+        if change_percent > spike_threshold:
+            print(f"\nMEMORY SPIKE DETECTED: +{change_percent * 100:.2f}% increase ({(current - prev_mem) / 1e6:.2f} MB)")
+            
+            snapshot = tracemalloc.take_snapshot()
+            top_stats = snapshot.statistics("lineno")
+
+            print("\nTop 5 memory-consuming lines:")
+            for stat in top_stats[:5]:
+                print(stat)
+
+            prev_mem = current
+
+        time.sleep(check_interval)
+
+
 def get_git_commit_hash(cfg_dir_path='../config'):
-    """
+    '''
     Retrieve the Git commit hash for the version of the codebase that is
     currently running.
-    """
+    '''
 
     try:
         return subprocess.check_output(["git", "rev-parse", "--short",

@@ -8,6 +8,7 @@ import sys
 from utilities import io_utils
 from utilities import utilities as utils
 import threading
+import tracemalloc
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -117,6 +118,14 @@ def run_processing_cycle():
             time.sleep(60)
             continue
 
+        stop_memory_monitoring = threading.Event()
+        memory_monitoring = threading.Thread(
+            target=utils.monitor_memory,
+            args=(stop_memory_monitoring, 0.05, 0.25),
+            daemon=True
+        )
+        memory_monitoring.start()
+
         start_time = time.time()
         stop_event = threading.Event()
         cycle_time_logging = threading.Thread(
@@ -131,10 +140,13 @@ def run_processing_cycle():
                 process_video, tasks
             )
         
-        stop_event.set()
-        cycle_time_logging.join()
         _finalize(*qb_results, start_vars[0])
 
+        stop_event.set()
+        stop_memory_monitoring.set()
+
+        cycle_time_logging.join()
+        memory_monitoring.join()
 
 if __name__ == '__main__':
     run_processing_cycle()
