@@ -15,44 +15,46 @@ class MoveNet:
     def detect(self, img, conf_thresh=0.35, max_only=False):
         def _preprocess_img(img):
             original_dims = img.shape[:2][::-1]
-            w, h = original_dims
-            
-            scale = 1
-            if min(original_dims) < 96:
-                scale = 96 / min(original_dims)
-                w, h = [int(round(x * scale)) for x in original_dims]
-                img = cv2.resize(img, (w, h))
-            
-            target_w, target_h = [int((x // 32) * 32) for x in [w, h]]
 
-            img = tf.image.resize_with_pad(tf.expand_dims(img, axis=0),
-                                           target_h, target_w)
+            min_scale = max(1, 96 / min(original_dims))
+            min_scale_dims = [round(d * min_scale) for d in original_dims]
+
+            target_dims = [int((d // 32) * 32) for d in min_scale_dims]
+            
+            img = tf.image.resize_with_pad(
+                tf.expand_dims(img, axis=0), *target_dims[::-1]
+            )
+
             img = tf.cast(img, dtype=tf.int32)
-
-            pad_scale = min([target_w / w, target_h / h])
-            pad_w = w - (w * pad_scale)
-            pad_h = h - (h * pad_scale)
-
-            mapping = {'scale': scale, 'pad_scale': pad_scale, 'pad_dims':
-                       [pad_w, pad_h], 'target_dims': [target_w, target_h]}
+            mapping = [original_dims, min_scale, min_scale_dims, target_dims]
 
             return img, mapping
         
         def _postprocess_output(output, mapping, max_only):
-            def _map_keypoints(keypoints, mapping):
-                scale = mapping['scale']
-                pad_scale = mapping['pad_scale']
-                pad_w, pad_h = mapping['pad_dims']
-                target_w, target_h = mapping['target_dims']
+            def _map_keypoints(kpts, mapping):
+                original_dims, min_scale, ms_dims, t_dims = mapping
+                axis_boundaries = [[0, d - 1] for d in original_dims]
 
-                keypoints[:, 0] = (keypoints[:, 0] * target_w) - (pad_w / 2)
-                keypoints[:, 1] = (keypoints[:, 1] * target_h) - (pad_h / 2)
+                rsz_scale = min([t_dims[i] / ms_dims[i] for i in range(2)])
 
-                keypoints[:, :2] = (
-                    np.rint(keypoints[:, :2] / (scale * pad_scale)).astype(int)
+                pad_vals = [
+                    max(0, ((t_dims[i] - round(ms_dims[i] * rsz_scale)) / 2))
+                    for i in range(2)
+                ]
+
+                kpts[:, 0] = (kpts[:, 0] * t_dims[0]) - pad_vals[0]
+                kpts[:, 1] = (kpts[:, 1] * t_dims[1]) - pad_vals[1]
+
+                kpts[:, 0] = np.clip(
+                    np.rint(kpts[:, 0] / (rsz_scale * min_scale)).astype(int),
+                    *axis_boundaries[0]
+                )
+                kpts[:, 1] = np.clip(
+                    np.rint(kpts[:, 1] / (rsz_scale * min_scale)).astype(int),
+                    *axis_boundaries[1]
                 )
 
-                return keypoints
+                return kpts
 
             detection_array = (
                 output['output_0'].numpy()[:, :, :51].reshape((6, 17, 3))
