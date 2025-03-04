@@ -129,7 +129,6 @@ def process_video(row, credentials, model_info, device, time_prefix):
     K.clear_session()
     gc.collect()
 
-    return True
 
 
 def run_processing_cycle():
@@ -175,6 +174,14 @@ def run_processing_cycle():
             time.sleep(60)
             continue
 
+        start_time = time.time()
+        stop_event = threading.Event()
+        cycle_time_logging = threading.Thread(
+            target=utils.log_elapsed_time, args=(start_time, stop_event),
+            daemon=True
+        )
+        cycle_time_logging.start()
+
         tasks = [(row, *start_vars, t_prefix) for row in q_block]
         with multiprocessing.Pool(processes=3) as pool:
             pool.starmap(
@@ -183,6 +190,8 @@ def run_processing_cycle():
             pool.close()
             pool.join()
         
+        stop_event.set()
+        cycle_time_logging.join()
         _finalize(*qb_results, start_vars[0])
         
 

@@ -77,6 +77,7 @@ class TrackingPipeline:
         
         self.conf_thresh = conf_thresh
 
+        self.total_time = 0
         self.reading_time = 0
         self.matching_time = 0
         self.prediction_time = 0
@@ -761,6 +762,7 @@ class TrackingPipeline:
 
         if not is_continuation:
             print(f"Running tracking pipeline for {self.video_file}...")
+        start_run = time.perf_counter()
 
         while self.f_num < self.total_frames:
             if self.active_trks:
@@ -805,6 +807,9 @@ class TrackingPipeline:
         elif (not is_continuation) and (self.continuity == False):
             self.all_trks = {**self.active_trks, **self.trk_cache}
             _assign_identities()
+        
+        end_run = time.perf_counter()
+        self.total_time += (end_run - start_run)
     
     def handle_results(self):
         def _finalize_and_filter():
@@ -974,8 +979,20 @@ class TrackingPipeline:
         config_df = pd.DataFrame(config_data)
 
         performance_data = {
-            'metric': ['id_assignment_time', 'prediction_time', 'track_matching_time'],
-            'value': [self.id_assign_time, self.prediction_time, self.matching_time],
+            'metric': [
+                'total_time',
+                'reading_time',
+                'id_assignment_time',
+                'prediction_time',
+                'track_matching_time'
+            ],
+            'value': [
+                self.total_time,
+                self.reading_time,
+                self.id_assign_time,
+                self.prediction_time,
+                self.matching_time
+            ],
         }
         performance_df = pd.DataFrame(performance_data)
 

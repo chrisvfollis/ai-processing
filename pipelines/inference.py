@@ -9,6 +9,7 @@ from models.movenet import MoveNet
 from models.face_iq import FaceIq
 import pickle
 import gc
+import time
 
 
 class InferencePipeline:
@@ -77,6 +78,9 @@ class InferencePipeline:
         self.checkpoint_stride = (
             ((self.total_frames // 4) // self.track_stride) * self.track_stride
         )
+
+        self.total_time = 0
+        self.read_time = 0
 
     def skim(self):
         print(f'Skimming...')
@@ -184,6 +188,7 @@ class InferencePipeline:
             self.collect_data()
 
         print(f"Running inference pipeline for {self.video_file}...")
+        start_run = time.perf_counter()
 
         self.f_num = 0
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
@@ -191,7 +196,12 @@ class InferencePipeline:
 
         while self.f_num < self.total_frames:
             current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+
+            start_read = time.perf_counter()
             ret, frame = self.cap.read()
+            end_read = time.perf_counter()
+
+            self.read_time += (end_read - start_read)
             if (not ret) or (current_frame == prev_frame):
                 break
             prev_frame = current_frame
@@ -202,6 +212,8 @@ class InferencePipeline:
             _continue()
 
         _wrap_up()
+        end_run = time.perf_counter()
+        self.total_time += (end_run - start_run)
         return self.person_data, self.keypoint_data, self.face_data
 
     def collect_data(self, output_dir="../files/output/runtime_data"):
@@ -240,6 +252,8 @@ class InferencePipeline:
 
         performance_data = {
             "metric": [
+                "total_time",
+                "frame_reading_time",
                 "object_detection_time",
                 "pose_estimation_time",
                 "feature_extraction_time",
@@ -247,6 +261,8 @@ class InferencePipeline:
                 "identification_time",
             ],
             "value": [
+                self.total_time,
+                self.read_time,
                 self.yolov4.detection_time,
                 self.movenet.detection_time,
                 self.osnet.extraction_time,
