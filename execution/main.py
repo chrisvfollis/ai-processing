@@ -42,12 +42,10 @@ def process_video(row, credentials, model_info, device, time_prefix):
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
         try:
-            # tf.config.experimental.set_virtual_device_configuration(
-            #     gpus[0],
-            #     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=2048)]
-            # )
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
+            tf.config.experimental.set_virtual_device_configuration(
+                gpus[0],
+                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=2048)]
+            )
         except RuntimeError as e:
             print(f"Error configuring TensorFlow GPU memory: {e}")
 
@@ -139,7 +137,7 @@ def run_processing_cycle():
         # cycle_time_logging.start()
 
         tasks = [(row, *start_vars, t_prefix) for row in q_block]
-        with multiprocessing.Pool(processes=3) as pool:
+        with multiprocessing.Pool(processes=1) as pool:
             pool.starmap(
                 process_video, tasks
             )
