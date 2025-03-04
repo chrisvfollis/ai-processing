@@ -7,14 +7,13 @@ import signal
 import sys
 from utilities import io_utils
 from utilities import utilities as utils
-import threading
+# import threading
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 import gc
-
 
 
 def handle_sigterm(signum, frame):
@@ -126,13 +125,13 @@ def run_processing_cycle():
             time.sleep(60)
             continue
 
-        start_time = time.time()
-        stop_event = threading.Event()
-        cycle_time_logging = threading.Thread(
-            target=utils.log_elapsed_time, args=(start_time, stop_event),
-            daemon=True
-        )
-        cycle_time_logging.start()
+        # start_time = time.time()
+        # stop_event = threading.Event()
+        # cycle_time_logging = threading.Thread(
+        #     target=utils.log_elapsed_time, args=(start_time, stop_event),
+        #     daemon=True
+        # )
+        # cycle_time_logging.start()
 
         tasks = [(row, *start_vars, t_prefix) for row in q_block]
         with multiprocessing.Pool(processes=3) as pool:
@@ -144,20 +143,20 @@ def run_processing_cycle():
         
         _finalize(*qb_results, start_vars[0])
 
-        stop_event.set()
-        cycle_time_logging.join()
+        # stop_event.set()
+        # cycle_time_logging.join()
         
 
 if __name__ == '__main__':
-    stop_memory_monitoring = threading.Event()
-    memory_monitoring = threading.Thread(
-        target=utils.monitor_memory,
-        args=(stop_memory_monitoring, 0.05, 0.25),
-        daemon=True
-    )
-    memory_monitoring.start()
+    # stop_memory_monitoring = threading.Event()
+    # memory_monitoring = threading.Thread(
+    #     target=utils.monitor_memory,
+    #     args=(stop_memory_monitoring, 0.05, 0.25),
+    #     daemon=True
+    # )
+    # memory_monitoring.start()
 
     run_processing_cycle()
 
-    stop_memory_monitoring.set()
-    memory_monitoring.join()
+    # stop_memory_monitoring.set()
+    # memory_monitoring.join()
