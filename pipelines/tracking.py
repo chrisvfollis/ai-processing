@@ -82,9 +82,11 @@ class TrackingPipeline:
         self.prediction_time = 0
         self.id_assign_time = 0
 
+        self.prior_pickle = ''
+
         self.continuity = continuity
-        if continuity:
-            self.load_prior_tracks()
+        # if continuity:
+        #     self.load_prior_tracks()
 
     def __getstate__(self):
         'Prepare object state for pickling.'
@@ -103,7 +105,6 @@ class TrackingPipeline:
                  if f.endswith(str(self.video_file.split('.')[0].split('_')[-1])
                                + '.pkl')]
         if not files:
-            self.prior_pickle = ''
             return
         
         self.prior_pickle = sorted(files)[-1]
