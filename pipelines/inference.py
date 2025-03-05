@@ -10,6 +10,7 @@ from models.face_iq import FaceIq
 import gc
 import time
 import torch
+import pickle
 
 
 class InferencePipeline:
@@ -363,3 +364,19 @@ class InferencePipeline:
                 print(f'Saved inference runtime data to {excel_path}')
         except Exception as e:
             print(f'Failed to save Excel file: {e}')
+
+    def save_inference_data(self, output_dir='../files/output'):
+        os.makedirs(output_dir, exist_ok=True)
+        file_prefix = self.video_file.split('.')[0]
+
+        data = [self.person_data, self.keypoint_data, self.face_data]
+
+        filename = io_utils.get_unique_filename(
+            output_dir, f'{file_prefix}_inference_data.pkl'
+        )
+
+        save_path = os.path.join(output_dir, filename)
+        with open(save_path, "wb") as f:
+            pickle.dump(data, f)
+
+        print('Inference data saved')

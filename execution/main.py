@@ -99,7 +99,7 @@ def run_processing_cycle():
 
         load_dotenv()
         credentials = [os.environ.get('AWS_ACCESS_KEY'),
-                    os.environ.get('AWS_SECRET_KEY')]
+                       os.environ.get('AWS_SECRET_KEY')]
 
         io_utils.clear_track_info('all')
         io_utils.delete_local_files('all')

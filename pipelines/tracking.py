@@ -1269,6 +1269,9 @@ class Track(KalmanFilter):
     def add_embedding(self, embedding):
         self.embedding_cache.append(embedding)
 
+        if hasattr(self, 'embedding_cache_tensor'):
+            del self.embedding_cache_tensor
+        
         start_convert = time.perf_counter()
         self.embedding_cache_tensor = torch.stack(list(self.embedding_cache))
 
