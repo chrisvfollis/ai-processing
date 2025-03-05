@@ -246,7 +246,6 @@ class TrackingPipeline:
                 end_convert = time.perf_counter()
                 self.tensor_conversion_time += (end_convert - start_convert)
 
-                print(f'Cost matrix size: {cost_matrix.size}')
                 return cost_matrix
 
             def _assign_matches(cost_matrix):
@@ -1257,7 +1256,7 @@ class Track(KalmanFilter):
         self.__dict__.update(state)
 
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        
+
         self.embedding_cache = deque([emb.to(device) for emb in state['embedding_cache']], maxlen=20)
         self.embedding_cache_tensor = self.embedding_cache_tensor.to(device)
 
@@ -1265,7 +1264,7 @@ class Track(KalmanFilter):
         self.embedding_cache.append(embedding)
 
         start_convert = time.perf_counter()
-        self.embedding_cache_tensor = torch.stack(self.embedding_cache)
+        self.embedding_cache_tensor = torch.stack(list(self.embedding_cache))
 
         end_convert = time.perf_counter()
         self.tensor_conversion_time += (end_convert - start_convert)
