@@ -6,6 +6,9 @@ import os
 import h5py
 from utilities import io_utils
 import time
+from collections import deque
+import torch
+import gc
 
 import warnings
 warnings.filterwarnings(
@@ -77,15 +80,19 @@ class OSNet:
         self.embedding_time += (end_extract - start_extract)
 
         embedding = _postprocess_output(output)
+
+        del output
         
         return embedding
 
     def enable_buffers(self, video_file, output_dir='../files/output',
-                       buffer_limit=50):
+                       buffer_limit=100):
         '''
         Sets up buffers and an output file so the OSNet instance can use
         bulk processing features like extraction batches.
         '''
+
+        self.buffer_limit = buffer_limit
         
         hdf5_file = video_file.split('.')[0] + '_embeddings.hdf5'
         self.output_path = os.path.join(output_dir, hdf5_file)
@@ -94,11 +101,9 @@ class OSNet:
 
         self.hdf5_file = h5py.File(self.output_path, 'a')
 
-        self.embedding_buffer = []
-        self.frame_buffer = []
-        self.box_index_buffer = []
-
-        self.buffer_limit = buffer_limit
+        self.embedding_buffer = deque(maxlen=self.buffer_limit)
+        self.frame_buffer = deque(maxlen=self.buffer_limit)
+        self.box_index_buffer = deque(maxlen=self.buffer_limit)
 
         n_features = self.output_shape[0]
         idx_dataset_kwargs = {'shape': (0,), 'dtype': 'i', 'maxshape': (None,)}
@@ -123,11 +128,17 @@ class OSNet:
         if close_file == True:
             self.hdf5_file.close()
         
+        torch.cuda.empty_cache()
+        gc.collect()
+        
         end_flush = time.perf_counter()
         self.flush_time += (end_flush - start_flush)
 
     def extraction_batch(self, img, detections, f_num):
         def _update_buffers(embedding, f_num, box_idx):
+            if len(self.embedding_buffer) >= self.buffer_limit:
+                self.flush_buffers()
+
             self.embedding_buffer.append(embedding)
             self.frame_buffer.append(f_num)
             self.box_index_buffer.append(box_idx)
@@ -142,6 +153,3 @@ class OSNet:
                 embedding = []
 
             _update_buffers(embedding, f_num, i)
-        
-        if self.buffer_limit <= len(self.embedding_buffer):
-            self.flush_buffers()
