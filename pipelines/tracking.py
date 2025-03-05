@@ -77,17 +77,25 @@ class TrackingPipeline:
         
         self.conf_thresh = conf_thresh
 
-        self.total_time = 0
-        self.reading_time = 0
-        self.matching_time = 0
-        self.prediction_time = 0
-        self.id_assign_time = 0
+        self.primary_run_time = 0
+        self.persist_time = 0
 
-        self.prior_pickle = ''
+        self.creation_time = 0
+        self.prediction_time = 0
+        self.measurement_matching_time = 0
+        self.identity_matching_time = 0
+        self.spatial_analysis_time = 0
+        self.feature_analysis_time = 0
+        
+        self.tensor_conversion_time = 0
+        self.pkl_io_time = 0
+        self.embedding_read_time = 0
 
         self.continuity = continuity
-        # if continuity:
-        #     self.load_prior_tracks()
+        self.prior_pkl = ''
+    
+        if continuity:
+            self.persist_prior_tracks()
 
     def __getstate__(self):
         'Prepare object state for pickling.'
@@ -100,7 +108,9 @@ class TrackingPipeline:
         self.__dict__.update(state)
         self.device = torch.device(state['device'])
 
-    def load_prior_tracks(self):
+    def persist_prior_tracks(self):
+        start_persist = time.perf_counter()
+
         output_dir = '../files/output'
         files = [f for f in os.listdir(output_dir)
                  if f.endswith(str(self.video_file.split('.')[0].split('_')[-1])
@@ -108,10 +118,15 @@ class TrackingPipeline:
         if not files:
             return
         
-        self.prior_pickle = sorted(files)[-1]
-        pickle_path = os.path.join(output_dir, self.prior_pickle)
-        with open(pickle_path, 'rb') as f:
+        self.prior_pkl = sorted(files)[-1]
+        pkl_path = os.path.join(output_dir, self.prior_pkl)
+
+        start_pkl_load = time.perf_counter()
+        with open(pkl_path, 'rb') as f:
             prior_pipeline = pickle.load(f)
+        
+        end_pkl_load = time.perf_counter()
+        self.pkl_io_time += (end_pkl_load - start_pkl_load)
         
         interim = (self.start_time - prior_pipeline.end_time).total_seconds()
         interim_frames = int(round(interim * self.fps, 0))
@@ -143,8 +158,13 @@ class TrackingPipeline:
         self.active_trks = reset_active
         self.trk_cache = reset_cached
 
+        end_persist = time.perf_counter()
+        self.persist_time += (end_persist - start_persist)
+
     def run(self, is_continuation=False):
         def _create_new_tracks():
+            start_creation = time.perf_counter()
+
             try:
                 detections, embeddings, keypoints = self.unmatched
             except ValueError:
@@ -168,6 +188,9 @@ class TrackingPipeline:
                 self.trk_id += 1
 
             self.unmatched = []
+
+            end_creation = time.perf_counter()
+            self.creation_time += (end_creation - start_creation)
 
         def _predict_or_cache():
             start_prediction = time.perf_counter()
@@ -195,9 +218,13 @@ class TrackingPipeline:
                 active_tracks = sorted(self.active_trks.keys())
                 cost_list = []
 
+                start_convert = time.perf_counter()
                 new_detections = torch.tensor(
                     new_detections, dtype=torch.float32, device=self.device
                 )
+
+                end_convert = time.perf_counter()
+                self.tensor_conversion_time += (end_convert - start_convert)
 
                 video_info = [self.f_num, self.fps, self.frame_diag]
 
@@ -209,10 +236,14 @@ class TrackingPipeline:
                     )
                     cost_list.append(cost_vector)
                 
+                start_convert = time.perf_counter()
                 tensorized_costs = torch.stack(cost_list)
                 cost_matrix = tensorized_costs.cpu().numpy()
-                print(f'Cost matrix size: {cost_matrix.size}')
 
+                end_convert = time.perf_counter()
+                self.tensor_conversion_time += (end_convert - start_convert)
+
+                print(f'Cost matrix size: {cost_matrix.size}')
                 return cost_matrix
 
             def _assign_matches(cost_matrix):
@@ -354,7 +385,7 @@ class TrackingPipeline:
                               unmatched_keypoints]
             
             end_match = time.perf_counter()
-            self.matching_time += (end_match - start_match)
+            self.measurement_matching_time += (end_match - start_match)
 
         def _associate_faces(cutoff=0.9):
             def _overlap_costs(face_boxes, person_boxes):
@@ -417,7 +448,7 @@ class TrackingPipeline:
                 self.active_trks[id].add_face_detection(f_matches, self.f_num)
             
             end_associate = time.perf_counter()
-            self.id_assign_time = (end_associate - start_associate)
+            self.identity_matching_time = (end_associate - start_associate)
         
         def _assign_identities():
             def _group_tracks(trk_ids):
@@ -756,7 +787,7 @@ class TrackingPipeline:
                 all_optimal_assignments.update(optimal_assignments)
             
             end_assign = time.perf_counter()
-            self.id_assign_time = (end_assign - start_assign)
+            self.identity_matching_time = (end_assign - start_assign)
 
             return all_optimal_assignments
 
@@ -769,17 +800,28 @@ class TrackingPipeline:
                 _predict_or_cache()
 
             try:
+                start_convert = time.perf_counter()
                 detection_tensor = torch.tensor(self.detection_data[self.f_num])
+
+                end_convert = time.perf_counter()
+                self.tensor_conversion_time += (end_convert - start_convert)
+
                 conf_mask = detection_tensor[:, 4] > self.conf_thresh
 
                 start_read = time.perf_counter()
                 embeddings = io_utils.read_embeddings(
                     self.embedding_path, self.f_num, self.device
                 )
-                end_read = time.perf_counter()
-                self.reading_time += (end_read - start_read)
 
+                end_read = time.perf_counter()
+                self.embedding_read_time += (end_read - start_read)
+
+                start_convert = time.perf_counter()
                 detections = detection_tensor[conf_mask].tolist()
+
+                end_convert = time.perf_counter()
+                self.tensor_conversion_time += (end_convert - start_convert)
+
                 embeddings = embeddings[conf_mask]
         
                 keypoints = self.keypoint_data.get(self.f_num, None)
@@ -809,7 +851,7 @@ class TrackingPipeline:
             _assign_identities()
         
         end_run = time.perf_counter()
-        self.total_time += (end_run - start_run)
+        self.primary_run_time += (end_run - start_run)
     
     def handle_results(self):
         def _finalize_and_filter():
@@ -918,16 +960,108 @@ class TrackingPipeline:
 
         _get_track_images(self.all_trks)
 
-        self.collect_data()
+        self.save_runtime_data()
         _finalize_and_filter()
 
-    def collect_data(self, output_dir='../files/output/runtime_data'):
-        print('Collecting tracking data')
-        git_commit_hash = utils.get_git_commit_hash()
-        clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
+    def save_runtime_data(self, output_dir='../files/output/runtime_data'):
+        commit_hash, commit_datetime = utils.get_git_commit_info()
+        clip_identifier = self.video_file.split('.')[0] + '_' + commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
         all_tracks = {**self.active_trks, **self.trk_cache, **self.filtered_trks}
+
+        config_data = {
+            'module': [
+                *['software'] * 2,
+                *['video'] * 2,
+                *['kalman_filter'] * 4
+            ],
+            'parameter': [
+                'git_commit_hash',          # Software
+                'git_commit_datetime',
+
+                'resolution',               # Video
+                'fps',
+
+                'measurement_noise',        # Kalman Filter
+                'process_noise',
+                'time_step',
+                'initial_uncertainty'
+            ],
+            'value': [
+                commit_hash,
+                commit_datetime,
+
+                f'{self.resolution[0]}x{self.resolution[1]}',
+                f'{self.fps}',
+
+                self.m_noise,
+                self.p_noise,
+                self.dt,
+                self.initial_uncertainty
+            ]
+        }
+        config_df = pd.DataFrame(config_data)
+
+        for trk in all_tracks.values():
+            self.spatial_analysis_time += trk.sp_analysis_time
+            self.feature_analysis_time += trk.ft_analysis_time
+            self.tensor_conversion_time += trk.tensor_conversion_time
+
+        performance_data = {
+            'module': [
+                *['pipeline'] * 2,
+                *['track_objects'] * 6,
+                *['data_management'] * 3
+            ],
+            'metric': [
+                'primary_run_time',                 # Pipeline
+                'persist_time',
+
+                'creation_time',                    # Track Objects
+                'prediction_time',
+                'measurement_matching_time',
+                'identity_matching_time',
+                'spatial_analysis_time',
+                'feature_analysis_time',
+
+                'tensor_conversion_time',           # Data Management
+                'pkl_io_time',
+                'embedding_read_time'
+            ],
+            'value': [
+                self.primary_run_time,
+                self.persist_time,
+
+                self.creation_time,
+                self.prediction_time,
+                self.measurement_matching_time,
+                self.identity_matching_time,
+                self.spatial_analysis_time,
+                self.feature_analysis_time,
+                
+                self.tensor_conversion_time,
+                self.pkl_io_time,
+                self.embedding_read_time
+            ],
+        }
+        performance_df = pd.DataFrame(performance_data)
+        
+        stats_data = {
+            'stat_title': [
+                'n_total_tracks',
+                'n_keypoint_filtered',
+                'n_lifespan_filtered',
+                'n_size_filtered'
+            ],
+            'stat_value': [
+                len(all_tracks),
+                self.kp_filtered,
+                self.lifespan_filtered,
+                self.size_filtered
+            ]
+        }
+        stats_df = pd.DataFrame(stats_data)
 
         track_data = []
         for trk_id, trk in all_tracks.items():
@@ -949,67 +1083,23 @@ class TrackingPipeline:
                     'keypoint_confidence': keypoint_conf,
                     'num_keypoints': num_keypoints,
                 })
-        
-        stats_data = {
-            'stat_name': ['tracks', 'kp_fltr_tracks', 'span_fltr_tracks',
-                          'size_fltr_tracks'],
-            'stat_value': [len(all_tracks.keys()), self.kp_filtered,
-                           self.lifespan_filtered, self.size_filtered]
-        }
-        stats_df = pd.DataFrame(stats_data)
-
-        tracks_df = pd.DataFrame(track_data)
+        track_df = pd.DataFrame(track_data)
 
         cost_method_df = pd.DataFrame(self.cost_method_data)
-
-        config_data = {
-            'module': ['kalman_filter', 'kalman_filter', 'kalman_filter',
-                       'kalman_filter', 'video', 'version'],
-            'parameter': [
-                'initial_uncertainty', 'measurement_index',
-                'process_noise', 'time_step', 'resolution_fps',
-                'git_commit_hash'
-            ],
-            'value': [
-                self.initial_uncertainty, self.m_noise, self.p_noise, self.dt,
-                f'{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps',
-                git_commit_hash
-            ]
-        }
-        config_df = pd.DataFrame(config_data)
-
-        performance_data = {
-            'metric': [
-                'total_time',
-                'reading_time',
-                'id_assignment_time',
-                'prediction_time',
-                'track_matching_time'
-            ],
-            'value': [
-                self.total_time,
-                self.reading_time,
-                self.id_assign_time,
-                self.prediction_time,
-                self.matching_time
-            ],
-        }
-        performance_df = pd.DataFrame(performance_data)
 
         filename = io_utils.get_unique_filename(output_dir, f'tracking_data_{clip_identifier}.xlsx')
         excel_path = os.path.join(output_dir, filename)
 
         try:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
-                tracks_df.to_excel(writer, sheet_name='Tracking Data', index=False)
+                track_df.to_excel(writer, sheet_name='Tracking Data', index=False)
                 stats_df.to_excel(writer, sheet_name='Stats', index=False)
                 cost_method_df.to_excel(writer, sheet_name='Association Data', index=False)
                 config_df.to_excel(writer, sheet_name='Configuration', index=False)
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
+                print(f'Saved tracking runtime data to {excel_path}')
         except Exception as e:
             print(f"Failed to save Excel file: {e}")
-
-        return tracks_df, config_df, performance_df
 
     def save_pipeline_state(self, output_dir='../files/output'):
         os.makedirs(output_dir, exist_ok=True)
@@ -1018,17 +1108,20 @@ class TrackingPipeline:
         print(f'{len(self.active_trks.keys())} tracks saved to be continued')
 
         save_path = os.path.join(output_dir, f'{file_prefix}.pkl')
+
+        start_pkl_mgmt = time.perf_counter()
         with open(save_path, "wb") as f:
             pickle.dump(self, f)
         
-        if self.prior_pickle:
-            prior_path = os.path.join(output_dir, self.prior_pickle)
+        if self.prior_pkl:
+            prior_path = os.path.join(output_dir, self.prior_pkl)
             if os.path.exists(prior_path) and os.path.isfile(prior_path):
                 os.remove(prior_path)
+        
+        end_pkl_mgmt = time.perf_counter()
+        self.pkl_io_time += (end_pkl_mgmt - start_pkl_mgmt)
 
         print('Tracking pipeline saved')
-
-        return
 
     def generate_output_vid(self, input_dir='../files/input/', output_dir='../files/output/videos'):
         print(f'Generating output video for {self.video_file}')
@@ -1135,6 +1228,10 @@ class Track(KalmanFilter):
         self.identity = None
 
         self.cost_method_data = []
+
+        self.sp_analysis_time = 0
+        self.ft_analysis_time = 0
+        self.tensor_conversion_time = 0
     
     def __getstate__(self):
         'Prepare object state for pickling by moving tensors off of the GPU'
@@ -1158,7 +1255,12 @@ class Track(KalmanFilter):
     def add_embedding(self, embedding, window=-20):
         self.embedding_cache.append(embedding)
         self.embedding_cache = self.embedding_cache[window:]
+
+        start_convert = time.perf_counter()
         self.embedding_cache_tensor = torch.stack(self.embedding_cache)
+
+        end_convert = time.perf_counter()
+        self.tensor_conversion_time += (end_convert - start_convert)
 
     def add_detection(self, new_detection, frame_number):
         self.detections[frame_number] = new_detection
@@ -1195,8 +1297,14 @@ class Track(KalmanFilter):
                 device = new_detections.device
 
                 if len(new_detections) == 0:
-                    return torch.tensor([], dtype=torch.float32, device=device)
+                    start_convert = time.perf_counter()
+                    no_detections = torch.tensor([], dtype=torch.float32, device=device)
 
+                    end_convert = time.perf_counter()
+                    self.tensor_conversion_time += (end_convert - start_convert)
+                    return no_detections
+
+                start_convert = time.perf_counter()
                 trk_centroid = torch.tensor(
                     self.x[:2], dtype=torch.float32, device=device
                 ).unsqueeze(0)
@@ -1205,6 +1313,9 @@ class Track(KalmanFilter):
                     [torch.tensor(utils.centroid(detection), device=device)
                      for detection in new_detections]
                 )
+
+                end_convert = time.perf_counter()
+                self.tensor_conversion_time += (end_convert - start_convert)
 
                 distances = torch.norm(det_centroids - trk_centroid, dim=1)
                 normalized = distances / frame_diag
@@ -1218,12 +1329,20 @@ class Track(KalmanFilter):
             
             def _normalized_area():
                 pass
+            start_sp_analysis = time.perf_counter()
 
             euclidean_dists = _normalized_euclidean(
                 new_detections, frame_diag, distance_cutoff=distance_cutoff
             )
 
+            start_convert = time.perf_counter()
             self.cost_method_data[-1]['spatial_costs'] = euclidean_dists.tolist()
+
+            end_convert = time.perf_counter()
+            self.tensor_conversion_time += (end_convert - start_convert)
+
+            end_sp_analysis = time.perf_counter()
+            self.sp_analysis_time = (end_sp_analysis - start_sp_analysis)
 
             return euclidean_dists
 
@@ -1243,12 +1362,16 @@ class Track(KalmanFilter):
 
                 num_cached = cos_distances.shape[0]
 
+                start_convert = time.perf_counter()
                 weights = torch.tensor(
                     [decay_factor ** (num_cached - i - 1)
                      for i in range(num_cached)],
                     device=cos_distances.device,
                     dtype=cos_distances.dtype
                 ).unsqueeze(1) # shape: (num_cached, 1)
+
+                end_convert = time.perf_counter()
+                self.tensor_conversion_time += (end_convert - start_convert)
 
                 weighted_distances = (
                     (masked_distances * weights).sum(dim=0) / weights.sum()
@@ -1284,14 +1407,23 @@ class Track(KalmanFilter):
 
                 return masked_distances.median(dim=0).values
             
+            start_ft_analysis = time.perf_counter()
+
             num_cached = len(self.embedding_cache)
             num_new = new_embeddings.shape[0]
             if num_cached == 0:
-                return torch.full((num_new,), float('inf'))
+                start_convert = time.perf_counter()
+                num_new_tensor = torch.full((num_new,), float('inf'))
+
+                end_convert = time.perf_counter()
+                self.tensor_conversion_time += (end_convert - start_convert)
+                return num_new_tensor
 
             cos_distances = self.calc_cos_distances(new_embeddings)
 
             method_map = {'standard': 0, 'lowest': 1, 'median': 2}
+
+            start_convert = time.perf_counter()
             methods = torch.tensor(
                 [method_map[m] for m in methods], device=cos_distances.device
             )
@@ -1303,6 +1435,9 @@ class Track(KalmanFilter):
                 (num_new,), float('inf'), device=cos_distances.device
             )
 
+            end_convert = time.perf_counter()
+            self.tensor_conversion_time += (end_convert - start_convert)
+
             if standard_mask.any():
                 costs[standard_mask] = _weighted_moving_avg(
                     cos_distances, standard_mask
@@ -1312,8 +1447,15 @@ class Track(KalmanFilter):
             if median_mask.any():
                 costs[median_mask] = _median_in_cache(cos_distances, median_mask)
             
+            start_convert = time.perf_counter()
             self.cost_method_data[-1]['dissimilarity_costs'] = costs.tolist()
             self.cost_method_data[-1]['cost_methods'] = methods.tolist()
+
+            end_convert = time.perf_counter()
+            self.tensor_conversion_time += (end_convert - start_convert)
+
+            end_ft_analysis = time.perf_counter()
+            self.ft_analysis_time += (end_ft_analysis - start_ft_analysis)
 
             return costs
 
