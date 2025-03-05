@@ -313,7 +313,7 @@ class InferencePipeline:
                 'initialize_time',
                 'video_skim_time',
 
-                'preprocess_time'                   # YOLOv4
+                'preprocess_time',                  # YOLOv4
                 'inference_time',
                 'postprocess_time',
                 
