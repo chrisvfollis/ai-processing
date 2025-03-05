@@ -26,15 +26,15 @@ def handle_sigterm(signum, frame):
 
 
 def process_video(row, credentials, model_info, device, time_prefix):
-    video_file = row[0]
-    camera = video_file.split('.')[0].split('_')[-1]
-
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    gc.set_debug(gc.DEBUG_LEAK)
 
     K = tf.keras.backend
+    torch.cuda.empty_cache()
     K.clear_session()
     gc.collect()
+
+    video_file = row[0]
+    camera = video_file.split('.')[0].split('_')[-1]
 
     if not io_utils.download_s3_footage(video_file, credentials):
         return False
@@ -61,12 +61,19 @@ def process_video(row, credentials, model_info, device, time_prefix):
     if not inf_pipeline.skim():
         io_utils.delete_s3_footage(video_file, credentials)
         return False
-    else:
-        inference_output = inf_pipeline.run()
+    
+    inference_output = inf_pipeline.run()
 
     trk_pipeline = TrackingPipeline(
         video_file, time_prefix, *inference_output, device
-    )   
+    )
+
+    del inf_pipeline
+    del inference_output
+
+    torch.cuda.empty_cache()
+    K.clear_session()
+    gc.collect()
 
     trk_pipeline.run()
 
@@ -81,6 +88,8 @@ def process_video(row, credentials, model_info, device, time_prefix):
 
     del inference_output
     del trk_pipeline
+
+    torch.cuda.empty_cache()
     K.clear_session()
     gc.collect()
 
@@ -136,13 +145,20 @@ def run_processing_cycle():
         )
         cycle_time_logging.start()
 
+        utils.check_active_semaphores()
+
         tasks = [(row, *start_vars, t_prefix) for row in q_block]
         with multiprocessing.Pool(processes=3) as pool:
+
+            utils.check_active_semaphores()
+
             pool.starmap(
                 process_video, tasks
             )
             pool.close()
             pool.join()
+        
+        utils.check_active_semaphores()
         
         stop_event.set()
         cycle_time_logging.join()

@@ -7,6 +7,8 @@ import os
 import time
 import psutil
 import gc
+import sys
+import getpass
 
 
 def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=False):
@@ -63,6 +65,105 @@ def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
             
         except Exception as e:
             print(f'Error in OOM monitor: {e}')
+
+
+def log_top_memory_objects(n=10):
+    def _safe_sizeof(obj):
+        '''Returns size of object, safely handling exceptions'''
+        try:
+            return sys.getsizeof(obj)
+        except TypeError:
+            return 0
+
+    gc.collect()
+
+    objects = gc.get_objects()
+    object_sizes = [(obj, (_safe_sizeof(obj)) / 1e6) for obj in objects]
+    object_sizes.sort(key=lambda x: x[1], reverse=True)
+
+    print(f'Top {n} objects by memory usage:')
+    for obj, size in object_sizes[:n]:
+        print(f'Size: {size} MB | Type: {type(obj)}')
+
+    gc.set_debug(gc.DEBUG_LEAK)
+    gc.collect()
+    
+    unreachable_objects = gc.garbage
+    if unreachable_objects:
+        unreachable_objects = sorted(
+            unreachable_objects, key=lambda x: _safe_sizeof(x), reverse=True
+        )
+        print('Objects that are no longer referenced but still in memory:')
+
+        for obj in unreachable_objects[:10]:
+            print(type(obj), obj)
+    else:
+        print('No unreferenced objects found.')
+
+
+def check_active_semaphores():
+    '''Check if System V and POSIX named semaphores are being created.'''
+    
+    print('Checking for active semaphores...')
+
+    try:
+        output = subprocess.check_output(['ipcs', '-s']).decode('utf-8')
+        lines = output.strip().split('\n')
+        
+        semaphores = [
+            line for line in lines if len(line.split()) > 2 and line.split()[0].startswith('0x')
+        ]
+        
+        if semaphores:
+            print('Active System V semaphores detected:')
+            for line in semaphores:
+                print(line)
+        else:
+            print('No System V semaphores found.')
+    except Exception as e:
+        print(f'⚠️ Error checking System V semaphores: {e}')
+
+    try:
+        posix_semaphores = [f for f in os.listdir('/dev/shm/') if f.startswith('sem.')]
+        if posix_semaphores:
+            print('Active POSIX semaphores detected:')
+            for sem in posix_semaphores:
+                print(f'/dev/shm/{sem}')
+        else:
+            print('No POSIX semaphores found.')
+    except FileNotFoundError:
+        print('No POSIX semaphores found.')
+    except Exception as e:
+        print(f'Error checking POSIX semaphores: {e}')
+
+
+def remove_stale_semaphores():
+    '''Remove leaked System V IPC semaphores and leaked POSIX named semaphores.'''
+
+    user = getpass.getuser()
+    print(f'Checking for stale semaphores owned by {user}...')
+
+    try:
+        output = subprocess.check_output(['ipcs', '-s']).decode('utf-8')
+
+        for line in output.split('\n'):
+            if user in line:
+                sem_id = line.split()[1]
+                print(f'Removing stale System V semaphore: {sem_id}')
+                os.system(f'ipcrm -s {sem_id}')
+    except Exception as e:
+        print(f'Error checking System V semaphores: {e}')
+    
+    try:
+        posix_semaphores = [f for f in os.listdir('/dev/shm/') if f.startswith('sem.')]
+        for sem in posix_semaphores:
+            sem_path = f'/dev/shm/{sem}'
+            print(f'Removing stale POSIX semaphore: {sem_path}')
+            os.unlink(sem_path)
+    except FileNotFoundError:
+        print('No stale POSIX semaphores found.')
+    except Exception as e:
+        print(f'Error checking POSIX semaphores: {e}')
 
 
 def get_git_commit_info(cfg_dir_path='../config'):

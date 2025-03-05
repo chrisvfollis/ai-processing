@@ -45,16 +45,16 @@ class OSNet:
         self.embedding_time = 0
         self.flush_time = 0
     
-    def extract_features(self, img):
-        def _preprocess_img(img):
+    def extract_features(self, image):
+        def _preprocess_img(image):
             start_preprocess = time.perf_counter()
 
-            img = cv2.resize(img, self.input_dims)
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            img = img.astype(np.float32)
+            image = cv2.resize(image, self.input_dims)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = image.astype(np.float32)
 
-            img_tensor = (
-                torch.from_numpy(img)
+            image_tensor = (
+                torch.from_numpy(image)
                 .permute(2, 0, 1)
                 .unsqueeze(0)
                 .to(self.device)
@@ -63,25 +63,21 @@ class OSNet:
             end_preprocess = time.perf_counter()
             self.preprocess_time += (end_preprocess - start_preprocess)
 
-            return img_tensor
+            return image_tensor
         
         def _postprocess_output(output):
             return output.cpu().detach().numpy().flatten()
         
-        img = _preprocess_img(img)
+        image_tensor = _preprocess_img(image)
 
         start_extract = time.perf_counter()
         with torch.no_grad():
-            output = self.model(img)
-
-        del img
-
+            output = self.model(image_tensor)
+        
         end_extract = time.perf_counter()
         self.embedding_time += (end_extract - start_extract)
 
         embedding = _postprocess_output(output)
-
-        del output
         
         return embedding
 
