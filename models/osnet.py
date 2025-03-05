@@ -71,6 +71,8 @@ class OSNet:
         with torch.no_grad():
             output = self.model(img)
 
+        del img
+
         end_extract = time.perf_counter()
         self.embedding_time += (end_extract - start_extract)
 

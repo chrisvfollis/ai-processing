@@ -10,6 +10,7 @@ import pickle
 import math
 import torch
 import torch.nn.functional as F
+import gc
 
 from utilities import io_utils
 from utilities import utilities as utils
@@ -239,6 +240,7 @@ class TrackingPipeline:
                 start_convert = time.perf_counter()
                 tensorized_costs = torch.stack(cost_list)
                 cost_matrix = tensorized_costs.cpu().numpy()
+                del tensorized_costs
 
                 end_convert = time.perf_counter()
                 self.tensor_conversion_time += (end_convert - start_convert)
@@ -338,7 +340,7 @@ class TrackingPipeline:
                                     orig_col = np.where(viable_cols)[0][j]
                                     assignments_dict[orig_row] = orig_col
                             except ValueError:
-                                print('No feasible assignments')
+                                print('No feasible measurement assignments')
 
                 return assignments_dict
             
@@ -775,7 +777,7 @@ class TrackingPipeline:
                                             assigned[tracks[orig_row]] = (identities
                                                                         [orig_col])
                                     except ValueError:
-                                        print('No feasible assignments')
+                                        print('No feasible identity assignments')
         
                     if cost < min_cost:
                         min_cost = cost
@@ -818,14 +820,20 @@ class TrackingPipeline:
 
                 start_convert = time.perf_counter()
                 detections = detection_tensor[conf_mask].tolist()
+                del detection_tensor
 
                 end_convert = time.perf_counter()
                 self.tensor_conversion_time += (end_convert - start_convert)
 
+                if self.f_num % 100 == 0:
+                    torch.cuda.empty_cache()
+                    gc.collect()
+
                 embeddings = embeddings[conf_mask]
-        
                 keypoints = self.keypoint_data.get(self.f_num, None)
+
                 measurements = [detections, embeddings, keypoints]
+
             except KeyError:
                 measurements = None
 
@@ -1254,7 +1262,8 @@ class Track(KalmanFilter):
 
     def add_embedding(self, embedding, window=-20):
         self.embedding_cache.append(embedding)
-        self.embedding_cache = self.embedding_cache[window:]
+        while len(self.embedding_cache) > abs(window):
+            self.embedding_cache = self.embedding_cache.pop(0)
 
         start_convert = time.perf_counter()
         self.embedding_cache_tensor = torch.stack(self.embedding_cache)
@@ -1514,7 +1523,7 @@ class Track(KalmanFilter):
         if not all_dfs:
             return {}
 
-        merged_df = pd.concat(all_dfs, ignore_index=True)
+        merged_df = pd.concat(all_dfs, ignore_index=True, copy=False)
         grouped = merged_df.groupby('identity')
 
         for identity, group in grouped:

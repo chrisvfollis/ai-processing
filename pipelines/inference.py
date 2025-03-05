@@ -7,9 +7,9 @@ from models.yolov4 import YOLOv4
 from models.osnet import OSNet
 from models.movenet import MoveNet
 from models.face_iq import FaceIq
-import pickle
 import gc
 import time
+import torch
 
 
 class InferencePipeline:
@@ -89,6 +89,7 @@ class InferencePipeline:
 
     def skim(self):
         print(f'Skimming...')
+        start_skim = time.perf_counter()
 
         stride = self.fps * 2
         prev_frame = -1
@@ -120,6 +121,9 @@ class InferencePipeline:
             del frame
             if (self.f_num % 100) == 0:
                 gc.collect()
+        
+        end_skim = time.perf_counter()
+        self.skim_time = (end_skim - start_skim)
 
     def run(self):
         def _process_frame(frame, focus='global'):
@@ -137,11 +141,11 @@ class InferencePipeline:
                             bboxes, *self.resolution
                         )
                         face_dfs = self.face_iq.identify_faces(
-                            frame, cutoff=0.8, regions=regions
+                            frame, id_cutoff=0.8, regions=regions
                         )
                 elif focus == 'global':
                     face_dfs = self.face_iq.identify_faces(
-                        frame, cutoff=0.8
+                        frame, id_cutoff=0.8
                     )
                 if face_dfs:
                     self.face_data[self.f_num] = face_dfs
@@ -226,6 +230,7 @@ class InferencePipeline:
             if (self.f_num % 100) == 0:
                 start_gc = time.perf_counter()
                 gc.collect()
+                torch.cuda.empty_cache()
 
                 end_gc = time.perf_counter()
                 self.garbage_collection_time += (end_gc - start_gc)
