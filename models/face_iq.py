@@ -1,37 +1,62 @@
 from deepface import DeepFace
 import time
 from utilities import io_utils
-import pandas as pd
+import time
 
 
 class FaceIq:
-    def __init__(self, id_model, detect_model, face_dir='../files/input/faces',
-                 db_path='../files/data.db'):
-        self.id_model = id_model
-        self.detect_model = detect_model
+    def __init__(self, recognition_model, detection_model, id_cutoff=0.8,
+                 face_dir='../files/input/faces', db_path='../files/data.db'):
+        self.recognition_model = recognition_model
+        self.detection_model = detection_model
+
+        self.id_cutoff = id_cutoff
+
         self.face_dir = face_dir
         self.db_path = db_path
 
         self.identification_time = 0
+        self.postprocess_time = 0
 
-    def identify_faces(self, img, cutoff=0.8, regions=None):
-        def _package_args(cutoff):
-            config = {
-                'db_path': self.face_dir, 'model_name': self.id_model,
-                'detector_backend': self.detect_model, 'threshold': cutoff,
-                'enforce_detection': False, 'silent': True
-            }
-            return config
+    def identify_faces(self, img, id_cutoff=None, regions=None):
+        def _postprocess_output(all_face_dfs):
+            start_postprocess = time.perf_counter()
+    
+            filtered_face_dfs = []
+    
+            for df in all_face_dfs:
+                df['identity'] = (
+                    df['identity'].map(lambda x: io_utils.get_employee(
+                        x, db_path=self.db_path
+                    ))
+                )
+                df = df.loc[df.groupby('identity')['distance'].idxmin()]
+                filtered_face_dfs.append(df)
+            
+            end_postprocess = time.perf_counter()
+            self.postprocess_time += (end_postprocess - start_postprocess)
 
-        start_identification = time.perf_counter()
-        config = _package_args(cutoff)
+            return filtered_face_dfs
+
+        id_cutoff = id_cutoff if id_cutoff else self.id_cutoff
+
+        config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
+                  'detector_backend': self.detection_model, 'threshold': id_cutoff,
+                  'enforce_detection': False, 'silent': True}
+        
         all_face_dfs = []
+        
+        start_id = time.perf_counter()
 
         if not regions:
             try:
                 all_face_dfs = DeepFace.find(img_path=img, **config)
             except Exception as e:
                 print(f"DeepFace error: {e}")
+                
+                end_id = time.perf_counter()
+                self.identification_time += (end_id - start_id)
+                
                 return all_face_dfs
         else:
             for region in regions:
@@ -41,6 +66,7 @@ class FaceIq:
 
                 try:
                     local_face_dfs = DeepFace.find(img_path=crop, **config)
+                    del crop
                     if local_face_dfs:
                         for df in local_face_dfs:
                             if not df.empty:
@@ -50,18 +76,10 @@ class FaceIq:
                                 all_face_dfs.append(df)
                 except Exception as e:
                     print(f"DeepFace error: {e}")
+
+        end_id = time.perf_counter()
+        self.identification_time += (end_id - start_id)
         
-        filtered_face_dfs = []
-        for df in all_face_dfs:
-            df['identity'] = (
-                df['identity'].map(lambda x: io_utils.get_employee(
-                    x, db_path=self.db_path
-                ))
-            )
-            df = df.loc[df.groupby('identity')['distance'].idxmin()]
-            filtered_face_dfs.append(df)
-        
-        end_identification = time.perf_counter()
-        self.identification_time += (end_identification - start_identification)
-        
-        return filtered_face_dfs
+        results = _postprocess_output(all_face_dfs)
+
+        return results

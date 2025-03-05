@@ -17,18 +17,12 @@ from torchreid import models as reid
 
 
 class OSNet:
-    def __init__(self, weights_path, device, input_shape=(128, 256),
+    def __init__(self, weights_path, device, input_dims=(128, 256),
                  output_shape=(512,), num_classes=751, loss='triplet'):
         self.device = device
 
-        self.model = reid.osnet.osnet_x1_0(
-            num_classes=num_classes, pretrained=False, loss='triplet'
-        )
-        self.input_shape = input_shape
-        self.output_shape = output_shape
-
-        self.extraction_time = 0
-        self.flush_time = 0
+        self.model = reid.osnet.osnet_x1_0(num_classes=num_classes,
+                                           pretrained=False, loss=loss)
 
         checkpoint = torch.load(weights_path, map_location=device)
         state_dict = checkpoint['state_dict']
@@ -40,34 +34,48 @@ class OSNet:
         self.model.load_state_dict(new_state_dict)
         self.model.to(self.device)
         self.model.eval()
+
+        self.input_dims = input_dims
+        self.output_shape = output_shape
+
+        self.preprocess_time = 0
+        self.embedding_time = 0
+        self.flush_time = 0
     
     def extract_features(self, img):
         def _preprocess_img(img):
-            w, h = self.input_shape
+            start_preprocess = time.perf_counter()
 
-            img_resized = cv2.resize(img, (w, h))
-            img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-            img_float = img_rgb.astype(np.float32)
+            img = cv2.resize(img, self.input_dims)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = img.astype(np.float32)
 
-            img_tensor = torch.from_numpy(img_float).permute(2, 0, 1).unsqueeze(0)
-            img_tensor = img_tensor.to(self.device)
+            img_tensor = (
+                torch.from_numpy(img)
+                .permute(2, 0, 1)
+                .unsqueeze(0)
+                .to(self.device)
+            )
+
+            end_preprocess = time.perf_counter()
+            self.preprocess_time += (end_preprocess - start_preprocess)
 
             return img_tensor
         
         def _postprocess_output(output):
             return output.cpu().detach().numpy().flatten()
         
-        start_extract = time.perf_counter()
-
         img = _preprocess_img(img)
+
+        start_extract = time.perf_counter()
         with torch.no_grad():
             output = self.model(img)
 
+        end_extract = time.perf_counter()
+        self.embedding_time += (end_extract - start_extract)
+
         embedding = _postprocess_output(output)
         
-        end_extract = time.perf_counter()
-        self.extraction_time += (end_extract - start_extract)
-
         return embedding
 
     def enable_buffers(self, video_file, output_dir='../files/output',

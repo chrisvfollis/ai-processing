@@ -11,7 +11,7 @@ import sys
 
 class YOLOv4:
     def __init__(self, weights_path, device, nms_thresh=0.5, conf_thresh=0.65,
-                 resize_dims=(416, 416)):
+                 input_dims=(416, 416)):
         self.device = device
 
         self.model = Yolov4Model(inference=True)
@@ -23,33 +23,27 @@ class YOLOv4:
 
         self.nms_thresh = nms_thresh
         self.conf_thresh = conf_thresh
-        self.resize_dims = resize_dims
+        self.input_dims = input_dims
 
+        self.preprocess_time = 0
         self.detection_time = 0
+        self.postprocess_time = 0
         
-    def detect(self, img, class_num, nms_thresh=None, conf_thresh=None,
-               resize_dims=None):
-        def _assign_params(nms_thresh, conf_thresh, resize_dims):
-            if not nms_thresh:
-                nms_thresh = self.nms_thresh
-            if not conf_thresh:
-                conf_thresh = self.conf_thresh
-            if not resize_dims:
-                resize_dims = self.resize_dims
-
-            return nms_thresh, conf_thresh, resize_dims
-
-        def _preprocess_img(img, resize_dims):
+    def detect(self, img, class_id, nms_thresh=None, conf_thresh=None,
+               input_dims=None):
+        def _preprocess_img(img, input_dims):
             '''
-            resize_dims — the width and height to resize the image to. YOLOv4
+            input_dims — the width and height to resize the image to. YOLOv4
             only accepts image dimensions that can be expressed using the
             formula (320 + (96 * n)), where n is a positive integer.
         
             Examples of valid dimensions include 320, 416, 512, 608, etc
             '''
-            self.resize_dims = resize_dims
+            start_preprocess = time.perf_counter()
+
+            self.input_dims = input_dims
             original_dims = img.shape[:2][::-1]
-            w, h = resize_dims
+            w, h = input_dims
 
             img_resized = cv2.resize(img, (w, h))
             img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
@@ -59,136 +53,140 @@ class YOLOv4:
     
             if self.device.type == 'cuda':
                 img_tensor = img_tensor.cuda()
-
+            
+            end_preprocess = time.perf_counter()
+            self.preprocess_time += (end_preprocess - start_preprocess)
+    
             return img_tensor, original_dims
         
-        def _postprocess_output(output, nms_thresh, conf_thresh):
-            def _nms_filter(boxes, confs, nms_thresh):
-                x1 = boxes[:, 0]
-                y1 = boxes[:, 1]
-                x2 = boxes[:, 2]
-                y2 = boxes[:, 3]
+        def _postprocess_output(output, nms_thresh, conf_thresh, class_id,
+                                original_dims):
+            def _filter_output(output, nms_thresh, conf_thresh, class_id):
+                def _apply_nms(boxes, confs, nms_thresh):
+                    x1 = boxes[:, 0]
+                    y1 = boxes[:, 1]
+                    x2 = boxes[:, 2]
+                    y2 = boxes[:, 3]
 
-                areas = (x2 - x1) * (y2 - y1)
-                order = confs.argsort()[::-1]
+                    areas = (x2 - x1) * (y2 - y1)
+                    order = confs.argsort()[::-1]
 
-                keep = []
-                while order.size > 0:
-                    idx_self = order[0]
-                    idx_other = order[1:]
+                    keep = []
+                    while order.size > 0:
+                        idx_self = order[0]
+                        idx_other = order[1:]
 
-                    keep.append(idx_self)
+                        keep.append(idx_self)
 
-                    xx1 = np.maximum(x1[idx_self], x1[idx_other])
-                    yy1 = np.maximum(y1[idx_self], y1[idx_other])
-                    xx2 = np.minimum(x2[idx_self], x2[idx_other])
-                    yy2 = np.minimum(y2[idx_self], y2[idx_other])
+                        xx1 = np.maximum(x1[idx_self], x1[idx_other])
+                        yy1 = np.maximum(y1[idx_self], y1[idx_other])
+                        xx2 = np.minimum(x2[idx_self], x2[idx_other])
+                        yy2 = np.minimum(y2[idx_self], y2[idx_other])
 
-                    w = np.maximum(0.0, xx2 - xx1)
-                    h = np.maximum(0.0, yy2 - yy1)
+                        w = np.maximum(0.0, xx2 - xx1)
+                        h = np.maximum(0.0, yy2 - yy1)
 
-                    inter = w * h
-                    over = inter / (areas[order[0]] + areas[order[1:]] - inter)
+                        inter = w * h
+                        over = inter / (areas[order[0]] + areas[order[1:]] - inter)
 
-                    inds = np.where(over <= nms_thresh)[0]
-                    order = order[inds + 1]
+                        inds = np.where(over <= nms_thresh)[0]
+                        order = order[inds + 1]
+                    
+                    return np.array(keep)
                 
-                return np.array(keep)
-    
-            # [num, 1, 4]
-            box_array = output[0][0]  # Extract first (and only) image
-            # [num, num_classes]
-            confs = output[1][0]  # Extract first (and only) image
+                box_array = output[0][0]            # (n_detections, 1, 4)
+                confs = output[1][0]                # (n_detections, n_classes)
 
-            if type(box_array).__name__ != 'ndarray':
-                box_array = box_array.cpu().detach().numpy()
-                confs = confs.cpu().detach().numpy()
+                if type(box_array).__name__ != 'ndarray':
+                    box_array = box_array.cpu().detach().numpy()
+                    confs = confs.cpu().detach().numpy()
 
-            num_classes = confs.shape[1]
+                box_array = box_array[:, 0]         # (n_detections, 4)
+                
+                max_conf = np.max(confs, axis=1)    # (n_detections,)
+                max_id = np.argmax(confs, axis=1)   # (n_detections,)
 
-            # [num, 4]
-            box_array = box_array[:, 0]
+                # Filter by confidence threshold and class ID:
+                argwhere = (max_conf > conf_thresh) & (max_id == class_id)
+                filtered_max_conf = max_conf[argwhere]
+                filtered_boxes = box_array[argwhere, :]
+                
+                if filtered_boxes.shape[0] > 0:
+                    keep = _apply_nms(filtered_boxes, filtered_max_conf,
+                                      nms_thresh)
+                    filtered_boxes = filtered_boxes[keep, :]
+                    filtered_max_conf = filtered_max_conf[keep]
 
-            # [num, num_classes] --> [num]
-            max_conf = np.max(confs, axis=1)
-            max_id = np.argmax(confs, axis=1)
+                bboxes = []
+                for k in range(filtered_boxes.shape[0]):
+                    bboxes.append([
+                        filtered_boxes[k, 0], filtered_boxes[k, 1],
+                        filtered_boxes[k, 2], filtered_boxes[k, 3],
+                        filtered_max_conf[k]
+                    ])
+                
+                return bboxes
 
-            # Filter by confidence threshold
-            argwhere = max_conf > conf_thresh
-            l_box_array = box_array[argwhere, :]
-            l_max_conf = max_conf[argwhere]
-            l_max_id = max_id[argwhere]
+            def _translate_detection(box, original_dims):
+                x1, y1, x2, y2 = box
+                img_w, img_h = original_dims
 
-            bboxes = []
-            # Non-Maximum Suppression (NMS) for each class
-            for j in range(num_classes):
-                cls_argwhere = l_max_id == j
-                ll_box_array = l_box_array[cls_argwhere, :]
-                ll_max_conf = l_max_conf[cls_argwhere]
+                scale_x = img_w
+                scale_y = img_h
 
-                keep = _nms_filter(ll_box_array, ll_max_conf, nms_thresh)
+                x1 = int(round(x1 * scale_x))
+                y1 = int(round(y1 * scale_y))
+                x2 = int(round(x2 * scale_x))
+                y2 = int(round(y2 * scale_y))
 
-                if keep.size > 0:
-                    ll_box_array = ll_box_array[keep, :]
-                    ll_max_conf = ll_max_conf[keep]
+                x1 = int(max(0, min(x1, img_w)))
+                y1 = int(max(0, min(y1, img_h)))
+                x2 = int(max(0, min(x2, img_w)))
+                y2 = int(max(0, min(y2, img_h)))
 
-                    for k in range(ll_box_array.shape[0]):
-                        bboxes.append([
-                            ll_box_array[k, 0], ll_box_array[k, 1],
-                            ll_box_array[k, 2], ll_box_array[k, 3],
-                            ll_max_conf[k], ll_max_conf[k], j  # j is class ID
-                        ])
+                w = x2 - x1
+                h = y2 - y1
 
-            return bboxes
+                return [x1, y1, w, h]
+            
+            start_postprocess = time.perf_counter()
 
-        def _translate_detection(box, original_dims):
-            x1, y1, x2, y2 = box
-            img_w, img_h = original_dims
+            filtered_output = _filter_output(
+                output, nms_thresh, conf_thresh, class_id
+            )
 
-            scale_x = img_w
-            scale_y = img_h
+            final_output = []
+            for detection in filtered_output:
+                bbox, conf = detection[:4], float(detection[4])
 
-            x1 = int(round(x1 * scale_x))
-            y1 = int(round(y1 * scale_y))
-            x2 = int(round(x2 * scale_x))
-            y2 = int(round(y2 * scale_y))
-
-            x1 = int(max(0, min(x1, img_w)))
-            y1 = int(max(0, min(y1, img_h)))
-            x2 = int(max(0, min(x2, img_w)))
-            y2 = int(max(0, min(y2, img_h)))
-
-            w = x2 - x1
-            h = y2 - y1
-
-            return [x1, y1, w, h]
-
-        start_detect = time.perf_counter()
-
-        params = _assign_params(nms_thresh, conf_thresh, resize_dims)
-        nms_thresh, conf_thresh, resize_dims = params
-
-        img, original_dims = _preprocess_img(img, resize_dims)
-        with torch.no_grad():
-            raw_output = self.model(img)
-        detections = _postprocess_output(raw_output, nms_thresh, conf_thresh)
-
-        filtered = []
-        for detection in detections:
-            x1, y1, x2, y2, confidence, _, class_id = detection
-            bbox = [x1, y1, x2, y2]
-            confidence = float(confidence)
-
-            if int(class_id) == class_num:
                 x, y, w, h = _translate_detection(
                     bbox, original_dims
                 )
-                filtered.append([x, y, w, h, confidence])
+                final_output.append([x, y, w, h, conf])
 
+            end_postprocess = time.perf_counter()
+            self.postprocess_time += (end_postprocess - start_postprocess)
+            
+            return final_output
+        
+        nms_thresh = (nms_thresh if nms_thresh else self.nms_thresh)
+        conf_thresh = (conf_thresh if conf_thresh else self.conf_thresh)
+        input_dims = (input_dims if input_dims else self.input_dims)
+
+        img, original_dims = _preprocess_img(img, input_dims)
+
+        start_detect = time.perf_counter()
+        with torch.no_grad():
+            raw_output = self.model(img)
         end_detect = time.perf_counter()
-        self.detection_time += (end_detect - start_detect)
 
-        return filtered
+        self.detection_time += (end_detect - start_detect)
+        
+        results = _postprocess_output(
+            raw_output, nms_thresh, conf_thresh, class_id, original_dims
+        )
+        
+        return results
 
 
 # ----------------------------------------------------------------------------

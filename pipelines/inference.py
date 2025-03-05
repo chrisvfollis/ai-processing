@@ -40,6 +40,8 @@ class InferencePipeline:
             
             return yolov4, osnet, movenet, face_iq
         
+        start_init = time.perf_counter()
+
         yolov4, osnet, movenet, face_iq = _instantiate_models(
             model_info, device, yolo_params, osnet_params, movenet_params,
             faceiq_params
@@ -59,11 +61,11 @@ class InferencePipeline:
         self.video_file = video_file
         self.cap = cv2.VideoCapture('../files/input/' + video_file)
         if not self.cap.isOpened():
-            raise ValueError("Failed to open video file")
+            raise ValueError('Failed to open video file')
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
         if self.fps == 0:
-            raise ValueError("FPS returned as 0, check the video file")
+            raise ValueError('FPS returned as 0, check the video file')
         self.resolution = (
             int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
             int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -79,8 +81,11 @@ class InferencePipeline:
             ((self.total_frames // 4) // self.track_stride) * self.track_stride
         )
 
-        self.total_time = 0
+        self.primary_run_time = 0
         self.read_time = 0
+        self.garbage_collection_time = 0
+        self.skim_time = 0
+        self.init_time = (time.perf_counter() - start_init)
 
     def skim(self):
         print(f'Skimming...')
@@ -91,12 +96,14 @@ class InferencePipeline:
         while self.f_num < self.total_frames:
             current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
             ret, frame = self.cap.read()
+
             if (
                 (not ret) or
                 (current_frame == prev_frame) or
                 (utils.is_grayscale(frame, threshold=10))
             ):
-                print(f"Nothing to process in {self.video_file}")
+                print(f'Nothing to process in {self.video_file}')
+                del frame
                 return False
 
             prev_frame = current_frame
@@ -104,12 +111,15 @@ class InferencePipeline:
             if self.f_num % stride == 0:
                 detections = self.yolov4.detect(frame, 0, conf_thresh=0.78)
                 if detections:
-                    self.f_num = 0
-                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
+                    del frame
                     return True
 
             self.f_num += stride
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
+
+            del frame
+            if (self.f_num % 100) == 0:
+                gc.collect()
 
     def run(self):
         def _process_frame(frame, focus='global'):
@@ -179,15 +189,16 @@ class InferencePipeline:
 
                 return full_df
 
-            if len(self.osnet.embedding_buffer) > 0:
-                self.osnet.flush_buffers(close_file=True)
             self.cap.release()
 
+            if len(self.osnet.embedding_buffer) > 0:
+                self.osnet.flush_buffers(close_file=True)
+    
             self.face_data = _format_face_data(self.face_data)
-            
-            self.collect_data()
+    
+            self.save_runtime_data()
 
-        print(f"Running inference pipeline for {self.video_file}...")
+        print(f'Running inference pipeline for {self.video_file}...')
         start_run = time.perf_counter()
 
         self.f_num = 0
@@ -199,90 +210,155 @@ class InferencePipeline:
 
             start_read = time.perf_counter()
             ret, frame = self.cap.read()
-            end_read = time.perf_counter()
 
+            end_read = time.perf_counter()
             self.read_time += (end_read - start_read)
+
             if (not ret) or (current_frame == prev_frame):
                 break
-            prev_frame = current_frame
+            else:
+                prev_frame = current_frame
 
             _process_frame(frame, focus='local')
-            del frame
-            gc.collect()
             _continue()
 
+            del frame
+            if (self.f_num % 100) == 0:
+                start_gc = time.perf_counter()
+                gc.collect()
+
+                end_gc = time.perf_counter()
+                self.garbage_collection_time += (end_gc - start_gc)
+
         _wrap_up()
+
         end_run = time.perf_counter()
-        self.total_time += (end_run - start_run)
+        self.primary_run_time += (end_run - start_run)
+
         return self.person_data, self.keypoint_data, self.face_data
 
-    def collect_data(self, output_dir="../files/output/runtime_data"):
-        print('Collecting inference data')
-        git_commit_hash = utils.get_git_commit_hash()
-        clip_identifier = self.video_file.split('.')[0] + '_' + git_commit_hash
+    def save_runtime_data(self, output_dir='../files/output/runtime_data'):
+        commit_hash, commit_datetime = utils.get_git_commit_info()
+
+        clip_identifier = self.video_file.split('.')[0] + '_' + commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
         config_data = {
-            "module": [
-                "yolov4", "yolov4",
-                "osnet", "osnet",
-                "movenet",
-                "faceiq", "faceiq",
-                "video",
-                "version"
+            'module': [
+                *['software'] * 2,
+                *['video'] * 2,
+                *['yolov4'] * 3,
+                *['osnet'] * 2,
+                *['movenet'] * 1,
+                *['faceiq'] * 2
             ],
-            "parameter": [
-                "nms_threshold", "confidence_threshold",
-                "input_shape", "output_shape",
-                "confidence_threshold",
-                "id_model", "detect_model",
-                "resolution",
-                "git_commit_hash"
+            'parameter': [
+                'git_commit_hash',          # Software
+                'git_commit_datetime',
+
+                'resolution',               # Video
+                'fps',
+                
+                'input_dims',               # YOLOv4
+                'nms_threshold',
+                'confidence_threshold',
+
+                'input_dims',               # OSNet
+                'output_shape',
+
+                'confidence_threshold',     # MoveNet
+
+                'detection_model',          # Faceiq
+                'recognition_model'
             ],
-            "value": [
-                self.yolov4.nms_thresh, self.yolov4.conf_thresh,
-                self.osnet.input_shape, self.osnet.output_shape,
+            'value': [
+                commit_hash,                                    
+                commit_datetime,
+
+                f'{self.resolution[0]}x{self.resolution[1]}',   
+                f'{self.fps} fps',
+
+                self.yolov4.input_dims,                         
+                self.yolov4.nms_thresh,
+                self.yolov4.conf_thresh,
+
+                self.osnet.input_dims,                          
+                self.osnet.output_shape,
+    
                 self.movenet.conf_thresh,
-                self.face_iq.id_model, self.face_iq.detect_model,
-                f"{self.resolution[0]}x{self.resolution[1]} @ {self.fps} fps",
-                git_commit_hash
+
+                self.face_iq.detection_model,
+                self.face_iq.recognition_model
             ]
         }
         config_df = pd.DataFrame(config_data)
 
         performance_data = {
-            "metric": [
-                "total_time",
-                "frame_reading_time",
-                "object_detection_time",
-                "pose_estimation_time",
-                "feature_extraction_time",
-                "extraction_flush_time",
-                "identification_time",
+            'module': [
+                *['pipeline'] * 5,
+                *['yolov4'] * 3,
+                *['osnet'] * 3,
+                *['movenet'] * 3,
+                *['faceiq'] * 2
             ],
-            "value": [
-                self.total_time,
+            'metric': [             
+                'primary_run_time',                 # Pipeline            
+                'frame_read_time',
+                'garbage_collection_time',
+                'initialize_time',
+                'video_skim_time',
+
+                'preprocess_time'                   # YOLOv4
+                'inference_time',
+                'postprocess_time',
+                
+                'preprocess_time',                  # OSNet
+                'inference_time',
+                'flush_time',
+
+                'preprocess_time',                  # Movenet
+                'inference_time',
+                'postprocess_time',
+
+                'inference_time',                   # Faceiq
+                'postprocess_time'
+            ],
+            'value': [
+                self.primary_run_time,
                 self.read_time,
+                self.garbage_collection_time,
+                self.init_time,
+                self.skim_time,
+                
+                self.yolov4.preprocess_time,
                 self.yolov4.detection_time,
-                self.movenet.detection_time,
-                self.osnet.extraction_time,
+                self.yolov4.postprocess_time,
+
+                self.osnet.preprocess_time,
+                self.osnet.embedding_time,
                 self.osnet.flush_time,
+
+                self.movenet.preprocess_time,
+                self.movenet.detection_time,
+                self.movenet.postprocess_time,
+
                 self.face_iq.identification_time,
+                self.face_iq.postprocess_time
             ]
         }
         performance_df = pd.DataFrame(performance_data)
         
         filename = io_utils.get_unique_filename(output_dir, f'inference_data_{clip_identifier}.xlsx')
         excel_path = os.path.join(output_dir, filename)
+
         try:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
                 config_df.to_excel(writer, sheet_name='Inference Configuration', index=False)
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
+                print(f'Saved inference runtime data to {excel_path}')
         except Exception as e:
-            print(f"Failed to save Excel file: {e}")
+            print(f'Failed to save Excel file: {e}')
 
-        print(f'Saved inference data to {excel_path}')
-        return config_df, performance_df
 
     def save_inference_data(self, output_dir='../files/output'):
         os.makedirs(output_dir, exist_ok=True)
@@ -295,7 +371,7 @@ class InferencePipeline:
         )
 
         save_path = os.path.join(output_dir, filename)
-        with open(save_path, "wb") as f:
+        with open(save_path, 'wb') as f:
             pickle.dump(data, f)
 
         print('Inference data saved')

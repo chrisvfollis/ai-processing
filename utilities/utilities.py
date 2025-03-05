@@ -1,7 +1,5 @@
 from shapely.geometry import Polygon, box
 from datetime import datetime, timedelta
-import torch
-import torch.nn.functional as F
 import numpy as np
 import cv2
 import subprocess
@@ -14,24 +12,24 @@ def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=Fa
     while not stop_event.is_set():
         elapsed = (time.time() - start_time) / 60
         if include_timestamp == False:
-            print(f"Elapsed time: {elapsed:.2f} minutes")
+            print(f'Elapsed time: {elapsed:.2f} minutes')
             time.sleep(frequency)
         elif include_timestamp == True:
             current_time = datetime.now().strftime('%H:%M:%S')
-            print(f"[{current_time}] Elapsed time: {elapsed:.2f} minutes")
+            print(f'[{current_time}] Elapsed time: {elapsed:.2f} minutes')
             time.sleep(frequency)
 
     total_elapsed =  (time.time() - start_time) / 60
     if include_timestamp == False:
-        print(f"Total elapsed time: {total_elapsed:.2f} minutes")
+        print(f'Total elapsed time: {total_elapsed:.2f} minutes')
     elif include_timestamp == True:
         current_time = datetime.now().strftime('%H:%M:%S')
-        print(f"[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes")
+        print(f'[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes')
 
 
 def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
     def _log_top_memory_consumers():
-        print("\n[OOM WARNING] SYSTEM MEMORY CRITICAL - Logging top memory consumers")
+        print('\n[OOM WARNING] SYSTEM MEMORY CRITICAL - Logging top memory consumers')
 
         processes = []
         for p in psutil.process_iter(attrs=['pid', 'name', 'memory_info'], ad_value=None):
@@ -45,7 +43,7 @@ def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
         processes.sort(key=lambda x: x[2], reverse=True)
 
         for pid, name, mem in processes[:5]:
-            print(f"PID {pid} - {name}: {mem:.2f} MB")
+            print(f'PID {pid} - {name}: {mem:.2f} MB')
 
         del processes
         gc.collect()
@@ -63,26 +61,33 @@ def monitor_memory_for_oom(oom_threshold_mb=1000, interval=1):
                 time.sleep(interval)
             
         except Exception as e:
-            print(f"Error in OOM monitor: {e}")
+            print(f'Error in OOM monitor: {e}')
 
 
-def get_git_commit_hash(cfg_dir_path='../config'):
+def get_git_commit_info(cfg_dir_path='../config'):
     '''
-    Retrieve the Git commit hash for the version of the codebase that is
-    currently running.
+    Retrieve the Git commit hash and date/time for the version of the codebase
+    that is currently running.
     '''
 
     try:
-        return subprocess.check_output(["git", "rev-parse", "--short",
-                                        "HEAD"]).decode("utf-8").strip()
+        commit_hash = subprocess.check_output(
+            ['git', 'rev-parse', '--short', 'HEAD']
+        ).decode('utf-8').strip()
+
+        commit_datetime = subprocess.check_output(
+            ['git', 'log', '-1', '--format=%cd', '--date=iso-strict']
+        ).decode('utf-8').strip()
+
+        return commit_hash, commit_datetime
+
     except subprocess.CalledProcessError:
         vfile_path = os.path.join(cfg_dir_path, 'version.txt')
         try:
             with open(vfile_path, 'r') as vfile:
-                return vfile.read().strip()
+                return vfile.read().strip(), 'unknown'
         except Exception:
-            return "unknown"    
-        return "unknown"
+            return 'unknown', 'unknown'
 
 
 def centroid(coordinates, reverse=False):
@@ -196,7 +201,7 @@ def i_over_u(rectangle1, rectangle2):
 def percent_overlap(rectangle1, rectangle2):
     '''
     Returns what percent of rectangle1's total area is overlapping with
-    rectangle2, i.e. how much of it is "in" rectangle2.
+    rectangle2, i.e. how much of it is 'in' rectangle2.
     '''
 
     r1_area = rectangle1[2] * rectangle1[3]
@@ -209,7 +214,7 @@ def percent_overlap(rectangle1, rectangle2):
 
 def percent_in_entryway(bbox, entryway_points):
     '''
-    Returns the percent of a bounding box's total area that is "inside" of
+    Returns the percent of a bounding box's total area that is 'inside' of
     an entryway. The percent is represented as a decimal.
 
     --------------------------------------------------
@@ -387,7 +392,7 @@ def is_grayscale(frame, threshold=10):
 
 
 def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, max_height=1080):
-    """
+    '''
     Clusters bounding boxes into the minimum number of non-overlapping image regions.
     
     Parameters:
@@ -399,7 +404,7 @@ def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, m
 
     Returns:
     - List of region coordinates [(x1, y1, w, h)] representing the cropped regions.
-    """
+    '''
 
     bbox_coords = np.array([(x, y, x + w, y + h) for x, y, w, h, _ in bboxes])
 

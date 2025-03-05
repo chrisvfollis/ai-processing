@@ -9,11 +9,16 @@ class MoveNet:
         model = tf.saved_model.load(model_dir)
         self.model = model.signatures['serving_default']
 
-        self.detection_time = 0
         self.conf_thresh = conf_thresh
+
+        self.preprocess_time = 0
+        self.detection_time = 0
+        self.postprocess_time = 0
     
-    def detect(self, img, conf_thresh=0.35, max_only=False):
+    def detect(self, img, conf_thresh=None, max_only=False):
         def _preprocess_img(img):
+            start_preprocess = time.perf_counter()
+
             original_dims = img.shape[:2][::-1]
 
             min_scale = max(1, 96 / min(original_dims))
@@ -28,9 +33,12 @@ class MoveNet:
             img = tf.cast(img, dtype=tf.int32)
             mapping = [original_dims, min_scale, min_scale_dims, target_dims]
 
+            end_preprocess = time.perf_counter()
+            self.preprocess_time += (end_preprocess - start_preprocess)
+
             return img, mapping
         
-        def _postprocess_output(output, mapping, max_only):
+        def _postprocess_output(output, mapping, conf_thresh, max_only):
             def _map_keypoints(kpts, mapping):
                 original_dims, min_scale, ms_dims, t_dims = mapping
                 axis_boundaries = [[0, d - 1] for d in original_dims]
@@ -55,48 +63,49 @@ class MoveNet:
                 )
 
                 return kpts
+            start_postprocess = time.perf_counter()
 
-            detection_array = (
-                output['output_0'].numpy()[:, :, :51].reshape((6, 17, 3))
-            )
-            detections = detection_array[~np.all(detection_array == 0,
-                                                 axis=(1, 2))]
-            filtered_detections = np.where(
-                (detections[:, :, 2] > self.conf_thresh)[..., None], detections, 0
-            )
-            valid_detections = filtered_detections[
-                ~np.all(filtered_detections[:, :, 2] == 0, axis=1)
+            detection_array = (output['output_0'].numpy()[:, :, :51]
+                               .reshape((6, 17, 3)))
+
+            filtered = detection_array[
+                ~np.all(detection_array[:, :, 2] <= conf_thresh, axis=1)
             ]
 
             if max_only:
-                if valid_detections.size > 0:
-                    confidence_sums = valid_detections[:, :, 2].sum(axis=1)
+                if filtered.size > 0:
+                    confidence_sums = filtered[:, :, 2].sum(axis=1)
                     max_index = np.argmax(confidence_sums)
-                    return _map_keypoints(valid_detections[max_index], mapping)
+                    final_output = _map_keypoints(filtered[max_index], mapping)
                 else:
-                    return np.zeros((17, 3))
+                    final_output = np.zeros((17, 3))
+
             else:
-                if valid_detections.size > 0:
-                    valid_detections = np.array([
-                        _map_keypoints(x, mapping) for x in valid_detections
-                    ])
-                    return valid_detections
+                if filtered.size > 0:
+                    final_output = np.array(
+                        [_map_keypoints(x, mapping) for x in filtered]
+                    )
                 else:
-                    return np.zeros((6, 17, 3))
+                    final_output = np.zeros((6, 17, 3))
+            
+            end_postprocess = time.perf_counter()
+            self.postprocess_time += (end_postprocess - start_postprocess)
 
-        start_detect = time.perf_counter()
-
-        self.conf_thresh = conf_thresh
+            return final_output
+        
+        conf_thresh = (conf_thresh if conf_thresh else self.conf_thresh)
 
         img, mapping = _preprocess_img(img)
+
+        start_detect = time.perf_counter()
         raw_output = self.model(img)
-
-        final_output = _postprocess_output(raw_output, mapping, max_only)
-
+    
         end_detect = time.perf_counter()
         self.detection_time += (end_detect - start_detect)
 
-        return final_output
+        results = _postprocess_output(raw_output, mapping, conf_thresh, max_only)
+
+        return results
 
     def detection_batch(self, img, bboxes):
         all_keypoints = []
