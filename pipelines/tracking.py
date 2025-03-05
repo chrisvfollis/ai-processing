@@ -1325,9 +1325,9 @@ class Track(KalmanFilter):
                     self.x[:2], dtype=torch.float32, device=device
                 ).unsqueeze(0)
 
-                det_centroids = torch.stack(
-                    [torch.tensor(utils.centroid(detection), device=device)
-                     for detection in new_detections]
+                det_centroids = torch.tensor(
+                    [utils.centroid(detection) for detection in new_detections],
+                    dtype=torch.float32, device=device
                 )
 
                 end_convert = time.perf_counter()

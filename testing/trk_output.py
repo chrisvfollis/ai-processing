@@ -32,8 +32,7 @@ def process_inf_output(video_file, device, output_dir='../files/output'):
     )
 
     trk_pipeline.run()
-
-    all_trks = trk_pipeline.all_trks
+    trk_pipeline.save_runtime_data()
 
     trk_pipeline.generate_output_vid()
 
