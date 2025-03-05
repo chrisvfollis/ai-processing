@@ -11,6 +11,7 @@ import math
 import torch
 import torch.nn.functional as F
 import gc
+from collections import deque
 
 from utilities import io_utils
 from utilities import utilities as utils
@@ -1227,9 +1228,8 @@ class Track(KalmanFilter):
         self.face_detections = {}
         self.detections = {args[0]: detection}
         self.keypoints = {}
-        self.embedding_cache = [embedding]
-        self.embedding_cache_tensor = torch.stack(self.embedding_cache)
-
+        self.embedding_cache = deque(maxlen=20)
+        self.add_embedding(embedding)
         self.span = [args[0], args[0]]
 
         self.coincident_trks = []
@@ -1257,13 +1257,12 @@ class Track(KalmanFilter):
         self.__dict__.update(state)
 
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        self.embedding_cache = [emb.to(device) for emb in self.embedding_cache]
+        
+        self.embedding_cache = deque([emb.to(device) for emb in state['embedding_cache']], maxlen=20)
         self.embedding_cache_tensor = self.embedding_cache_tensor.to(device)
 
-    def add_embedding(self, embedding, window=-20):
+    def add_embedding(self, embedding):
         self.embedding_cache.append(embedding)
-        while len(self.embedding_cache) > abs(window):
-            self.embedding_cache = self.embedding_cache.pop(0)
 
         start_convert = time.perf_counter()
         self.embedding_cache_tensor = torch.stack(self.embedding_cache)
