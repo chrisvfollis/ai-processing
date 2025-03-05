@@ -1228,7 +1228,6 @@ class Track(KalmanFilter):
         self.detections = {args[0]: detection}
         self.keypoints = {}
         self.embedding_cache = deque(maxlen=20)
-        self.add_embedding(embedding)
         self.span = [args[0], args[0]]
 
         self.coincident_trks = []
@@ -1239,6 +1238,8 @@ class Track(KalmanFilter):
         self.sp_analysis_time = 0
         self.ft_analysis_time = 0
         self.tensor_conversion_time = 0
+
+        self.add_embedding(embedding)
     
     def __getstate__(self):
         'Prepare object state for pickling by moving tensors off of the GPU'
