@@ -8,5 +8,3 @@ rm -f files/output/videos/*.mp4
 
 journalctl --rotate
 journalctl --vacuum-time=1s
-
-systemctl reset-failed ai-process.service
