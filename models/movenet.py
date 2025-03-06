@@ -107,7 +107,10 @@ class MoveNet:
                 mappings.append(
                     [original_dims, min_scale, min_scale_dims,target_dims]
                 )
-            
+
+            if not batch_images:
+                return None, None
+    
             batch_tensor = tf.concat(batch_images, axis=0)
 
             end_preprocess = time.perf_counter()
@@ -148,6 +151,9 @@ class MoveNet:
             return all_keypoints
 
         batch_tensor, mappings = _preprocess(img, bboxes)
+
+        if not isinstance(batch_tensor, tf.Tensor):
+            return [np.zeros((17, 3)) for _ in range(bboxes)]
         
         start_detect = time.perf_counter()
         raw_output = self.model(batch_tensor)
