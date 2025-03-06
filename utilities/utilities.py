@@ -8,7 +8,6 @@ import time
 import psutil
 import gc
 import sys
-import getpass
 
 
 def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=False):
