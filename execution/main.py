@@ -103,14 +103,15 @@ def run_pipeline(device, model_info, credentials):
 
     while True:
         io_utils.cleanup_semaphores()
-
+        
         queue_block = io_utils.get_queue_block()
-    
+
         if not queue_block:
             time.sleep(60)
             continue
 
         time_logger, stop_timing = utils.observability_thread('elapsed_time')
+        time_logger.start()
 
         tasks = [(row, model_info, device, credentials) for row in queue_block]
         with multiprocessing.Pool(processes=3) as pool:
@@ -124,6 +125,7 @@ def run_pipeline(device, model_info, credentials):
             worker_monitor = utils.observability_thread(
                 'failed_workers', args=(pool, initial_pids, async_results)
             )
+            worker_monitor.start()
             
             async_results.get()
 
@@ -144,5 +146,6 @@ if __name__ == '__main__':
     credentials = io_utils.get_aws_creds()
 
     memory_monitor, _ = utils.observability_thread('low_memory')
+    memory_monitor.start()
 
     run_pipeline(device, model_info, credentials)

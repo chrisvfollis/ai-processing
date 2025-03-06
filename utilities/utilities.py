@@ -12,7 +12,7 @@ import sys
 import threading
 
 
-def run_observability_thread(target, args=None):
+def observability_thread(target, args=None):
     """
     Initializes a thread for monitoring & logging some aspect of a process.
 
@@ -39,14 +39,12 @@ def run_observability_thread(target, args=None):
             args=(start_time, stop_event, frequency, timestamp),
             daemon=True
         )
-        time_logger.start()
         return time_logger, stop_event
 
     elif target == 'failed_workers':
         worker_monitor = threading.Thread(
             target=log_failed_workers, args=args, daemon=True
         )
-        worker_monitor.start()
         return worker_monitor
     
     elif target == 'low_memory':
@@ -58,7 +56,6 @@ def run_observability_thread(target, args=None):
             args=(stop_event, threshold, interval),
             daemon=True
         )
-        low_memory_monitor.start()
         return low_memory_monitor, stop_event
 
 
