@@ -153,7 +153,7 @@ class MoveNet:
         batch_tensor, mappings = _preprocess(img, bboxes)
 
         if not isinstance(batch_tensor, tf.Tensor):
-            return [np.zeros((17, 3)) for _ in range(bboxes)]
+            return [np.zeros((17, 3)) for _ in bboxes]
         
         start_detect = time.perf_counter()
         raw_output = self.model(batch_tensor)
