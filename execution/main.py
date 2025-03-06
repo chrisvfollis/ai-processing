@@ -2,7 +2,6 @@ import os
 import multiprocessing
 import torch
 import time
-from dotenv import load_dotenv
 import sys
 from utilities import io_utils
 from utilities import utilities as utils
@@ -14,7 +13,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
-multiprocessing.set_start_method('spawn')
+multiprocessing.set_start_method('spawn', force=True)
 
 
 def handle_early_termination(signum, frame):
@@ -46,6 +45,7 @@ def process_video(row, model_info, device):
         except RuntimeError as e:
             print(f"Error configuring TensorFlow GPU memory: {e}")
 
+    from pipelines.inference import InferencePipeline
     from pipelines.tracking import TrackingPipeline
 
     video_file = row[0]
@@ -54,37 +54,29 @@ def process_video(row, model_info, device):
     if not io_utils.download_s3_footage(video_file):
         return False
 
-    try:
-        from pipelines.inference import InferencePipeline
-        inf_pipeline = InferencePipeline(video_file, model_info, device)
-    except ValueError:
-        print(f'Issue with {video_file}. Skipping...')
-        return False
-    if not inf_pipeline.skim():
+    inference = InferencePipeline(video_file, model_info, device)
+
+    if not inference.skim():
         io_utils.delete_s3_footage(video_file)
         return False
     
-    inference_output = inf_pipeline.run()
+    inference_output = inference.run()
 
-    trk_pipeline = TrackingPipeline(
+    tracking = TrackingPipeline(
         video_file, time_prefix, *inference_output, device
     )
 
-    del inf_pipeline
+    del inference
     del inference_output
 
     torch.cuda.empty_cache()
     K.clear_session()
     gc.collect()
 
-    trk_pipeline.run()
+    tracking.run()
 
-    all_trks = trk_pipeline.all_trks
-    fps = inf_pipeline.fps
-
-    io_utils.save_track_info(
-        time_prefix, camera, all_trks, fps=fps
-    )
+    io_utils.save_track_info(time_prefix, camera, tracking.all_trks,
+                             fps=tracking.fps)
 
     print(f"Processed {video_file}")
 
@@ -97,7 +89,7 @@ def process_video(row, model_info, device):
 
 
 def run_pipeline(device, model_info):
-    def _clear_data():
+    def _clear_local_data():
         io_utils.clear_track_info('all')
         io_utils.delete_local_files('all')
 
@@ -121,6 +113,8 @@ def run_pipeline(device, model_info):
 
         io_utils.clear_queue_block(timestamp)
         io_utils.delete_local_files(time_prefix)
+    
+    _clear_local_data()
 
     while True:
         io_utils.cleanup_semaphores()
@@ -143,7 +137,7 @@ def run_pipeline(device, model_info):
         _finalize(queue_block)
         stop_event.set()
         cycle_time_logger.join()
-        
+
 
 if __name__ == '__main__':
     device = torch.device('cuda:0')
