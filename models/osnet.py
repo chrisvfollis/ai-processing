@@ -21,7 +21,8 @@ from torchreid import models as reid
 
 class OSNet:
     def __init__(self, weights_path, device, input_dims=(128, 256),
-                 output_shape=(512,), num_classes=751, loss='triplet'):
+                 output_shape=(512,), num_classes=751, loss='triplet',
+                 buffer_limit=100):
         self.device = device
 
         self.model = reid.osnet.osnet_x1_0(num_classes=num_classes,
@@ -40,6 +41,8 @@ class OSNet:
 
         self.input_dims = input_dims
         self.output_shape = output_shape
+
+        self.buffer_limit = buffer_limit
 
         self.preprocess_time = 0
         self.embedding_time = 0
@@ -81,25 +84,66 @@ class OSNet:
         
         return embedding
 
-    def enable_buffers(self, video_file, output_dir='../files/output',
-                       buffer_limit=100):
-        '''
-        Sets up buffers and an output file so the OSNet instance can use
-        bulk processing features like extraction batches.
-        '''
+    def extraction_batch(self, img, detections, f_num):
+        def _preprocess(batch_images):
+            start_preprocess = time.perf_counter()
 
-        self.buffer_limit = buffer_limit
+            processed_imgs = []
+            for image in batch_images:
+                image = cv2.resize(image, self.input_dims)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                image = image.astype(np.float32)
+
+                image_tensor = torch.from_numpy(image).permute(2, 0, 1)
+                processed_imgs.append(image_tensor)
+            
+            batch_tensor = torch.stack(processed_imgs).to(self.device)
+
+            end_preprocess = time.perf_counter()
+            self.preprocess_time += (end_preprocess - start_preprocess)
+            
+            return batch_tensor
         
-        hdf5_file = video_file.split('.')[0] + '_embeddings.hdf5'
-        self.output_path = os.path.join(output_dir, hdf5_file)
-        if os.path.exists(self.output_path):
-            os.remove(self.output_path)
+        def _postprocess(outputs):
+            return [output.cpu().detach().numpy().flatten() for output in outputs]
 
+        def _update_buffers(embeddings, f_num, num_detections):
+            if len(self.embedding_buffer) >= self.buffer_limit:
+                self.flush_buffers()
+
+            self.embedding_buffer.extend(embeddings)
+            self.frame_buffer.extend([f_num] * num_detections)
+            self.box_index_buffer.extend(range(num_detections))
+        
+        batch_images = []
+
+        for box in detections:
+            x, y, w, h, = box[:4]
+            batch_images.append(img[y:y+h, x:x+w])
+
+        batch_tensor = _preprocess(batch_images)
+
+        start_extract = time.perf_counter()
+        with torch.no_grad():
+            batch_output = self.model(batch_tensor)
+        end_extract = time.perf_counter()
+        self.embedding_time += (end_extract - start_extract)
+
+        embeddings = _postprocess(batch_output)
+        _update_buffers(embeddings, f_num, len(embeddings))
+
+    def activate_buffers(self, video_file, output_dir='../files/output',
+                         buffer_limit=None):
+        self.output_path = os.path.join(
+            output_dir, video_file.split('.')[0] + '_embeddings.hdf5'
+        )
         self.hdf5_file = h5py.File(self.output_path, 'a')
 
-        self.embedding_buffer = deque(maxlen=self.buffer_limit)
-        self.frame_buffer = deque(maxlen=self.buffer_limit)
-        self.box_index_buffer = deque(maxlen=self.buffer_limit)
+        buffer_limit = buffer_limit if buffer_limit else self.buffer_limit
+
+        self.embedding_buffer = deque(maxlen=buffer_limit)
+        self.frame_buffer = deque(maxlen=buffer_limit)
+        self.box_index_buffer = deque(maxlen=buffer_limit)
 
         n_features = self.output_shape[0]
         idx_dataset_kwargs = {'shape': (0,), 'dtype': 'i', 'maxshape': (None,)}
@@ -110,7 +154,7 @@ class OSNet:
         self.hdf5_file.create_dataset('frames', **idx_dataset_kwargs)
         self.hdf5_file.create_dataset('box_indices', **idx_dataset_kwargs)
 
-    def flush_buffers(self, close_file=False):
+    def flush_buffers(self, release=False):
         start_flush = time.perf_counter()
 
         io_utils.write_embeddings(
@@ -121,31 +165,20 @@ class OSNet:
         self.frame_buffer.clear()
         self.box_index_buffer.clear()
 
-        if close_file == True:
-            self.hdf5_file.close()
-        
+        if release:
+            self.release_buffers()
+            self.hdf5_file = h5py.File(self.output_path, 'a')
+
         torch.cuda.empty_cache()
         gc.collect()
         
         end_flush = time.perf_counter()
         self.flush_time += (end_flush - start_flush)
+    
+    def release_buffers(self):
+        self.hdf5_file.flush()
+        self.hdf5_file.close()
+        del self.hdf5_file
 
-    def extraction_batch(self, img, detections, f_num):
-        def _update_buffers(embedding, f_num, box_idx):
-            if len(self.embedding_buffer) >= self.buffer_limit:
-                self.flush_buffers()
-
-            self.embedding_buffer.append(embedding)
-            self.frame_buffer.append(f_num)
-            self.box_index_buffer.append(box_idx)
-
-        for i, box in enumerate(detections):
-            x, y, w, h, = box[:4]
-            img_cropped = img[y:y+h, x:x+w]
-            try:
-                embedding = self.extract_features(img_cropped)
-            except Exception as e:
-                print(f"Error processing bounding box: {e}")
-                embedding = []
-
-            _update_buffers(embedding, f_num, i)
+        torch.cuda.empty_cache()
+        gc.collect()

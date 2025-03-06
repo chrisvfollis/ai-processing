@@ -14,9 +14,9 @@ import pickle
 
 
 class InferencePipeline:
-    def __init__(self, video_file, model_info, device, buffer_limit=100,
-                 yolo_params=None, osnet_params=None, movenet_params=None,
-                 faceiq_params=None):
+    def __init__(self, video_file, model_info, device, yolo_params=None,
+                 osnet_params=None, movenet_params=None, faceiq_params=None,
+                 footage_dir='../files/input/'):
         def _instantiate_models(model_info, device, yolo_params, osnet_params,
                                 movenet_params, faceiq_params):
             if not yolo_params:
@@ -28,6 +28,8 @@ class InferencePipeline:
                 osnet = OSNet(model_info[1], device)
             else:
                 osnet = OSNet(model_info[1], device, **osnet_params)
+            
+            osnet.activate_buffers(video_file)
             
             if not movenet_params:
                 movenet = MoveNet(model_info[2])
@@ -43,6 +45,15 @@ class InferencePipeline:
         
         start_init = time.perf_counter()
 
+        self.video_file = video_file
+        self.video_path = os.path.join(footage_dir, video_file)
+
+        resolution, fps, total_frames = utils.get_video_info(self.video_path)
+        self.total_frames = total_frames
+        self.fps = fps
+        self.resolution = resolution
+        self.f_num = 0
+
         yolov4, osnet, movenet, face_iq = _instantiate_models(
             model_info, device, yolo_params, osnet_params, movenet_params,
             faceiq_params
@@ -53,34 +64,17 @@ class InferencePipeline:
         self.movenet = movenet
         self.face_iq = face_iq
 
-        self.osnet.enable_buffers(video_file, buffer_limit=buffer_limit)
-
-        self.person_data = {}
-        self.face_data = {}
-        self.keypoint_data = {}
-
-        self.video_file = video_file
-        self.cap = cv2.VideoCapture('../files/input/' + video_file)
-        if not self.cap.isOpened():
-            raise ValueError('Failed to open video file')
-        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
-        if self.fps == 0:
-            raise ValueError('FPS returned as 0, check the video file')
-        self.resolution = (
-            int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-            int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        )
-        
-        self.f_num = 0
-
         self.track_stride = max(1, self.fps // 10)
         self.id_stride = (self.fps // self.track_stride) * self.track_stride
         self.kp_stride = self.id_stride * 3
 
-        self.checkpoint_stride = (
-            ((self.total_frames // 4) // self.track_stride) * self.track_stride
+        self.progress_interval = (
+            ((total_frames // 4) // self.track_stride) * self.track_stride
         )
+
+        self.person_data = {}
+        self.face_data = {}
+        self.keypoint_data = {}
 
         self.primary_run_time = 0
         self.read_time = 0
@@ -92,48 +86,54 @@ class InferencePipeline:
         print(f'Skimming...')
         start_skim = time.perf_counter()
 
+        cap = cv2.VideoCapture(self.video_path)
         stride = self.fps * 2
-        prev_frame = -1
 
-        while self.f_num < self.total_frames:
-            current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
-            ret, frame = self.cap.read()
+        prev_frame, f_num = (-1, 0)
 
-            if (
-                (not ret) or
-                (current_frame == prev_frame) or
-                (utils.is_grayscale(frame, threshold=10))
-            ):
+        while f_num < self.total_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
+
+            current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
+            ret, frame = cap.read()
+
+            if (not ret) or (current_frame == prev_frame):
                 print(f'Nothing to process in {self.video_file}')
-                del frame
-                return False
+                result = False
+                break
+            elif utils.is_grayscale(frame, threshold=10):
+                print(f'Footage too dark in {self.video_file}')
+                result = False
+                break
 
-            prev_frame = current_frame
-
-            if self.f_num % stride == 0:
+            if f_num % stride == 0:
                 detections = self.yolov4.detect(frame, 0, conf_thresh=0.78)
+                del frame
                 if detections:
-                    del frame
-                    return True
-
-            self.f_num += stride
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
-
-            del frame
+                    result = True
+                    break
+            
             if (self.f_num % 100) == 0:
                 gc.collect()
-        
+
+            prev_frame = current_frame
+            f_num += stride
+            
+        cap.release()
+
         end_skim = time.perf_counter()
         self.skim_time = (end_skim - start_skim)
+
+        return result
 
     def run(self):
         def _process_frame(frame, focus='global'):
             if self.f_num % self.track_stride == 0:
                 bboxes = self.yolov4.detect(frame, 0)
-                self.osnet.extraction_batch(frame, bboxes, self.f_num)
                 if bboxes:
+                    self.osnet.extraction_batch(frame, bboxes, self.f_num)
                     self.person_data[self.f_num] = bboxes
-
+                    
             face_dfs = []
             if self.f_num % self.id_stride == 0:
                 if focus == 'local':
@@ -158,18 +158,31 @@ class InferencePipeline:
 
             return True
     
-        def _continue():    
+        def _continue_forward(cap, current_frame):
             if self.track_stride <= 15:
                 self.f_num += 1
             else:
                 self.f_num += self.track_stride
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
             
-            if self.f_num % self.checkpoint_stride == 0:
+            if self.f_num % self.progress_interval == 0:
                 progress = int(round((self.f_num / self.total_frames) * 100, 0))
                 print(f'{progress}%')
-        
-        def _wrap_up():
+            
+            if (self.f_num % 100) == 0:
+                start_gc = time.perf_counter()
+                gc.collect()
+                torch.cuda.empty_cache()
+
+                end_gc = time.perf_counter()
+                self.garbage_collection_time += (end_gc - start_gc)
+            
+            prev_frame = current_frame
+            current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
+
+            return (prev_frame, current_frame)
+            
+        def _finalize():
             def _format_face_data(face_data):
                 merged_dfs = []
                 for frame, dfs in face_data.items():
@@ -194,10 +207,9 @@ class InferencePipeline:
 
                 return full_df
 
-            self.cap.release()
-
             if len(self.osnet.embedding_buffer) > 0:
-                self.osnet.flush_buffers(close_file=True)
+                self.osnet.flush_buffers()
+            self.osnet.release_buffers()
     
             self.face_data = _format_face_data(self.face_data)
     
@@ -205,38 +217,29 @@ class InferencePipeline:
 
         print(f'Running inference pipeline for {self.video_file}...')
         start_run = time.perf_counter()
-
-        self.f_num = 0
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
-        prev_frame = -1
+        
+        cap = cv2.VideoCapture(self.video_path)
+        frame_position = (-1, 0)
 
         while self.f_num < self.total_frames:
-            current_frame = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+            prev_frame, current_frame = frame_position
 
             start_read = time.perf_counter()
-            ret, frame = self.cap.read()
+            ret, frame = cap.read()
 
             end_read = time.perf_counter()
             self.read_time += (end_read - start_read)
 
             if (not ret) or (current_frame == prev_frame):
                 break
-            else:
-                prev_frame = current_frame
-
+                
             _process_frame(frame, focus='local')
-            _continue()
-
+    
+            frame_position = _continue_forward(cap, current_frame)
             del frame
-            if (self.f_num % 100) == 0:
-                start_gc = time.perf_counter()
-                gc.collect()
-                torch.cuda.empty_cache()
 
-                end_gc = time.perf_counter()
-                self.garbage_collection_time += (end_gc - start_gc)
-
-        _wrap_up()
+        cap.release()
+        _finalize()
 
         end_run = time.perf_counter()
         self.primary_run_time += (end_run - start_run)
