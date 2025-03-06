@@ -114,7 +114,7 @@ class MoveNet:
                 )
             
             if not any(batch_images):
-                return None, None
+                return [np.zeros((17, 3)) for _ in bboxes], None
             
             batch_tensor = tf.concat([img for img in batch_images if img is not None], axis=0)
 
@@ -156,8 +156,8 @@ class MoveNet:
             return all_keypoints
 
         batch_tensor, mappings = _preprocess(img, bboxes)
-        if batch_tensor is None:
-            return [np.zeros((17, 3)) for _ in bboxes]
+        if mappings is None:
+            return batch_tensor
         
         start_detect = time.perf_counter()
         raw_output = self.model(batch_tensor)
