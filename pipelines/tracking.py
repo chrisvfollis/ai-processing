@@ -164,6 +164,42 @@ class TrackingPipeline:
         self.persist_time += (end_persist - start_persist)
 
     def run(self, is_continuation=False):
+        def _get_measurements():
+            detections = self.detection_data.get(self.f_num, None)
+            if not detections:
+                return None
+            start_convert = time.perf_counter()
+            detection_tensor = torch.tensor(detections)
+
+            end_convert = time.perf_counter()
+            self.tensor_conversion_time += (end_convert - start_convert)
+
+            conf_mask = detection_tensor[:, 4] > self.conf_thresh
+
+            start_read = time.perf_counter()
+            embeddings = io_utils.read_embeddings(
+                self.embedding_path, self.f_num, self.device
+            )
+
+            end_read = time.perf_counter()
+            self.embedding_read_time += (end_read - start_read)
+
+            start_convert = time.perf_counter()
+            detections = detection_tensor[conf_mask].tolist()
+            del detection_tensor
+
+            end_convert = time.perf_counter()
+            self.tensor_conversion_time += (end_convert - start_convert)
+
+            if self.f_num % 100 == 0:
+                torch.cuda.empty_cache()
+                gc.collect()
+
+            embeddings = embeddings[conf_mask]
+            keypoints = self.keypoint_data.get(self.f_num, None)
+
+            return detections, embeddings, keypoints
+
         def _create_new_tracks():
             start_creation = time.perf_counter()
 
@@ -806,49 +842,18 @@ class TrackingPipeline:
             if self.active_trks:
                 _predict_or_cache()
 
-            try:
-                start_convert = time.perf_counter()
-                detection_tensor = torch.tensor(self.detection_data[self.f_num])
+            new_measurements = _get_measurements()
+            if new_measurements and self.active_trks:
+                _match_and_update(new_measurements)
 
-                end_convert = time.perf_counter()
-                self.tensor_conversion_time += (end_convert - start_convert)
-
-                conf_mask = detection_tensor[:, 4] > self.conf_thresh
-
-                start_read = time.perf_counter()
-                embeddings = io_utils.read_embeddings(
-                    self.embedding_path, self.f_num, self.device
-                )
-
-                end_read = time.perf_counter()
-                self.embedding_read_time += (end_read - start_read)
-
-                start_convert = time.perf_counter()
-                detections = detection_tensor[conf_mask].tolist()
-                del detection_tensor
-
-                end_convert = time.perf_counter()
-                self.tensor_conversion_time += (end_convert - start_convert)
-
-                if self.f_num % 100 == 0:
-                    torch.cuda.empty_cache()
-                    gc.collect()
-
-                embeddings = embeddings[conf_mask]
-                keypoints = self.keypoint_data.get(self.f_num, None)
-
-                measurements = [detections, embeddings, keypoints]
-
-            except KeyError:
-                measurements = None
-
-            if measurements and self.active_trks:
-                _match_and_update(measurements)
-            elif measurements and (not self.active_trks):
-                self.unmatched = measurements
+            elif new_measurements and (not self.active_trks):
+                self.unmatched = new_measurements
             
             _create_new_tracks()
             _associate_faces()
+
+            if self.f_num % (self.fps * 5) == 0:
+                utils.log_top_memory_objects()
 
             self.f_num += 1
 

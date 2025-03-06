@@ -67,7 +67,7 @@ def monitor_memory(oom_threshold_mb=1000, interval=1):
             print(f'Error in OOM monitor: {e}')
 
 
-def log_top_memory_objects(n=10):
+def log_top_memory_objects(n=5):
     def _safe_sizeof(obj):
         '''Returns size of object, safely handling exceptions'''
         try:
@@ -80,20 +80,23 @@ def log_top_memory_objects(n=10):
     objects = gc.get_objects()
     object_sizes = [(obj, (_safe_sizeof(obj)) / 1e6) for obj in objects]
     object_sizes.sort(key=lambda x: x[1], reverse=True)
-
+    
+    object_mem_total = sum([size for _, size in object_sizes])
+    print(f'Total object memory: {object_mem_total}')
     print(f'Top {n} objects by memory usage:')
     for obj, size in object_sizes[:n]:
         print(f'Size: {size} MB | Type: {type(obj)}')
     
     unreachable_objects = gc.garbage
     if unreachable_objects:
-        unreachable_objects = sorted(
-            unreachable_objects, key=lambda x: _safe_sizeof(x), reverse=True
-        )
-        print('Objects that are no longer referenced but still in memory:')
-
-        for obj in unreachable_objects[:10]:
-            print(type(obj), obj)
+        unreachable_object_sizes = [(obj, (_safe_sizeof(obj)) / 1e6)
+                                    for obj in unreachable_objects]
+        unreachable_object_mem_total = sum([size for _, size in
+                                            unreachable_object_sizes])
+        print(f'Total dereferenced object memory: {unreachable_object_mem_total}')
+        print(f'Top {n} dereferenced objects by memory usage:')
+        for obj, size in unreachable_objects[:10]:
+            print(f'Size: {size} MB | Type: {type(obj)}')
     else:
         print('No unreferenced objects found.')
 
