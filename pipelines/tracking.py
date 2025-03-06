@@ -224,11 +224,6 @@ class TrackingPipeline:
     
                 self.active_trks[self.trk_id] = new_track
                 self.trk_id += 1
-            
-            n_total_tracks = (
-                len(self.active_trks) + len(self.trk_cache) + len(self.filtered_trks)
-            )
-            print(f'{n_total_tracks} tracks currently in memory')
 
             self.unmatched = []
 

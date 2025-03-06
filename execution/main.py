@@ -27,10 +27,7 @@ def handle_early_termination(signum, frame):
 def process_video(row, model_info, device, credentials):
     gc.set_debug(gc.DEBUG_SAVEALL)
 
-    K = tf.keras.backend
-    torch.cuda.empty_cache()
-    K.clear_session()
-    gc.collect()
+    io_utils.clear_memory()
 
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
@@ -66,17 +63,14 @@ def process_video(row, model_info, device, credentials):
         tracking = TrackingPipeline(
             video_file, time_prefix, *inference_output, device
         )
+
+        del inference, inference_output
+        io_utils.clear_memory()
+
+        tracking.run()
+
     except Exception as e:
         print(f'Error in tracking pipeline: {e}')
-
-    del inference
-    del inference_output
-
-    torch.cuda.empty_cache()
-    K.clear_session()
-    gc.collect()
-
-    tracking.run()
 
     io_utils.save_track_info(time_prefix, camera, tracking.all_trks,
                              fps=tracking.fps)
@@ -88,14 +82,6 @@ def run_pipeline(device, model_info, credentials):
     def _clear_local_data():
         io_utils.clear_track_info('all')
         io_utils.delete_local_files('all')
-
-    def _setup_logging():
-        stop_event = threading.Event()
-        time_logger = threading.Thread(
-            target=utils.log_elapsed_time, args=(time.time(), stop_event),
-            daemon=True
-        )
-        return time_logger, stop_event
 
     def _finalize(queue_block):
         time_prefix = utils.parse_clip_filename(queue_block[0][0], data='time')
@@ -124,18 +110,26 @@ def run_pipeline(device, model_info, credentials):
             time.sleep(60)
             continue
 
-        cycle_time_logger, stop_event = _setup_logging()
-        cycle_time_logger.start()
+        time_logger, stop_timing = utils.observability_thread('elapsed_time')
 
         tasks = [(row, model_info, device, credentials) for row in queue_block]
         with multiprocessing.Pool(processes=3) as pool:
-            pool.starmap(
+            time.sleep(1)   # Ensure workers have enough time to start
+            initial_pids = {p.pid for p in pool._pool if p.is_alive()}
+
+            async_results = pool.starmap_async(
                 process_video, tasks
             )
-        
+
+            worker_monitor = utils.observability_thread(
+                'failed_workers', args=(pool, initial_pids, async_results)
+            )
+            
+            async_results.get()
+
         _finalize(queue_block)
-        stop_event.set()
-        cycle_time_logger.join()
+        stop_timing.set()
+        time_logger.join()
 
 
 if __name__ == '__main__':
@@ -149,7 +143,6 @@ if __name__ == '__main__':
 
     credentials = io_utils.get_aws_creds()
 
-    oom_watchdog = threading.Thread(target=utils.monitor_memory, daemon=True)
-    oom_watchdog.start()
+    memory_monitor, _ = utils.observability_thread('low_memory')
 
     run_pipeline(device, model_info, credentials)

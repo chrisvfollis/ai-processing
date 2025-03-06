@@ -6,98 +6,175 @@ import subprocess
 import os
 import time
 import psutil
+from psutil import NoSuchProcess, AccessDenied, ZombieProcess
 import gc
 import sys
+import threading
 
 
-def log_elapsed_time(start_time, stop_event, frequency=300, include_timestamp=False):
+def run_observability_thread(target, args=None):
+    """
+    Initializes a thread for monitoring & logging some aspect of a process.
+
+    Args:
+        target (string): The aspect of the process to observe. This determines
+            which function is assigned to the `target` parameter of the thread
+            constructor. Options: 'elapsed_time', 'failed_workers', 'low_memory'
+
+        args (tuple): Any arguments that the target function expects.
+            - elapsed_time: (frequency=300, include_timestamp=False)
+            - failed_workers: (pool, initial_pids, async_results)
+            - low_memory: (threshold=1000, interval=1)
+    """
+
+    # To do: implement logger class with .stop() method to set stop events
+    # rather than having to return the stop event separately
+
+    if target == 'elapsed_time':
+        start_time, stop_event = time.time(), threading.Event()
+        frequency, timestamp = args if args else (300, False)
+    
+        time_logger = threading.Thread(
+            target=log_elapsed_time,
+            args=(start_time, stop_event, frequency, timestamp),
+            daemon=True
+        )
+        time_logger.start()
+        return time_logger, stop_event
+
+    elif target == 'failed_workers':
+        worker_monitor = threading.Thread(
+            target=log_failed_workers, args=args, daemon=True
+        )
+        worker_monitor.start()
+        return worker_monitor
+    
+    elif target == 'low_memory':
+        stop_event = threading.Event()
+        threshold, interval = args if args else (1000, 1)
+
+        low_memory_monitor = threading.Thread(
+            target=log_low_memory_warnings,
+            args=(stop_event, threshold, interval),
+            daemon=True
+        )
+        low_memory_monitor.start()
+        return low_memory_monitor, stop_event
+
+
+def log_elapsed_time(start_time, stop_event, frequency, timestamp):
     while not stop_event.is_set():
         elapsed = (time.time() - start_time) / 60
-        if include_timestamp == False:
+        if timestamp == False:
             print(f'Elapsed time: {elapsed:.2f} minutes')
             time.sleep(frequency)
-        elif include_timestamp == True:
+        elif timestamp == True:
             current_time = datetime.now().strftime('%H:%M:%S')
             print(f'[{current_time}] Elapsed time: {elapsed:.2f} minutes')
             time.sleep(frequency)
 
     total_elapsed =  (time.time() - start_time) / 60
-    if include_timestamp == False:
+    if timestamp == False:
         print(f'Total elapsed time: {total_elapsed:.2f} minutes')
-    elif include_timestamp == True:
+    elif timestamp == True:
         current_time = datetime.now().strftime('%H:%M:%S')
         print(f'[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes')
 
 
-def monitor_memory(oom_threshold_mb=1000, interval=1):
-    def _log_top_memory_consumers():
-        print('\n[OOM WARNING] SYSTEM MEMORY CRITICAL - Logging top memory consumers')
+def log_failed_workers(pool, initial_pids, async_result):
+    '''
+    Logs any potentially failed workers from a starmap_async() run of a
+    multiprocessing.Pool
+    '''
 
+    while not async_result.ready():
+        time.sleep(1)
+        current_pids = {p.pid for p in pool._pool if p.is_alive()}
+        disappeared = initial_pids - current_pids
+        if disappeared:
+            print(f"[WARNING] Workers {disappeared} disappeared (possible crash)")
+
+
+def log_current_memory_usage(focus, n=5):
+    def _safe_sizeof(obj):
+        '''
+        Returns the size of object in megabytes to two decimal places while
+        safely handling exceptions.
+        '''
+        try:
+            raw_size = sys.getsizeof(obj)
+            return round((raw_size / 1e6), 2)
+        except TypeError:
+            return 0
+        
+    if focus == 'processes':
         processes = []
-        for p in psutil.process_iter(attrs=['pid', 'name', 'memory_info'], ad_value=None):
+        for p in psutil.process_iter(
+            attrs=['pid', 'name', 'memory_info'], ad_value=None
+        ):
             try:
                 info = p.as_dict(attrs=['pid', 'name', 'memory_info'])
                 if info['memory_info']:
-                    processes.append((info['pid'], info['name'], info['memory_info'].rss / 1e6))
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    processes.append(
+                        (info['pid'], info['name'], info['memory_info'].rss / 1e6)
+                    )
+            except (NoSuchProcess, AccessDenied, ZombieProcess):
                 continue
 
         processes.sort(key=lambda x: x[2], reverse=True)
+        processes = processes[:n]
 
-        for pid, name, mem in processes[:5]:
+        print(f'Top {len(processes)} memory consumers:')
+        for pid, name, mem in processes:
             print(f'PID {pid} - {name}: {mem:.2f} MB')
 
-        del processes
+    elif focus == 'objects':
         gc.collect()
+        objects = gc.get_objects()
 
-    while True:
+        object_sizes = [(obj, _safe_sizeof(obj)) for obj in objects]
+        object_sizes.sort(key=lambda x: x[1], reverse=True)
+        
+        object_mem_total = sum([size for _, size in object_sizes])
+        print(f'Total object memory: {object_mem_total} MB')
+        print(f'Top {n} objects by memory usage:')
+        for obj, size in object_sizes[:n]:
+            print(f'Size: {size} MB | Type: {type(obj)}')
+        
+        unreachable_objects = gc.garbage
+        if unreachable_objects:
+            unreachable_object_sizes = [(obj, _safe_sizeof(obj))
+                                        for obj in unreachable_objects]
+            unreachable_object_mem_total = sum([size for _, size in
+                                                unreachable_object_sizes])
+            print(f'Total dereferenced object memory: {unreachable_object_mem_total} MB')
+            print(f'Top {n} dereferenced objects by memory usage:')
+            for obj, size in unreachable_objects[:10]:
+                print(f'Size: {size} MB | Type: {type(obj)}')
+        else:
+            print('No unreferenced objects found.')
+        
+        gc.garbage.clear()
+
+
+def log_low_memory_warnings(stop_event, threshold, interval):
+    while not stop_event.is_set():
         try:
-            mem_info = psutil.virtual_memory()
-            free_mb = mem_info.available / 1e6
-            
-            if free_mb < oom_threshold_mb:
-                _log_top_memory_consumers()
+            memory_info = psutil.virtual_memory()
+            free_mb = memory_info.available / 1e6
+
+            if free_mb < threshold:
+                free_mb = round(free_mb, 0) if free_mb >= 1 else round(free_mb, 2)
+                print(f'\n[WARNING] MEMORY CRITICAL: {free_mb} MB free')
+
+                log_current_memory_usage('processes', n=5)
+
                 gc.collect()
                 time.sleep(10)
             else:
                 time.sleep(interval)
-            
         except Exception as e:
-            print(f'Error in OOM monitor: {e}')
-
-
-def log_top_memory_objects(n=5):
-    def _safe_sizeof(obj):
-        '''Returns size of object, safely handling exceptions'''
-        try:
-            return round(sys.getsizeof(obj), 2)
-        except TypeError:
-            return 0
-
-    gc.collect()
-
-    objects = gc.get_objects()
-    object_sizes = [(obj, (_safe_sizeof(obj)) / 1e6) for obj in objects]
-    object_sizes.sort(key=lambda x: x[1], reverse=True)
-    
-    object_mem_total = sum([size for _, size in object_sizes])
-    print(f'Total object memory: {object_mem_total} MB')
-    print(f'Top {n} objects by memory usage:')
-    for obj, size in object_sizes[:n]:
-        print(f'Size: {size} MB | Type: {type(obj)}')
-    
-    unreachable_objects = gc.garbage
-    if unreachable_objects:
-        unreachable_object_sizes = [(obj, (_safe_sizeof(obj)) / 1e6)
-                                    for obj in unreachable_objects]
-        unreachable_object_mem_total = sum([size for _, size in
-                                            unreachable_object_sizes])
-        print(f'Total dereferenced object memory: {unreachable_object_mem_total} MB')
-        print(f'Top {n} dereferenced objects by memory usage:')
-        for obj, size in unreachable_objects[:10]:
-            print(f'Size: {size} MB | Type: {type(obj)}')
-    else:
-        print('No unreferenced objects found.')
+            print(f'Error while monitoring memory: {e}')
 
 
 def get_git_commit_info(cfg_dir_path='../config'):

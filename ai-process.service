@@ -18,6 +18,7 @@ Environment="TMPDIR=/tmp"
 Environment="PYTHONUNBUFFERED=1"
 LimitFSIZE=infinity
 LimitCORE=infinity
+StandardOutput=journal
 
 [Install]
 WantedBy=multi-user.target

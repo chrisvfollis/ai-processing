@@ -14,6 +14,15 @@ import torch
 import re
 import getpass
 import subprocess
+import tensorflow as tf
+import gc
+
+
+def clear_memory():
+    K = tf.keras.backend
+    K.clear_session()
+    torch.cuda.empty_cache()
+    gc.collect()
 
 
 # ----------------------------------------------------------------------------
