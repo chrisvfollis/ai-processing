@@ -14,8 +14,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
-multiprocessing.set_start_method('spawn', force=True)
-
 
 def handle_early_termination(signum, frame):
     print(f'Received {signum}. Cleaning up...')
@@ -141,6 +139,8 @@ def run_pipeline(device, model_info, credentials):
 
 
 if __name__ == '__main__':
+    multiprocessing.set_start_method('spawn', force=True)
+
     device = torch.device('cuda:0')
     model_info = [
         '../models/weights/YOLOv4.pth', '../models/weights/OSNet.pth.tar-250',

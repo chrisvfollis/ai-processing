@@ -70,7 +70,7 @@ def log_top_memory_objects(n=5):
     def _safe_sizeof(obj):
         '''Returns size of object, safely handling exceptions'''
         try:
-            return sys.getsizeof(obj)
+            return round(sys.getsizeof(obj), 2)
         except TypeError:
             return 0
 
@@ -81,7 +81,7 @@ def log_top_memory_objects(n=5):
     object_sizes.sort(key=lambda x: x[1], reverse=True)
     
     object_mem_total = sum([size for _, size in object_sizes])
-    print(f'Total object memory: {object_mem_total}')
+    print(f'Total object memory: {object_mem_total} MB')
     print(f'Top {n} objects by memory usage:')
     for obj, size in object_sizes[:n]:
         print(f'Size: {size} MB | Type: {type(obj)}')
@@ -92,7 +92,7 @@ def log_top_memory_objects(n=5):
                                     for obj in unreachable_objects]
         unreachable_object_mem_total = sum([size for _, size in
                                             unreachable_object_sizes])
-        print(f'Total dereferenced object memory: {unreachable_object_mem_total}')
+        print(f'Total dereferenced object memory: {unreachable_object_mem_total} MB')
         print(f'Top {n} dereferenced objects by memory usage:')
         for obj, size in unreachable_objects[:10]:
             print(f'Size: {size} MB | Type: {type(obj)}')
