@@ -83,84 +83,29 @@ class MoveNet:
         return results
 
     def detection_batch(self, img, bboxes):
-        def _preprocess(img, bboxes):
-            start_preprocess = time.perf_counter()
+        all_keypoints = []
 
-            batch_images = []
-            mappings = []
-
-            original_dims = img.shape[:2][::-1]
-
-            for box in bboxes:
-                x, y, w, h = box[:4]
-                img_cropped = img[y:y+h, x:x+w]
-
-                min_scale = max(1, 96 / min(original_dims))
-                min_scale_dims = [round(d * min_scale) for d in original_dims]
-                target_dims = [int((d // 32) * 32) for d in min_scale_dims]
-
-                img_resized = tf.image.resize_with_pad(
-                    tf.expand_dims(img_cropped, axis=0), *target_dims[::-1]
-                )
-
-                batch_images.append(tf.cast(img_resized, dtype=tf.int32))
-                mappings.append(
-                    [original_dims, min_scale, min_scale_dims,target_dims]
-                )
-
-            if not batch_images:
-                return None, None
-    
-            batch_tensor = tf.concat(batch_images, axis=0)
-
-            end_preprocess = time.perf_counter()
-            self.preprocess_time += (end_preprocess - start_preprocess)
-
-            return batch_tensor, mappings
-        
-        def _postprocess(output, mappings, bboxes):
-            start_postprocess = time.perf_counter()
-
-            detection_array = (output['output_0'].numpy()[:, :, 51]
-                               .reshape((-1, 6, 17, 3)))
-            
-            all_keypoints = []
-            for i, (bbox, mapping) in enumerate(zip(bboxes, mappings)):
-                if mapping is None:
-                    all_keypoints.append(np.zeros((17, 3)))
-                    continue
-
-                x, y, _, _ = bbox
-                filtered = detection_array[i][~np.all(detection_array[i][:, :, 2] <= self.conf_thresh, axis=1)]
-
-                if filtered.size > 0:
-                    confidence_sums = filtered[:, :, 2].sum(axis=1)
-                    max_index = np.argmax(confidence_sums)
-                    keypoints = self.map_keypoints(filtered[max_index], mapping)
-
+        for box in bboxes:
+            x, y, w, h, = box[:4]
+            img_cropped = img[y:y+h, x:x+w]
+            try:
+                keypoints = self.detect(img_cropped, max_only=True)
+                assert keypoints.shape == (17, 3)
+                if not np.all(keypoints == 0):
                     keypoints[:, 0] += x
                     keypoints[:, 1] += y
-                else:
-                    keypoints = np.zeros((17, 3))
+            
+            except AssertionError:
+                print('Keypoint detection returned an invalid shape: ' +
+                      f'{keypoints.shape}. Expected (17, 3) ')
+    
+            except Exception as e:
+                print(f"Error processing bounding box: {e}")
+                keypoints = np.zeros((17, 3))
+            
+            all_keypoints.append(keypoints)
 
-                all_keypoints.append(keypoints)
-
-            end_postprocess = time.perf_counter()
-            self.postprocess_time += (end_postprocess - start_postprocess)
-
-            return all_keypoints
-
-        batch_tensor, mappings = _preprocess(img, bboxes)
-
-        if not isinstance(batch_tensor, tf.Tensor):
-            return [np.zeros((17, 3)) for _ in bboxes]
-        
-        start_detect = time.perf_counter()
-        raw_output = self.model(input=batch_tensor)
-        end_detect = time.perf_counter()
-        self.detection_time += (end_detect - start_detect)
-
-        return _postprocess(raw_output, mappings, bboxes)
+        return all_keypoints
 
     def map_keypoints(self, keypoints, mapping):
         original_dims, min_scale, ms_dims, t_dims = mapping
