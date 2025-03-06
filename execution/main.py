@@ -7,6 +7,7 @@ from utilities import io_utils
 from utilities import utilities as utils
 import threading
 import gc
+import signal
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -27,7 +28,7 @@ def handle_early_termination(signum, frame):
     sys.exit(0)
 
 
-def process_video(row, model_info, device):
+def process_video(row, model_info, device, credentials):
     gc.set_debug(gc.DEBUG_SAVEALL)
 
     K = tf.keras.backend
@@ -51,13 +52,13 @@ def process_video(row, model_info, device):
     video_file = row[0]
     time_prefix, camera = utils.parse_clip_filename(video_file)
 
-    if not io_utils.download_s3_footage(video_file):
+    if not io_utils.download_s3_footage(video_file, credentials):
         return False
 
     inference = InferencePipeline(video_file, model_info, device)
 
     if not inference.skim():
-        io_utils.delete_s3_footage(video_file)
+        io_utils.delete_s3_footage(video_file, credentials)
         return False
     
     inference_output = inference.run()
@@ -88,7 +89,7 @@ def process_video(row, model_info, device):
     gc.collect()
 
 
-def run_pipeline(device, model_info):
+def run_pipeline(device, model_info, credentials):
     def _clear_local_data():
         io_utils.clear_track_info('all')
         io_utils.delete_local_files('all')
@@ -109,11 +110,14 @@ def run_pipeline(device, model_info):
 
         video_files = [row[0] for row in queue_block]
         for video_file in video_files:
-            io_utils.delete_s3_footage(video_file)
+            io_utils.delete_s3_footage(video_file, credentials)
 
         io_utils.clear_queue_block(timestamp)
         io_utils.delete_local_files(time_prefix)
     
+    signal.signal(signal.SIGTERM, handle_early_termination)
+    signal.signal(signal.SIGINT, handle_early_termination)
+
     _clear_local_data()
 
     while True:
@@ -128,7 +132,7 @@ def run_pipeline(device, model_info):
         cycle_time_logger, stop_event = _setup_logging()
         cycle_time_logger.start()
 
-        tasks = [(row, model_info, device) for row in queue_block]
+        tasks = [(row, model_info, device, credentials) for row in queue_block]
         with multiprocessing.Pool(processes=3) as pool:
             pool.starmap(
                 process_video, tasks
@@ -146,7 +150,9 @@ if __name__ == '__main__':
         '../models/weights/movenet', ('Facenet512','centerface')
     ]
 
+    credentials = io_utils.get_aws_creds()
+
     oom_watchdog = threading.Thread(target=utils.monitor_memory, daemon=True)
     oom_watchdog.start()
 
-    run_pipeline(device, model_info)
+    run_pipeline(device, model_info, credentials)

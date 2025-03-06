@@ -58,15 +58,13 @@ def get_latest_file(dir_path, base_name):
     return latest_file
 
 
-def save_event_image(img, img_dir='../files/output/event_imgs/'):
+def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
     if img is None:
         return None
     file_name = f'{uuid.uuid4()}.jpg'
     file_path = os.path.join(img_dir, file_name)
     cv2.imwrite(file_path, img)
     try:
-        credentials = get_aws_creds()
-
         s3_client = boto3.client(
             's3',
             aws_access_key_id=credentials[0],
@@ -198,9 +196,7 @@ def cleanup_semaphores():
         print(f'Error checking SysV semaphores: {e}')
 
 
-def download_s3_footage(object_key, bucket_name='ivakt-footage'):
-    credentials = get_aws_creds()
-
+def download_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
     s3 = boto3.client(
         's3',
         aws_access_key_id=credentials[0],
@@ -220,9 +216,7 @@ def download_s3_footage(object_key, bucket_name='ivakt-footage'):
         return False
 
 
-def delete_s3_footage(object_key, bucket_name='ivakt-footage'):
-    credentials = get_aws_creds()
-
+def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
     s3 = boto3.client(
         's3',
         aws_access_key_id=credentials[0],
@@ -241,7 +235,9 @@ def delete_s3_footage(object_key, bucket_name='ivakt-footage'):
 
 def get_aws_creds():
     load_dotenv()
-    return [os.environ.get(v) for v in ['AWS_ACCESS_KEY, AWS_SECRET_KEY']]
+    access_key = os.environ.get('AWS_ACCESS_KEY')
+    secret_key = os.environ.get('AWS_SECRET_KEY')
+    return [access_key, secret_key]
 
 
 # ----------------------------------------------------------------------------
