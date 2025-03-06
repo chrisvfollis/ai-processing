@@ -1,43 +1,40 @@
-import torch
-import multiprocessing
-import time
 import os
+import multiprocessing
+import torch
+import time
 from dotenv import load_dotenv
-import signal
 import sys
 from utilities import io_utils
 from utilities import utilities as utils
 import threading
+import gc
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
-import gc
+
+multiprocessing.set_start_method('spawn')
 
 
-def handle_sigterm(signum, frame):
-    print("Received SIGTERM. Cleaning up...")
+def handle_early_termination(signum, frame):
+    print(f'Received {signum}. Cleaning up...')
 
     io_utils.clear_track_info('all')
     io_utils.delete_local_files('all')
 
+    io_utils.cleanup_semaphores()
+
     sys.exit(0)
 
 
-def process_video(row, credentials, model_info, device, time_prefix):
-    gc.set_debug(gc.DEBUG_LEAK)
+def process_video(row, model_info, device):
+    gc.set_debug(gc.DEBUG_SAVEALL)
 
     K = tf.keras.backend
     torch.cuda.empty_cache()
     K.clear_session()
     gc.collect()
-
-    video_file = row[0]
-    camera = video_file.split('.')[0].split('_')[-1]
-
-    if not io_utils.download_s3_footage(video_file, credentials):
-        return False
 
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
@@ -49,17 +46,22 @@ def process_video(row, credentials, model_info, device, time_prefix):
         except RuntimeError as e:
             print(f"Error configuring TensorFlow GPU memory: {e}")
 
-
-    from pipelines.inference import InferencePipeline
     from pipelines.tracking import TrackingPipeline
 
+    video_file = row[0]
+    time_prefix, camera = utils.parse_clip_filename(video_file)
+
+    if not io_utils.download_s3_footage(video_file):
+        return False
+
     try:
+        from pipelines.inference import InferencePipeline
         inf_pipeline = InferencePipeline(video_file, model_info, device)
     except ValueError:
         print(f'Issue with {video_file}. Skipping...')
         return False
     if not inf_pipeline.skim():
-        io_utils.delete_s3_footage(video_file, credentials)
+        io_utils.delete_s3_footage(video_file)
         return False
     
     inference_output = inf_pipeline.run()
@@ -94,81 +96,63 @@ def process_video(row, credentials, model_info, device, time_prefix):
     gc.collect()
 
 
-def run_processing_cycle():
-    def _prepare():
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-        yolov4_weights = '../models/weights/YOLOv4.pth'
-        osnet_weights = '../models/weights/OSNet.pth.tar-250'
-        movenet_dir = '../models/weights/movenet'
-        face_models = ['Facenet512', 'centerface']
-
-        model_info = [yolov4_weights, osnet_weights, movenet_dir,
-                      face_models]
-
-        load_dotenv()
-        credentials = [os.environ.get('AWS_ACCESS_KEY'),
-                       os.environ.get('AWS_SECRET_KEY')]
-
+def run_pipeline(device, model_info):
+    def _clear_data():
         io_utils.clear_track_info('all')
         io_utils.delete_local_files('all')
 
-        return credentials, model_info, device
-    
-    def _finalize(queue_block, time_prefix, timestamp, credentials):
+    def _setup_logging():
+        stop_event = threading.Event()
+        time_logger = threading.Thread(
+            target=utils.log_elapsed_time, args=(time.time(), stop_event),
+            daemon=True
+        )
+        return time_logger, stop_event
+
+    def _finalize(queue_block):
+        time_prefix = utils.parse_clip_filename(queue_block[0][0], data='time')
+        timestamp = utils.frame_timestamp(time_prefix)
+
         io_utils.post_events_to_webapp(time_prefix)
 
         video_files = [row[0] for row in queue_block]
         for video_file in video_files:
-            io_utils.delete_s3_footage(video_file, credentials)
+            io_utils.delete_s3_footage(video_file)
 
         io_utils.clear_queue_block(timestamp)
         io_utils.delete_local_files(time_prefix)
 
-    signal.signal(signal.SIGTERM, handle_sigterm)
-    multiprocessing.set_start_method('spawn')
-    start_vars = _prepare()
-
     while True:
-        qb_results = io_utils.get_queue_block()
-        if qb_results:
-            q_block, t_prefix = qb_results[:2]
-        else:
+        io_utils.cleanup_semaphores()
+
+        queue_block = io_utils.get_queue_block()
+    
+        if not queue_block:
             time.sleep(60)
             continue
 
-        start_time = time.time()
-        stop_event = threading.Event()
-        cycle_time_logging = threading.Thread(
-            target=utils.log_elapsed_time, args=(start_time, stop_event),
-            daemon=True
-        )
-        cycle_time_logging.start()
+        cycle_time_logger, stop_event = _setup_logging()
+        cycle_time_logger.start()
 
-        utils.check_active_semaphores()
-
-        tasks = [(row, *start_vars, t_prefix) for row in q_block]
+        tasks = [(row, model_info, device) for row in queue_block]
         with multiprocessing.Pool(processes=3) as pool:
-
-            utils.check_active_semaphores()
-
             pool.starmap(
                 process_video, tasks
             )
-            pool.close()
-            pool.join()
         
-        utils.check_active_semaphores()
-        
+        _finalize(queue_block)
         stop_event.set()
-        cycle_time_logging.join()
-        _finalize(*qb_results, start_vars[0])
+        cycle_time_logger.join()
         
 
 if __name__ == '__main__':
-    oom_watchdog = threading.Thread(
-        target=utils.monitor_memory_for_oom, daemon=True
-    )
+    device = torch.device('cuda:0')
+    model_info = [
+        '../models/weights/YOLOv4.pth', '../models/weights/OSNet.pth.tar-250',
+        '../models/weights/movenet', ('Facenet512','centerface')
+    ]
+
+    oom_watchdog = threading.Thread(target=utils.monitor_memory, daemon=True)
     oom_watchdog.start()
 
-    run_processing_cycle()
+    run_pipeline(device, model_info)

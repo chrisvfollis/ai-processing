@@ -63,11 +63,12 @@ def save_event_image(img, img_dir='../files/output/event_imgs/'):
     file_path = os.path.join(img_dir, file_name)
     cv2.imwrite(file_path, img)
     try:
-        load_dotenv()
+        credentials = get_aws_creds()
+
         s3_client = boto3.client(
             's3',
-            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
-            aws_secret_access_key=os.environ.get('AWS_SECRET_KEY'),
+            aws_access_key_id=credentials[0],
+            aws_secret_access_key=credentials[1],
             region_name='us-west-1'
         )
         bucket_name = 'timemanager-event-imgs'
@@ -147,7 +148,57 @@ def delete_local_files(identifier, file_types='any',
     return True
 
 
-def download_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
+def cleanup_semaphores():
+    '''
+    Removes unused (stale or leaked) semaphores:
+
+    - POSIX-named semaphores from /dev/shm/
+    - SysV IPC semaphores using ipcs -s
+    '''
+
+    try:
+        posix_semaphores = [f for f in os.listdir('/dev/shm/')
+                            if f.startswith('sem.')]
+
+        if posix_semaphores:
+            for sem in posix_semaphores:
+                sem_path = f'/dev/shm/{sem}'
+                try:
+                    os.unlink(sem_path)
+                    print(f'Removed unused POSIX semaphore: {sem_path}')
+                except FileNotFoundError:
+                    print(f'Skipped: {sem_path} already removed.')
+                except Exception as e:
+                    print(f'Error removing {sem_path}: {e}')
+        else:
+            print('No unused POSIX semaphores found.')
+
+    except Exception as e:
+        print(f'Error checking POSIX semaphores: {e}')
+
+
+    user = getpass.getuser()
+    try:
+        output = subprocess.check_output(['ipcs', '-s']).decode('utf-8')
+
+        sysv_semaphores = [
+            line.split()[1] for line in output.split('\n') if user in line
+        ]
+
+        if sysv_semaphores:
+            for sem_id in sysv_semaphores:
+                os.system(f'ipcrm -s {sem_id}')
+                print(f'Removing unused SysV semaphore: {sem_id}')
+        else:
+            print('No unused SysV semaphores found.')
+
+    except Exception as e:
+        print(f'Error checking SysV semaphores: {e}')
+
+
+def download_s3_footage(object_key, bucket_name='ivakt-footage'):
+    credentials = get_aws_creds()
+
     s3 = boto3.client(
         's3',
         aws_access_key_id=credentials[0],
@@ -167,7 +218,9 @@ def download_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
         return False
 
 
-def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
+def delete_s3_footage(object_key, bucket_name='ivakt-footage'):
+    credentials = get_aws_creds()
+
     s3 = boto3.client(
         's3',
         aws_access_key_id=credentials[0],
@@ -182,6 +235,11 @@ def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
     except Exception as e:
         print(f"Failed to delete {object_key} from S3: {e}")
         return False
+
+
+def get_aws_creds():
+    load_dotenv()
+    return [os.environ.get(v) for v in ['AWS_ACCESS_KEY, AWS_SECRET_KEY']]
 
 
 # ----------------------------------------------------------------------------
@@ -352,11 +410,7 @@ def get_queue_block():
             print('No clips in the queue')
             return None
         else:
-            time_prefix = utils.parse_clip_filename(queue_block[0][0],
-                                                    data='time')
-            timestamp = utils.frame_timestamp(time_prefix) 
-
-            return queue_block, time_prefix, timestamp
+            return queue_block
 
     except requests.exceptions.RequestException as e:
         print(f'Error making request: {e}')
