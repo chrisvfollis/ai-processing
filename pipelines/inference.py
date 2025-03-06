@@ -130,7 +130,6 @@ class InferencePipeline:
         def _process_frame(frame, focus='global'):
             if self.f_num % self.track_stride == 0:
                 bboxes = self.yolov4.detect(frame, 0)
-                print(f'{len(bboxes)} detections')
                 if bboxes:
                     self.osnet.extraction_batch(frame, bboxes, self.f_num)
                     self.person_data[self.f_num] = bboxes
