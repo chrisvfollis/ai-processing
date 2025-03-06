@@ -848,7 +848,7 @@ class TrackingPipeline:
             _associate_faces()
 
             if self.f_num % (self.fps * 5) == 0:
-                utils.log_top_memory_objects()
+                utils.log_current_memory_usage('objects')
 
             self.f_num += 1
 
