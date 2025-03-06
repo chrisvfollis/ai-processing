@@ -64,9 +64,12 @@ def process_video(row, model_info, device, credentials):
     except Exception as e:
         print(f'Error in inference pipeline: {e}')
 
-    tracking = TrackingPipeline(
-        video_file, time_prefix, *inference_output, device
-    )
+    try:
+        tracking = TrackingPipeline(
+            video_file, time_prefix, *inference_output, device
+        )
+    except Exception as e:
+        print(f'Error in tracking pipeline: {e}')
 
     del inference
     del inference_output
