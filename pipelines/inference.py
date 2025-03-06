@@ -113,7 +113,7 @@ class InferencePipeline:
                     result = True
                     break
             
-            if (self.f_num % 100) == 0:
+            if (f_num % 100) == 0:
                 gc.collect()
 
             prev_frame = current_frame
@@ -232,7 +232,7 @@ class InferencePipeline:
 
             if (not ret) or (current_frame == prev_frame):
                 break
-                
+
             _process_frame(frame, focus='local')
     
             frame_position = _continue_forward(cap, current_frame)

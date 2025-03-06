@@ -156,7 +156,7 @@ class MoveNet:
             return [np.zeros((17, 3)) for _ in bboxes]
         
         start_detect = time.perf_counter()
-        raw_output = self.model(batch_tensor)
+        raw_output = self.model(input=batch_tensor)
         end_detect = time.perf_counter()
         self.detection_time += (end_detect - start_detect)
 

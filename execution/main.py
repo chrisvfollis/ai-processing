@@ -59,7 +59,10 @@ def process_video(row, model_info, device, credentials):
         io_utils.delete_s3_footage(video_file, credentials)
         return False
     
-    inference_output = inference.run()
+    try:
+        inference_output = inference.run()
+    except Exception as e:
+        print(f'Error in inference pipeline: {e}')
 
     tracking = TrackingPipeline(
         video_file, time_prefix, *inference_output, device
@@ -78,13 +81,6 @@ def process_video(row, model_info, device, credentials):
                              fps=tracking.fps)
 
     print(f"Processed {video_file}")
-
-    del inference_output
-    del trk_pipeline
-
-    torch.cuda.empty_cache()
-    K.clear_session()
-    gc.collect()
 
 
 def run_pipeline(device, model_info, credentials):
