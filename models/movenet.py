@@ -95,11 +95,6 @@ class MoveNet:
                 x, y, w, h = box[:4]
                 img_cropped = img[y:y+h, x:x+w]
 
-                if img_cropped.shape[0] == 0 or img_cropped.shape[1] == 0:
-                    batch_images.append(None)
-                    mappings.append(None)
-                    continue
-
                 min_scale = max(1, 96 / min(original_dims))
                 min_scale_dims = [round(d * min_scale) for d in original_dims]
                 target_dims = [int((d // 32) * 32) for d in min_scale_dims]
@@ -113,10 +108,7 @@ class MoveNet:
                     [original_dims, min_scale, min_scale_dims,target_dims]
                 )
             
-            if not any(batch_images):
-                return [np.zeros((17, 3)) for _ in bboxes], None
-            
-            batch_tensor = tf.concat([img for img in batch_images if img is not None], axis=0)
+            batch_tensor = tf.concat(batch_images, axis=0)
 
             end_preprocess = time.perf_counter()
             self.preprocess_time += (end_preprocess - start_preprocess)
@@ -156,8 +148,6 @@ class MoveNet:
             return all_keypoints
 
         batch_tensor, mappings = _preprocess(img, bboxes)
-        if mappings is None:
-            return batch_tensor
         
         start_detect = time.perf_counter()
         raw_output = self.model(batch_tensor)

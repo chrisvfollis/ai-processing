@@ -23,8 +23,6 @@ def handle_early_termination(signum, frame):
     io_utils.clear_track_info('all')
     io_utils.delete_local_files('all')
 
-    io_utils.cleanup_semaphores()
-
     sys.exit(0)
 
 

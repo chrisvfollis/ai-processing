@@ -238,6 +238,8 @@ class InferencePipeline:
             frame_position = _continue_forward(cap, current_frame)
             del frame
 
+        print(f'Exiting inference run on frame {self.f_num}')
+
         cap.release()
         _finalize()
 
