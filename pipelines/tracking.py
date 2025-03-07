@@ -10,12 +10,13 @@ import pickle
 import math
 import torch
 import torch.nn.functional as F
-import gc
 from collections import deque
+import tracemalloc
 
 from utilities import io_utils
 from utilities import utilities as utils
 
+tracemalloc.start()
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
@@ -482,7 +483,9 @@ class TrackingPipeline:
             end_run = time.perf_counter()
             self.primary_run_time += (end_run - start_run)
             self.save_runtime_data()
-        
+
+        tracemalloc.stop()
+
     def assign_identities(self, target):
         def _group_tracks(trk_ids, target_trks):
             def _construct_track_graph(trk_ids):

@@ -203,8 +203,6 @@ def memory_usage(focus, n=5, threshold=None):
                     f'allocated {allocated_memory:.2f} MB'
                 )
 
-        tracemalloc.stop()
-
         return total_alloc_memory
 
 

@@ -141,9 +141,9 @@ class OSNet:
 
         buffer_limit = buffer_limit if buffer_limit else self.buffer_limit
 
-        self.embedding_buffer = deque(maxlen=buffer_limit)
-        self.frame_buffer = deque(maxlen=buffer_limit)
-        self.box_index_buffer = deque(maxlen=buffer_limit)
+        self.embedding_buffer = deque(maxlen=None)
+        self.frame_buffer = deque(maxlen=None)
+        self.box_index_buffer = deque(maxlen=None)
 
         n_features = self.output_shape[0]
         idx_dataset_kwargs = {'shape': (0,), 'dtype': 'i', 'maxshape': (None,)}
