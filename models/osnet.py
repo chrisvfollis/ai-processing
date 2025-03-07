@@ -113,7 +113,7 @@ class OSNet:
 
             self.embedding_buffer.extend(embeddings)
             self.frame_buffer.extend([f_num] * num_detections)
-            self.box_index_buffer.extend(range(num_detections))
+            self.box_index_buffer.extend(list(range(num_detections)))
         
         batch_images = []
 
@@ -156,8 +156,6 @@ class OSNet:
 
     def flush_buffers(self, release=False):
         start_flush = time.perf_counter()
-
-        print(f'Flushing {len(self.embedding_buffer)} embeddings...')
 
         io_utils.write_embeddings(
             self.hdf5_file, self.embedding_buffer, self.frame_buffer,
