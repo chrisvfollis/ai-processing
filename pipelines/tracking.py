@@ -828,6 +828,8 @@ class TrackingPipeline:
             self.identity_matching_time = (end_assign - start_assign)
 
             return all_optimal_assignments
+        
+        memory_snapshot = utils.memory_usage('objects')
 
         if not is_continuation:
             print(f"Running tracking pipeline for {self.video_file}...")
@@ -847,8 +849,12 @@ class TrackingPipeline:
             _create_new_tracks()
             _associate_faces()
 
+            if (self.f_num != 0) and (self.f_num % self.fps == 0):
+                memory_snapshot *= 1.1
             if self.f_num % (self.fps * 5) == 0:
-                utils.log_current_memory_usage('objects')
+                memory_snapshot = utils.memory_usage(
+                    'objects', threshold=memory_snapshot
+                )
 
             self.f_num += 1
 
@@ -1061,13 +1067,17 @@ class TrackingPipeline:
         performance_df = pd.DataFrame(performance_data)
         
         stats_data = {
-            'stat_title': [
-                'n_total_tracks',
-                'n_keypoint_filtered',
-                'n_lifespan_filtered',
-                'n_size_filtered'
+            'module': [
+                *['tracks'] * 5
             ],
-            'stat_value': [
+            'metric': [
+                'total',
+                'identified'
+                'keypoint_filtered',
+                'lifespan_filtered',
+                'size_filtered'
+            ],
+            'value': [
                 len(all_tracks),
                 self.kp_filtered,
                 self.lifespan_filtered,

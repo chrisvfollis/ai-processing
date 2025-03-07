@@ -93,19 +93,14 @@ def log_failed_workers(pool, initial_pids, async_result):
             print(f"[WARNING] Workers {disappeared} disappeared (possible crash)")
 
 
-def log_current_memory_usage(focus, n=5):
-    def _safe_sizeof(obj):
-        '''
-        Returns the size of object in megabytes to two decimal places while
-        safely handling exceptions.
-        '''
-        try:
-            raw_size = sys.getsizeof(obj)
-            return round((raw_size / 1e6), 2)
-        except TypeError:
-            return 0
-        
+def memory_usage(focus, n=5, log_threshold=None):
     if focus == 'processes':
+        def _log_largest_processes(process_list, n):
+            if process_list:
+                print(f'Largest processes:')
+                for pid, name, mem in processes[:n]:
+                    print(f'PID {pid} - {name}: {mem:.2f} MB')
+
         processes = []
         for p in psutil.process_iter(
             attrs=['pid', 'name', 'memory_info'], ad_value=None
@@ -120,39 +115,67 @@ def log_current_memory_usage(focus, n=5):
                 continue
 
         processes.sort(key=lambda x: x[2], reverse=True)
-        processes = processes[:n]
 
-        print(f'Top {len(processes)} memory consumers:')
-        for pid, name, mem in processes:
-            print(f'PID {pid} - {name}: {mem:.2f} MB')
+        total_process_memory = sum([process[2] for process in processes])
+        if (log_threshold is None) or (total_process_memory > log_threshold):
+            _log_largest_processes(processes, n)
+
+        return total_process_memory
 
     elif focus == 'objects':
-        gc.collect()
-        objects = gc.get_objects()
+        def _log_largest_objects(obj_list, n, obj_category):
+            if obj_list:
+                print(f'Largest {obj_category} objects:')
+                for obj, size in standard_objects[:n]:
+                    print(f'Size: {size} MB | Type: {type(obj)}')
+                
+            else:
+                print(f'No {obj_category} objects found')
 
-        obj_sizes = [(obj, _safe_sizeof(obj)) for obj in objects]
-        obj_sizes.sort(key=lambda x: x[1], reverse=True)
+        def _safe_sizeof(object):
+            '''
+            Returns the size of object in megabytes to two decimal places while
+            safely handling exceptions.
+            '''
+            try:
+                raw_size = sys.getsizeof(obj)
+                return round((raw_size / 1e6), 2)
+            except TypeError:
+                return 0
+
+        gc.collect()
+
+        standard_objects = sorted(
+            iterable=[(obj, _safe_sizeof(obj)) for obj in gc.get_objects()],
+            key=lambda x: x[1],
+            reverse=True
+        )
+        uncollectible_objects = sorted(
+            iterable=[(obj, _safe_sizeof(obj)) for obj in gc.garbage],
+            key=lambda x: x[1],
+            reverse=True
+        )
+
+        cpu_obj_totals = [sum([size for _, size in obj_list]) for obj_list in
+                          [standard_objects, uncollectible_objects]]
+        gpu_obj_totals = [(torch.cuda.memory_allocated() / 1e6)]
         
-        obj_total = sum([size for _, size in obj_sizes])
-        print(f'Total standard object memory: {obj_total} MB')
-        print(f'Top {n} standard objects by memory usage:')
-        for obj, size in obj_sizes[1:n+1]:
-            print(f'Size: {size} MB | Type: {type(obj)}')
-        
-        uncollectible_objects = gc.garbage
-        if uncollectible_objects:
-            uc_obj_sizes = [(obj, _safe_sizeof(obj))
-                             for obj in uncollectible_objects]
-            uc_obj_total = sum([size for _, size in uc_obj_sizes])
-            print(f'Total uncollectible standard object memory: {uc_obj_total} MB')
-            print(f'Top {n} uncollectible standard objects by memory usage:')
-            for obj, size in uc_obj_sizes[:n]:
-                print(f'Size: {size} MB | Type: {type(obj)}')
-        else:
-            print('No uncollectible standard objects found.')
-        
-        pt_obj_gpu_total = torch.cuda.memory_allocated() / 1e6
-        print(f"Total pytorch object GPU memory: {pt_obj_gpu_total:.2f} MB")
+        total_obj_memory = sum(cpu_obj_totals) + sum(gpu_obj_totals)
+    
+        if (
+            (log_threshold is None) or
+            (total_obj_memory > (log_threshold))
+        ):
+
+            print(f'Total standard object memory: {cpu_obj_totals[0]:.2f} MB')
+            _log_largest_objects(standard_objects, n, 'standard')
+    
+            print(f'Total uncollectible object memory: {cpu_obj_totals[1]:.2f} MB')
+            _log_largest_objects(uncollectible_objects, n, 'uncollectible')
+
+            print(f"Total pytorch object memory: {gpu_obj_totals[0]:.2f} MB")
+
+        return total_obj_memory
 
 
 def log_low_memory_warnings(stop_event, threshold, interval):
@@ -165,7 +188,7 @@ def log_low_memory_warnings(stop_event, threshold, interval):
                 free_mb = round(free_mb, 0) if free_mb >= 1 else round(free_mb, 2)
                 print(f'\n[WARNING] MEMORY CRITICAL: {free_mb} MB free')
 
-                log_current_memory_usage('processes', n=5)
+                memory_usage('processes')
 
                 gc.collect()
                 time.sleep(10)
