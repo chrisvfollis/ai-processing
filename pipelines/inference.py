@@ -155,8 +155,6 @@ class InferencePipeline:
                 all_keypoints = self.movenet.detection_batch(frame, bboxes)
                 if all_keypoints:
                     self.keypoint_data[self.f_num] = all_keypoints
-
-            return True
     
         def _continue_forward(cap, current_frame):
             if self.track_stride <= 15:

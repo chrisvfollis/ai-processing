@@ -89,13 +89,13 @@ def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
 
 
 def write_embeddings(hdf5_file, embeddings, frames, box_indices):
-    frames = np.array(frames)
-    box_indices = np.array(box_indices)
-
     embeddings_array = np.stack(embeddings)
-
     embeddings_dataset = hdf5_file['embeddings']
+
+    frames = np.array(frames)
     frames_dataset = hdf5_file['frames']
+
+    box_indices = np.array(box_indices)
     box_indices_dataset = hdf5_file['box_indices']
 
     new_size = embeddings_dataset.shape[0] + embeddings_array.shape[0]

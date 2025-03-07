@@ -184,6 +184,8 @@ class TrackingPipeline:
 
             if not (conf_mask.shape[0] == embeddings.shape[0]):
                 print(f'detections shape: {detections.shape}')
+                for detection in detections:
+                    print(f'detection: {detection}')
                 print(f'conf_mask shape: {conf_mask.shape}')
                 print(f'embeddings shape: {embeddings.shape}')
 
