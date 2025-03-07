@@ -795,9 +795,10 @@ class TrackingPipeline:
         return all_optimal_assignments
 
     def filter_tracks(self, target):
-        def _filter_by_lifespan(eligible_trk_ids, target_trks):
-            for trk_id in eligible_trk_ids:
-                trk = target_trks[trk_id]
+        def _filter_by_lifespan(target_trks):
+            for trk_id, trk in target_trks.items():
+                if trk.identity:
+                    continue
 
                 lifespan = trk.span[1] - trk.span[0]
 
@@ -811,12 +812,13 @@ class TrackingPipeline:
                 except KeyError:
                     continue
 
-        def _filter_by_keypoints(eligible_trk_ids, target_trks, expected_kps=3,
+        def _filter_by_keypoints(target_trks, expected_kps=3,
                                  expected_conf=.55):
             expected_avg = (expected_kps * expected_conf) / 17
 
-            for trk_id in eligible_trk_ids:
-                trk = target_trks[trk_id]
+            for trk_id, trk in target_trks.items():
+                if trk.identity:
+                    continue
                 n_frames = len(trk.keypoints.keys())
                 if n_frames == 0:
                     trk.kp_avg = 0
@@ -837,10 +839,11 @@ class TrackingPipeline:
                 except KeyError:
                     continue
 
-        def _filter_by_size(eligible_trk_ids, target_trks):
+        def _filter_by_size(target_trks):
             expected_avg = (self.resolution[0] / 24) * (self.resolution[1] / 12)
-            for trk_id in eligible_trk_ids:
-                trk = target_trks[trk_id]
+            for trk_id, trk in target_trks.items():
+                if trk.identity:
+                    continue
                 box_sizes = [math.prod(detection[2:4]) for detection in trk.detections.values()]
                 avg = sum(box_sizes) / len(box_sizes)
 
@@ -855,15 +858,10 @@ class TrackingPipeline:
                     continue
         
         target_trks = getattr(self, target)
-        eligible_trk_ids = []
 
-        for trk_id, trk in target_trks.items():
-            if not trk.identity:
-                eligible_trk_ids.append(trk_id)
-
-        _filter_by_lifespan(eligible_trk_ids, target_trks)
-        _filter_by_keypoints(eligible_trk_ids, target_trks)
-        _filter_by_size(eligible_trk_ids, target_trks)
+        _filter_by_lifespan(target_trks)
+        _filter_by_keypoints(target_trks)
+        _filter_by_size(target_trks)
 
     def get_track_images(self, target, vid_dir='../files/input/'):
         vid_path = os.path.join(vid_dir, self.video_file)

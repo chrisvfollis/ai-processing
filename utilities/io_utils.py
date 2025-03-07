@@ -332,6 +332,7 @@ def build_db_schema(db_path='../files/data.db'):
         );
     ''')
     conn.commit()
+    conn.close()
 
 
 def save_track_info(time_prefix, camera, target_trks, fps=30,
