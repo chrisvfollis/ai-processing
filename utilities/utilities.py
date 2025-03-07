@@ -147,12 +147,12 @@ def memory_usage(focus, n=5, threshold=None):
         gc.collect()
 
         standard_objects = sorted(
-            iterable=[(obj, _safe_sizeof(obj)) for obj in gc.get_objects()],
+            [(obj, _safe_sizeof(obj)) for obj in gc.get_objects()],
             key=lambda x: x[1],
             reverse=True
         )
         uncollectible_objects = sorted(
-            iterable=[(obj, _safe_sizeof(obj)) for obj in gc.garbage],
+            [(obj, _safe_sizeof(obj)) for obj in gc.garbage],
             key=lambda x: x[1],
             reverse=True
         )

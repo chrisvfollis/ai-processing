@@ -163,7 +163,7 @@ class TrackingPipeline:
         end_persist = time.perf_counter()
         self.persist_time += (end_persist - start_persist)
 
-    def run(self, is_continuation=False):
+    def run(self, prior_pipeline=False):
         def _get_measurements():
             detections = self.detection_data.get(self.f_num, None)
             if not detections:
@@ -831,7 +831,7 @@ class TrackingPipeline:
         
         memory_snapshot = utils.memory_usage('objects')
 
-        if not is_continuation:
+        if not prior_pipeline:
             print(f"Running tracking pipeline for {self.video_file}...")
         start_run = time.perf_counter()
 
@@ -858,14 +858,13 @@ class TrackingPipeline:
 
             self.f_num += 1
 
-        if (not is_continuation) and (self.continuity == True):
+        if (not prior_pipeline) and (self.continuity == True):
             self.all_trks = self.trk_cache
-            for trk in self.all_trks.values():
-                self.cost_method_data.extend(trk.cost_method_data)
             _assign_identities()
+    
             self.handle_results()
     
-        elif (not is_continuation) and (self.continuity == False):
+        elif (not prior_pipeline) and (self.continuity == False):
             self.all_trks = {**self.active_trks, **self.trk_cache}
             _assign_identities()
         
@@ -975,6 +974,8 @@ class TrackingPipeline:
             cap.release()
         
         if self.continuity:
+            for trk in self.all_trks.values():
+                self.cost_method_data.extend(trk.cost_method_data)
             self.save_pipeline_state()
 
         _get_track_images(self.all_trks)
