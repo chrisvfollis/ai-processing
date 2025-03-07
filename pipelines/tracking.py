@@ -19,7 +19,7 @@ from utilities import utilities as utils
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
-                 face_data, device, continuity=True, conf_thresh=0.65):
+                 face_data, device, continuous=True, conf_thresh=0.65):
         self.video_file = video_file
         self.cam = video_file.split('.')[0].split('_')[-1]
         self.f_num = 0
@@ -93,10 +93,10 @@ class TrackingPipeline:
         self.pkl_io_time = 0
         self.embedding_read_time = 0
 
-        self.continuity = continuity
+        self.continuous = continuous
         self.prior_pkl = ''
     
-        if continuity:
+        if continuous:
             self.persist_prior_tracks()
 
     def __getstate__(self):
@@ -141,7 +141,7 @@ class TrackingPipeline:
             self.trk_id += 1
         prior_pipeline.active_trks = reset_ids
 
-        prior_pipeline.run(is_continuation=True)
+        prior_pipeline.run(prior_pipeline=True)
 
         reset_active = {}
         for trk_id, trk in prior_pipeline.active_trks.items():
@@ -858,13 +858,13 @@ class TrackingPipeline:
 
             self.f_num += 1
 
-        if (not prior_pipeline) and (self.continuity == True):
+        if (not prior_pipeline) and (self.continuous == True):
             self.all_trks = self.trk_cache
             _assign_identities()
     
             self.handle_results()
     
-        elif (not prior_pipeline) and (self.continuity == False):
+        elif (not prior_pipeline) and (self.continuous == False):
             self.all_trks = {**self.active_trks, **self.trk_cache}
             _assign_identities()
         
@@ -973,7 +973,7 @@ class TrackingPipeline:
 
             cap.release()
         
-        if self.continuity:
+        if self.continuous:
             for trk in self.all_trks.values():
                 self.cost_method_data.extend(trk.cost_method_data)
             self.save_pipeline_state()
