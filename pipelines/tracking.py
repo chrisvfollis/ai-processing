@@ -190,7 +190,6 @@ class TrackingPipeline:
 
             start_convert = time.perf_counter()
             detections = detection_tensor[conf_mask].tolist()
-            del detection_tensor
 
             end_convert = time.perf_counter()
             self.tensor_conversion_time += (end_convert - start_convert)
@@ -198,6 +197,10 @@ class TrackingPipeline:
             if self.f_num % 100 == 0:
                 torch.cuda.empty_cache()
                 gc.collect()
+
+            print(f'detection_tensor shape: {detection_tensor.shape}')
+            print(f'conf_mask shape: {conf_mask.shape}')
+            print(f'embeddings shape: {embeddings.shape}')
 
             embeddings = embeddings[conf_mask]
             keypoints = self.keypoint_data.get(self.f_num, None)
