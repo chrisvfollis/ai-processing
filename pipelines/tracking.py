@@ -437,8 +437,8 @@ class TrackingPipeline:
             print(f"Running tracking pipeline for {self.video_file}...")
             start_run = time.perf_counter()
 
-        memory_snapshot = utils.memory_usage('objects')
-        threshold = memory_snapshot * 1.5
+        memory_snapshot = utils.memory_usage('allocation_lines')
+        threshold = memory_snapshot * 1.2
 
         while self.f_num < self.total_frames:
             if self.active_trks:
@@ -454,12 +454,12 @@ class TrackingPipeline:
             _create_new_tracks()
             _associate_faces()
 
-            if self.f_num % self.fps == 0:
+            if (self.f_num % (self.fps * 2)) == 0:
                 memory_snapshot = utils.memory_usage(
-                    'objects', threshold=threshold
+                    'allocation_lines', threshold=threshold
                 )
                 if memory_snapshot > threshold:
-                    threshold = memory_snapshot * 1.5
+                    threshold = memory_snapshot * 1.2
 
             if self.f_num % 100 == 0:
                 io_utils.clear_memory()
@@ -836,10 +836,15 @@ class TrackingPipeline:
                     continue
 
         def _filter_by_size(target_trks):
-            expected_avg = (self.resolution[0] / 24) * (self.resolution[1] / 12)
+            expected_avg = (
+                (self.resolution[0] / 24) *
+                (self.resolution[1] / 12)
+            )
+
             for trk_id, trk in target_trks.items():
                 if trk.identity:
                     continue
+
                 box_sizes = [math.prod(detection[2:4]) for detection in trk.detections.values()]
                 avg = sum(box_sizes) / len(box_sizes)
 

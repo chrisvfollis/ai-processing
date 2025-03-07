@@ -112,10 +112,15 @@ def write_embeddings(hdf5_file, embeddings, frames, box_indices):
 def read_embeddings(hdf5_file, target_frame, device):
     with h5py.File(hdf5_file, 'r') as file:
         frames = file['frames'][:]
+
         indices = np.where(frames == target_frame)[0]
-        print(f"Found {len(indices)} indices for frame {target_frame}")
+        if len(indices) == 0:
+            print(f"Found 0 indices for frame {target_frame}")
+
         target_embeddings = file['embeddings'][sorted(indices)]
-        return torch.from_numpy(target_embeddings).to(device)
+        target_embeddings = torch.from_numpy(target_embeddings).to(device)
+
+        return target_embeddings
 
 
 def delete_local_files(identifier, file_types='any',

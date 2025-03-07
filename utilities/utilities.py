@@ -11,6 +11,7 @@ from psutil import NoSuchProcess, AccessDenied, ZombieProcess
 import gc
 import sys
 import threading
+import tracemalloc
 
 
 def observability_thread(target, args=None):
@@ -161,7 +162,7 @@ def memory_usage(focus, n=5, threshold=None):
         gpu_obj_totals = [(torch.cuda.memory_allocated() / 1e6)]
         
         total_obj_memory = sum(cpu_obj_totals) + sum(gpu_obj_totals)
-    
+
         if (
             (threshold is None) or
             (total_obj_memory > (threshold))
@@ -176,6 +177,35 @@ def memory_usage(focus, n=5, threshold=None):
             print(f"Total pytorch object memory: {gpu_obj_totals[0]:.2f} MB")
 
         return total_obj_memory
+
+    elif focus == 'allocation_lines':
+        snapshot = tracemalloc.take_snapshot()
+        allocation_lines = snapshot.statistics('lineno')
+
+        allocation_lines = [(
+            (line_info.traceback[-1].filename), (line_info.traceback[-1].lineno),
+            (line_info.size / 1e6)
+            ) for line_info in allocation_lines
+        ]
+
+        total_alloc_memory = sum([x[2] for x in allocation_lines])
+
+        if (
+            (threshold is None) or
+            (total_alloc_memory > threshold)
+        ):
+            print('Top allocation lines:')
+            for line_info in allocation_lines[:n]:
+                filename, line_number, allocated_memory = line_info
+
+                print(
+                    f'File {filename}, line {line_number},' +
+                    f'allocated {allocated_memory:.2f} MB'
+                )
+
+        tracemalloc.stop()
+
+        return total_alloc_memory
 
 
 def log_low_memory_warnings(stop_event, threshold, interval):
