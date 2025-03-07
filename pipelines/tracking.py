@@ -23,18 +23,14 @@ class TrackingPipeline:
                  face_data, device, credentials, continuous_mode=True,
                  conf_thresh=0.65):
         
-        self.active_trks, self.inactive_trks, self.filtered_trks = {}, {}, {}        
+        self.active_trks, self.inactive_trks, self.filtered_trks = {}, {}, {}
         self.trk_id = 0
-
-        self.min_lifespan = self.fps * 15
-        self.max_absence = self.fps * 3
 
         self.device = device
         self.credentials = credentials
 
         self.video_file = video_file
         self.cam = video_file.split('.')[0].split('_')[-1]
-        self.f_num = 0
 
         cap = cv2.VideoCapture(os.path.join('../files/input/', video_file))
         self.fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -49,7 +45,11 @@ class TrackingPipeline:
         self.end_time = utils.frame_timestamp(
             time_prefix, self.total_frames, self.fps
         )
-        
+        self.f_num = 0
+
+        self.min_lifespan = self.fps * 15
+        self.max_absence = self.fps * 3
+    
         self.kp_filtered = 0
         self.lifespan_filtered = 0
         self.size_filtered = 0

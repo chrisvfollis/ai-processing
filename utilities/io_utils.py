@@ -340,16 +340,25 @@ def build_db_schema(db_path='../files/data.db'):
     conn.close()
 
 
-def lookup_image(image_path, db_path='../files/data.db'):
+def lookup_image_identity(image_paths, db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cursor.execute('''
-        SELECT people.*
+    filenames = [img_path.split('/')[-1] for img_path in image_paths]
+    placeholders = ', '.join(['?'] * len(filenames))
+
+    query = f'''
+        SELECT people.*, face_images.filename
         FROM people
         JOIN face_images ON people.id = face_images.person_id
-        WHERE face_images.filename = ?;
-    ''')
+        WHERE face_images.filename = {placeholders};
+    '''
+    cursor.execute(query, filenames)
+    
+    results = cursor.fetchall(); conn.close()
+    results_map = {row[-1]: row[:-1] for row in results}
+
+    return [results_map.get(filename) for filename in filenames]
 
 
 def save_track_info(time_prefix, camera, target_trks, fps=30,

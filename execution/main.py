@@ -48,52 +48,40 @@ def run_processing_pipelines(row, model_info, device, credentials):
     if not io_utils.download_s3_footage(video_file, credentials):
         return False
 
-    inference_pipeline = InferencePipeline(
-        video_file, model_info,
-        device
-    )
-    
     try:
+        inference_pipeline = InferencePipeline(
+            video_file, model_info,
+            device
+        )
         valid = inference_pipeline.skim()
         if not valid:
             io_utils.delete_s3_footage(video_file, credentials)
             return False
         
         inference_output = inference_pipeline.run()
-    except Exception as e:
-        print(f'Error: {e}')
-        print(traceback.format_exc())
-        return False
 
-    try:
         tracking_pipeline = TrackingPipeline(
             video_file, time_prefix,
             *inference_output,
             device,
             credentials
         )
-        print(f'Initialized tracking pipeline')
-    except Exception as e:
-        print(f'Error: {e}')
-        print(traceback.format_exc())
 
-    del inference_pipeline, inference_output
-    io_utils.clear_memory()
+        del inference_pipeline, inference_output
+        io_utils.clear_memory()
 
-    try:
         tracking_pipeline.run()
+
+        io_utils.save_track_info(
+            time_prefix, camera, tracking_pipeline.inactive_trks,
+            fps=tracking_pipeline.fps
+        )
+        print(f"Processed {video_file}")
+        return True
     except Exception as e:
         print(f'Error: {e}')
         print(traceback.format_exc())
         return False
-
-    io_utils.save_track_info(
-        time_prefix, camera, tracking_pipeline.inactive_trks,
-        fps=tracking_pipeline.fps
-    )
-
-    print(f"Processed {video_file}")
-    return True
 
 
 def run_master_process(device, model_info, credentials):
