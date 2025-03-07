@@ -157,6 +157,8 @@ class OSNet:
     def flush_buffers(self, release=False):
         start_flush = time.perf_counter()
 
+        print(f'Flushing {len(self.embedding_buffer)} embeddings...')
+
         io_utils.write_embeddings(
             self.hdf5_file, self.embedding_buffer, self.frame_buffer,
             self.box_index_buffer

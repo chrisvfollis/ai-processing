@@ -289,10 +289,29 @@ def get_employee(image_path, db_path='../files/data.db'):
         return None
 
 
-def save_track_info(time_prefix, camera, target_trks, fps=30,
-                    db_path='../files/data.db'):
+def build_db_schema(db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS people (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid TEXT UNIQUE NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            designation TEXT NOT NULL
+        );
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person_id INTEGER NOT NULL,
+            image_filename TEXT NOT NULL,
+            FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
+        );
+    ''')
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS track_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -305,36 +324,40 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
             start_img TEXT,
             end_img TEXT,
             id_img TEXT,
-            start_frame INTEGER,
             start_time DATETIME,
-            end_frame INTEGER,
             end_time DATETIME,
             entry INTEGER,
             exit INTEGER
-        )
+        );
     ''')
     conn.commit()
+
+
+def save_track_info(time_prefix, camera, target_trks, fps=30,
+                    db_path='../files/data.db'):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
    
     for trk_id, trk in target_trks.items():
         identity = trk.identity if trk.identity is not None else str(uuid.uuid4())
-        id_cost = ''
+        
         start_img = trk.start_img if trk.start_img is not None else ""
+        start_time = utils.frame_timestamp(
+            time_prefix, frame=trk.span[0], fps=fps
+        )
         end_img = trk.end_img if trk.end_img is not None else ""
-        start_frame = trk.span[0]
-        start_time = utils.frame_timestamp(time_prefix, frame=start_frame,
-                                               fps=fps)
-        end_frame = trk.span[1]
-        end_time = utils.frame_timestamp(time_prefix, frame=end_frame,
-                                             fps=fps)
+        end_time = utils.frame_timestamp(
+            time_prefix, frame=trk.span[1], fps=fps
+        )
 
         cursor.execute('''
             INSERT INTO track_info (
-                track_id, camera, time_prefix, identity, id_cost, start_img,
-                end_img, start_frame, start_time, end_frame, end_time
+                track_id, camera, time_prefix, identity,
+                start_img, end_img, start_time, end_time
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (trk_id, camera, time_prefix, identity, id_cost, start_img,
-              end_img, start_frame, start_time, end_frame, end_time))
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (trk_id, camera, time_prefix, identity,
+              start_img, end_img, start_time, end_time))
 
     conn.commit()
     conn.close()
