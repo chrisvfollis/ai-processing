@@ -123,12 +123,13 @@ def memory_usage(focus, n=5, threshold=None):
         return total_process_memory
 
     elif focus == 'objects':
-        def _log_largest_objects(obj_list, n, obj_category):
-            if obj_list:
+        def _log_largest_objects(object_list, n, obj_category):
+            if object_list:
                 print(f'Largest {obj_category} objects:')
-                for obj, size in standard_objects[:n]:
+                for obj, size in object_list[:n]:
                     print(f'Size: {size} MB | Type: {type(obj)}')
-                
+                    print(obj)
+
             else:
                 print(f'No {obj_category} objects found')
 
@@ -138,7 +139,7 @@ def memory_usage(focus, n=5, threshold=None):
             safely handling exceptions.
             '''
             try:
-                raw_size = sys.getsizeof(obj)
+                raw_size = sys.getsizeof(object)
                 return round((raw_size / 1e6), 2)
             except TypeError:
                 return 0
