@@ -874,7 +874,7 @@ class TrackingPipeline:
 
                     if (
                         (lifespan < self.min_lifespan) and
-                        (not trk.face_detections)
+                        (not trk.identity)
                     ):
                         self.filtered_trks[id] = trk
                         self.lifespan_filtered += 1
@@ -889,7 +889,7 @@ class TrackingPipeline:
                 expected_avg = (expected_kps * expected_conf) / 17
 
                 for id, trk in self.all_trks.items():
-                    if trk.face_detections:
+                    if trk.identity:
                         continue
                     n_frames = len(trk.keypoints.keys())
                     if n_frames == 0:

@@ -127,8 +127,6 @@ def log_current_memory_usage(focus, n=5):
             print(f'PID {pid} - {name}: {mem:.2f} MB')
 
     elif focus == 'objects':
-        import tensorflow as tf
-
         gc.collect()
         objects = gc.get_objects()
 
@@ -153,10 +151,8 @@ def log_current_memory_usage(focus, n=5):
         else:
             print('No uncollectible standard objects found.')
         
-        pt_obj_total_cpu = torch.cuda.memory_allocated(device='cpu') / 1e6
-        pt_obj_total_gpu = torch.cuda.memory_allocated() / 1e6
-        print(f"Total pytorch object CPU memory: {pt_obj_total_cpu:.2f} MB")
-        print(f"Total pytorch object GPU memory: {pt_obj_total_gpu:.2f} MB")
+        pt_obj_gpu_total = torch.cuda.memory_allocated() / 1e6
+        print(f"Total pytorch object GPU memory: {pt_obj_gpu_total:.2f} MB")
 
 
 def log_low_memory_warnings(stop_event, threshold, interval):
