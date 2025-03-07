@@ -7,6 +7,7 @@ from utilities import io_utils
 from utilities import utilities as utils
 import gc
 import signal
+import traceback
 
 os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -47,19 +48,26 @@ def run_processing_pipelines(row, model_info, device, credentials):
     if not io_utils.download_s3_footage(video_file, credentials):
         return False
 
-    inference_pipeline = InferencePipeline(video_file, model_info, device)
-
-    if not inference_pipeline.skim():
-        io_utils.delete_s3_footage(video_file, credentials)
-        return False
+    inference_pipeline = InferencePipeline(
+        video_file, model_info,
+        device
+    )
     
     try:
+        valid = inference_pipeline.skim()
+        if not valid:
+            io_utils.delete_s3_footage(video_file, credentials)
+            return False
         inference_output = inference_pipeline.run()
     except Exception as e:
-        print(f'Error in inference pipeline: {e}')
+        print(f'Error: {e}')
+        print(traceback.format_exc()) 
 
-    tracking_pipeline = TrackingPipeline(video_file, time_prefix,
-                                *inference_output, device)
+    tracking_pipeline = TrackingPipeline(
+        video_file, time_prefix,
+        *inference_output,
+        device
+    )
 
     del inference_pipeline, inference_output
     io_utils.clear_memory()
@@ -67,7 +75,8 @@ def run_processing_pipelines(row, model_info, device, credentials):
     try:
         tracking_pipeline.run()
     except Exception as e:
-        print(f'Error in tracking pipeline: {e}')
+        print(f'Error: {e}')
+        print(traceback.format_exc()) 
 
     io_utils.save_track_info(
         time_prefix, camera, tracking_pipeline.inactive_trks,
