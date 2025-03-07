@@ -289,7 +289,7 @@ def get_employee(image_path, db_path='../files/data.db'):
         return None
 
 
-def save_track_info(time_prefix, camera, all_trks, fps=30,
+def save_track_info(time_prefix, camera, target_trks, fps=30,
                     db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -315,8 +315,7 @@ def save_track_info(time_prefix, camera, all_trks, fps=30,
     ''')
     conn.commit()
    
-    for id, trk in all_trks.items():
-        track_id = id
+    for trk_id, trk in target_trks.items():
         identity = trk.identity if trk.identity is not None else str(uuid.uuid4())
         id_cost = ''
         start_img = trk.start_img if trk.start_img is not None else ""
@@ -334,7 +333,7 @@ def save_track_info(time_prefix, camera, all_trks, fps=30,
                 end_img, start_frame, start_time, end_frame, end_time
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (track_id, camera, time_prefix, identity, id_cost, start_img,
+        ''', (trk_id, camera, time_prefix, identity, id_cost, start_img,
               end_img, start_frame, start_time, end_frame, end_time))
 
     conn.commit()

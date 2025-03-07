@@ -19,7 +19,7 @@ from utilities import utilities as utils
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
-                 face_data, device, continuous=True, conf_thresh=0.65):
+                 face_data, device, continuous_mode=True, conf_thresh=0.65):
         self.video_file = video_file
         self.cam = video_file.split('.')[0].split('_')[-1]
         self.f_num = 0
@@ -39,9 +39,9 @@ class TrackingPipeline:
 
         self.device = device
 
-        self.all_trks = {}
         self.active_trks = {}
-        self.trk_cache = {}
+        self.inactive_trks = {}
+
         self.filtered_trks = {}
 
         self.kp_filtered = 0
@@ -93,10 +93,10 @@ class TrackingPipeline:
         self.pkl_io_time = 0
         self.embedding_read_time = 0
 
-        self.continuous = continuous
+        self.continuous_mode = continuous_mode
         self.prior_pkl = ''
     
-        if continuous:
+        if continuous_mode == True:
             self.persist_prior_tracks()
 
     def __getstate__(self):
@@ -109,6 +109,10 @@ class TrackingPipeline:
         'Restore object state after unpickling'
         self.__dict__.update(state)
         self.device = torch.device(state['device'])
+    
+    @property
+    def all_trks(self):
+        return {**self.active_trks, **self.inactive_trks}
 
     def persist_prior_tracks(self):
         start_persist = time.perf_counter()
@@ -158,7 +162,7 @@ class TrackingPipeline:
             reset_cached[trk_id] = trk
 
         self.active_trks = reset_active
-        self.trk_cache = reset_cached
+        self.inactive_trks = reset_cached
 
         end_persist = time.perf_counter()
         self.persist_time += (end_persist - start_persist)
@@ -234,7 +238,7 @@ class TrackingPipeline:
             start_prediction = time.perf_counter()
 
             cached = []
-            for id, trk in self.active_trks.items():
+            for trk_id, trk in self.active_trks.items():
                 if (self.f_num - trk.span[1]) <= self.max_absence:
                     if not utils.out_of_bounds(trk.x, img_dims=self.resolution):
                         trk.predict()
@@ -243,10 +247,10 @@ class TrackingPipeline:
                         )
                     trk.add_state(trk.x, self.f_num)
                 else:
-                    self.trk_cache[id] = trk
-                    cached.append(id)
-            for id in cached:
-                del self.active_trks[id]
+                    self.inactive_trks[trk_id] = trk
+                    cached.append(trk_id)
+            for trk_id in cached:
+                del self.active_trks[trk_id]
             
             end_prediction = time.perf_counter()
             self.prediction_time += (end_prediction - start_prediction)
@@ -285,59 +289,6 @@ class TrackingPipeline:
                 return cost_matrix
 
             def _assign_matches(cost_matrix):
-                def _filter_sparse_rows(cost_matrix):
-                    '''
-                    This function helps ensure linear assignment is feasible on a cost
-                    matrix by whittling down problematic sets of sparse rows. These
-                    sets are characterized by the following properties:
-
-                    - Each row has only one column it could possibly be assigned to. It is
-                    the one column with a finite cost value in that row; all the others
-                    contain "inf" due to exceeding a cost threshold.
-                    - The one viable column in a given row is the one viable column in
-                    the entire set. In other words, only one row from each set can
-                    ultimately be matched with a column. 
-                    
-                    Once all such sets have been identified, each is reduced to a single
-                    row (whichever has the lowest match cost to the viable volumn). The
-                    other rows from each set are filtered from the cost matrix, increasing
-                    the number of new tracks to subsequently initialize for this frame.
-                    '''
-
-                    matrix_coordinates = []
-                    unique_cols = set()
-                    keep = []
-                    filtered_matrix = []
-
-                    # For any row containing one finite entry, store the entry's matrix
-                    # coordinates and add its column index to unique_cols:
-                    for r in range(len(cost_matrix)):
-                        row = cost_matrix[r]
-                        if np.isfinite(row).sum() == 1:
-                            c = int(np.where(row != float('inf'))[0][0])
-                            matrix_coordinates.append((r, c))
-                            unique_cols.add(c)
-
-                    # For each column index from the relevant entries identified above,
-                    # add the row index of the minimum-value entry in that column:
-                    for c in unique_cols:
-                        rows_w_finite_vals = [rc[0] for rc in matrix_coordinates if rc[1] == c]
-                        min_val_row = min(rows_w_finite_vals, key=lambda r: cost_matrix[r, c])
-                
-                        keep.append(min_val_row)
-
-                    all_rows = set(range(cost_matrix.shape[0]))
-                    used_rows = set(rc[0] for rc in matrix_coordinates)
-
-                    unused = list(all_rows - used_rows)
-                    keep.extend(unused)
-                    keep = sorted(keep)
-
-                    for i in keep:
-                        filtered_matrix.append(cost_matrix[i])
-
-                    return np.array(filtered_matrix), keep
-
                 assignments_dict = {}
 
                 # Construct boolean arrays denoting which rows/columns from the cost
@@ -363,7 +314,7 @@ class TrackingPipeline:
                     # Handle cases where the "cost matrix is infeasible" error is
                     # thrown during the linear_sum_assignment execution:
                     except ValueError:
-                        filtered_matrix, keep = _filter_sparse_rows(filtered_matrix)
+                        filtered_matrix, keep = utils.filter_sparse_rows(filtered_matrix)
                         keep_to_orig_row_map = np.where(viable_rows)[0][keep]
 
                         if filtered_matrix.size > 0:
@@ -390,8 +341,8 @@ class TrackingPipeline:
 
             matched = []
             for trk_index, measurement_index in assignments.items():
-                id = trk_ids[trk_index]
-                trk = self.active_trks[id]
+                trk_id = trk_ids[trk_index]
+                trk = self.active_trks[trk_id]
 
                 matched.append(measurement_index)
 
@@ -452,8 +403,8 @@ class TrackingPipeline:
                            .values.tolist())
 
             trk_ids = sorted(self.active_trks.keys())
-            for id in trk_ids:
-                trk = self.active_trks[id]
+            for trk_id in trk_ids:
+                trk = self.active_trks[trk_id]
                 try:
                     box = trk.detections[self.f_num][:4]
                 except KeyError:
@@ -474,7 +425,7 @@ class TrackingPipeline:
                 if cost_matrix[f_idx][p_idx] >= cutoff:
                     continue
         
-                id = trk_ids[p_idx]
+                trk_id = trk_ids[p_idx]
                 face_box = face_boxes[f_idx]
                 f_matches = face_df.loc[
                     (face_df['x'] == face_box[0]) &
@@ -483,357 +434,16 @@ class TrackingPipeline:
                     (face_df['h'] == face_box[3])
                 ]
 
-                self.active_trks[id].add_face_detection(f_matches, self.f_num)
+                self.active_trks[trk_id].add_face_detection(f_matches, self.f_num)
             
             end_associate = time.perf_counter()
             self.identity_matching_time = (end_associate - start_associate)
-        
-        def _assign_identities():
-            def _group_tracks(trk_ids):
-                def _construct_track_graph(trk_ids):
-                    track_graph = np.diag([1] * len(trk_ids)).tolist()
-
-                    for i in range(len(trk_ids)):
-                        trk = self.all_trks[trk_ids[i]]
-                        for j in range(i + 1, len(trk_ids)):
-                            trk2 = self.all_trks[trk_ids[j]]
-
-                            if utils.is_coincident(trk.span, trk2.span):
-                                track_graph[i][j] = 1
-                                track_graph[j][i] = 1
-
-                    return np.array(track_graph)
-                
-                def _construct_meta_graph(trk_sets):
-                    set_graph = np.diag([1] * len(trk_sets)).tolist()
-
-                    for i in range(len(trk_sets)):
-                        for j in range(i + 1, len(trk_sets)):
-                            if bool(set(track_sets[i]) & set(trk_sets[j])):
-                                set_graph[i][j] = 1
-                                set_graph[j][i] = 1
-
-                    return np.array(set_graph)
-
-                def _build_sets(graph):
-                    num_tracks = len(graph)
-                    visited = [False] * num_tracks
-                    all_sets = []
-
-                    for track in range(num_tracks):
-                        if not visited[track]:
-                            neighbor_set = []
-
-                            for neighbor in range(num_tracks):
-                                if graph[track][neighbor] == 1:
-                                    neighbor_set.append(neighbor)
-                                    visited[neighbor] = True
-
-                            all_sets.append(neighbor_set)
-                        
-                    return all_sets
-                
-                def _isolate_groups(meta_sets):
-                    grouped = [False] * len(meta_sets)
-
-                    group_contents = []
-                    groups = []
-
-                    for i in range(len(meta_sets)):
-                        if grouped[i]:
-                            continue
-            
-                        group_contents.append(meta_sets[i])
-                        grouped[i] = True
-
-                        groups.append([i])
-
-                        for j in range(i + 1, len(meta_sets)):
-                            if bool(set(group_contents[-1]) & set(meta_sets[j])):
-                                
-                                group_contents[-1] += meta_sets[j]
-
-                                groups[-1].append(j)
-                                grouped[j] = True
-
-                    return groups
-                
-                track_graph = _construct_track_graph(trk_ids)
-                track_sets = _build_sets(track_graph)
-
-                meta_graph = _construct_meta_graph(track_sets)
-                meta_sets = _build_sets(meta_graph)
-
-                groups = _isolate_groups(meta_sets)
-
-                return groups, meta_sets, track_sets
-
-            def _build_cost_matrices(trk_id_costs, track_sets):
-                trk_ids = sorted(trk_id_costs.keys())
-                idx_to_id = {idx: trk_id for idx, trk_id in enumerate(trk_ids)}
-
-                matrices = []
-
-                track_mappings = {}
-                identity_mappings = {}
-
-                for k, track_set in enumerate(track_sets):
-                    tracks = sorted([idx_to_id[track_index] for track_index in track_set])
-                    identities = sorted(list(set(
-                        [identity for trk_id in tracks for identity in trk_id_costs[trk_id]]
-                    )))
-
-                    identity_mappings[k] = []
-                    track_mappings[k] = []
-
-                    for identity in identities:
-                        identity_mappings[k].append(identity)
-                    
-                    rows = len(tracks)
-                    cols = len(identities)
-
-                    cost_matrix = [[float('inf')] * cols for _ in range(rows)]
-                    for i, trk_id in enumerate(tracks):
-                        for j, identity in enumerate(identities):
-                            if identity not in trk_id_costs[trk_id]:
-                                continue
-
-                            cost = trk_id_costs[trk_id][identity]
-                            cost_matrix[i][j] = cost
-
-                        track_mappings[k].append(trk_id)
-            
-                    matrices.append(np.array(cost_matrix))
-                
-                return matrices, track_mappings, identity_mappings
-
-            def _permute_constraint_cascades(groups, meta_sets):
-                def _remove_duplicates(track_order):
-                    seen = set()
-                    return [x for x in track_order if not (x in seen or seen.add(x))]
-                
-                def _filter_redundant(groups, group_permutations, meta_sets):
-                    def _find_independent(group_members, meta_sets):
-                        independent = []
-
-                        for i in range(len(group_members)):
-                            for j in range(i + 1, len(group_members)):
-                                if not bool(set(meta_sets[i]) & set(meta_sets[j])):
-                                    independent.append(str([i, j]).strip('[]'))
-                        
-                        return independent
-                    
-                    filtered_group_permutations = []
-
-                    for i in range(len(group_permutations)):
-                        group_members = groups[i]
-                        group_member_permutations = group_permutations[i]
-                        if len(group_members) < 2:
-                            filtered_group_permutations.append(group_member_permutations)
-                            continue
-                        filtered_gm_permutations = []
-                        independent = _find_independent(group_members, meta_sets)
-                        for j in range(len(group_member_permutations)):
-                            for sequence in independent:
-                                if sequence not in str(group_member_permutations[j]):
-                                    filtered_gm_permutations.append(
-                                        group_member_permutations[j]
-                                    )
-                        filtered_group_permutations.append(filtered_gm_permutations)
-                    
-                    return filtered_group_permutations
-
-                group_permutations = []
-
-                for group in groups:
-                    group_permutations.append(list(set(permutations(group))))
-                
-                group_permutations = _filter_redundant(
-                    groups, group_permutations, meta_sets
-                )
-                
-                all_orders = []
-
-                for group in group_permutations:
-                    group_orders = []
-
-                    for meta_order in group:
-                        track_processing_permutations = [[]]
-
-                        for meta_idx in meta_order:
-                            meta_set = meta_sets[meta_idx]
-                            meta_set_permutations = list(permutations(meta_set))
-
-                            track_processing_permutations = [
-                                existing_order + list(new_order)
-                                for existing_order in track_processing_permutations
-                                for new_order in meta_set_permutations
-                            ]
-
-                        unique_orders = set()
-                        for track_order in track_processing_permutations:
-                            cleaned_track_order = tuple(_remove_duplicates(track_order))
-                            unique_orders.add(cleaned_track_order)
-
-                        group_orders.extend(list(unique_orders))
-
-
-                    all_orders.append(group_orders)
-
-                return all_orders
-
-            def _sync_prior_assignments(assigned, tracks, identities, matrix):
-                for trk_idx, track in enumerate(tracks):
-                    if track in assigned:
-                        try:
-                            id_idx = identities.index(assigned[track])
-                            matrix[trk_idx, :] = float('inf')
-                            matrix[:, id_idx] = float('inf')
-                            matrix[trk_idx, id_idx] = 0
-                        except ValueError:
-                            print("Non-overlapping identity")
-                            continue
-                return matrix
-
-            def _filter_sparse_rows(cost_matrix):
-                matrix_coordinates = []
-                unique_cols = set()
-                keep = []
-                filtered_matrix = []
-
-                # For any row containing one finite entry, store the entry's matrix
-                # coordinates and add its column index to unique_cols:
-                for r in range(len(cost_matrix)):
-                    row = cost_matrix[r]
-                    if np.isfinite(row).sum() == 1:
-                        c = int(np.where(row != float('inf'))[0][0])
-                        matrix_coordinates.append((r, c))
-                        unique_cols.add(c)
-
-                # For each column index from the relevant entries identified above,
-                # add the row index of the minimum-value entry in that column:
-                for c in unique_cols:
-                    rows_w_finite_vals = [rc[0] for rc in matrix_coordinates if rc[1] == c]
-                    min_val_row = min(rows_w_finite_vals, key=lambda r: cost_matrix[r, c])
-            
-                    keep.append(min_val_row)
-
-                all_rows = set(range(cost_matrix.shape[0]))
-                used_rows = set(rc[0] for rc in matrix_coordinates)
-
-                unused = list(all_rows - used_rows)
-                keep.extend(unused)
-                keep = sorted(keep)
-
-                for i in keep:
-                    filtered_matrix.append(cost_matrix[i])
-
-                return np.array(filtered_matrix), keep
-
-            start_assign = time.perf_counter()
-            no_id_c = 0
-            id_c = 0
-            trk_id_costs = {}
-            for trk_id, trk in self.all_trks.items():
-                id_costs = trk.calc_id_costs()
-                if not id_costs:
-                    no_id_c += 1
-                    continue
-                id_c += 1
-                trk_id_costs[trk_id] = id_costs
-            
-            trk_ids = sorted(trk_id_costs.keys())
-            groups, meta_sets, track_sets = _group_tracks(trk_ids)
-
-            results = _build_cost_matrices(trk_id_costs, track_sets)
-            trk_set_cost_matrices, track_mappings, identity_mappings = results
-
-            unique_cascades = _permute_constraint_cascades(groups, meta_sets)
-
-            all_optimal_assignments = {}
-            for group in unique_cascades:
-                min_cost = float('inf')
-                optimal_assignments = {}
-                for permutation in group:
-                    assigned = {}
-                    cost = 0
-                    ordered_matrices = [
-                        trk_set_cost_matrices[k].copy() for k in permutation
-                    ]
-                    permutation_to_original = {k: i for k, i in enumerate(permutation)}
-
-                    for k, matrix in enumerate(ordered_matrices):
-                        original_index = permutation_to_original[k]
-                        tracks = track_mappings[original_index]
-                        identities = identity_mappings[original_index]
-
-                        matrix = _sync_prior_assignments(assigned, tracks,
-                                                        identities, matrix)
-
-                        viable_rows = ~np.isinf(matrix).all(axis=1)
-                        viable_cols = ~np.isinf(matrix).all(axis=0)
-
-                        if viable_rows.any() and viable_cols.any():
-                            try:
-                                filtered_matrix = matrix[np.ix_(viable_rows,
-                                                                viable_cols)]
-
-                                if filtered_matrix.size > 0:
-                                    row_ind, col_ind = linear_sum_assignment(
-                                        filtered_matrix
-                                    )
-
-                                    orig_row_ind = np.where(viable_rows)[0]
-                                    orig_col_ind = np.where(viable_cols)[0]
-
-                                    for i, j in zip(row_ind, col_ind):
-                                        orig_row = orig_row_ind[i]
-                                        orig_col = orig_col_ind[j]
-                                        cost += matrix[orig_row, orig_col]
-                                        assigned[tracks[orig_row]] = (identities
-                                                                    [orig_col])
-
-                            except ValueError:
-                                filtered_matrix, keep = _filter_sparse_rows(
-                                    filtered_matrix
-                                )
-                                keep_to_orig_row_map = (np.where(viable_rows)
-                                                        [0][keep])
-
-                                if filtered_matrix.size > 0:
-                                    try:
-                                        row_ind, col_ind = linear_sum_assignment(
-                                            filtered_matrix
-                                        )
-                                        orig_row_ind = [keep[i] for i in row_ind]
-                                        for i, j in zip(row_ind, col_ind):
-                                            orig_row = keep_to_orig_row_map[i]
-                                            orig_col = np.where(viable_cols)[0][j]
-                                            cost += matrix[orig_row, orig_col]
-                                            assigned[tracks[orig_row]] = (identities
-                                                                        [orig_col])
-                                    except ValueError:
-                                        print('No feasible identity assignments')
-        
-                    if cost < min_cost:
-                        min_cost = cost
-                        optimal_assignments = assigned
-                
-                for trk_id, identity in optimal_assignments.items():
-                    self.all_trks[trk_id].identity = identity
-                
-                all_optimal_assignments.update(optimal_assignments)
-            
-            end_assign = time.perf_counter()
-            self.identity_matching_time = (end_assign - start_assign)
-
-            return all_optimal_assignments
-        
-        memory_snapshot = utils.memory_usage('objects')
 
         if not prior_pipeline:
             print(f"Running tracking pipeline for {self.video_file}...")
-        start_run = time.perf_counter()
+            start_run = time.perf_counter()
+
+        memory_snapshot = utils.memory_usage('objects')
 
         while self.f_num < self.total_frames:
             if self.active_trks:
@@ -855,140 +465,468 @@ class TrackingPipeline:
                 memory_snapshot = utils.memory_usage(
                     'objects', threshold=memory_snapshot
                 )
-
             self.f_num += 1
 
-        if (not prior_pipeline) and (self.continuous == True):
-            self.all_trks = self.trk_cache
-            _assign_identities()
-    
-            self.handle_results()
-    
-        elif (not prior_pipeline) and (self.continuous == False):
-            self.all_trks = {**self.active_trks, **self.trk_cache}
-            _assign_identities()
-        
-        end_run = time.perf_counter()
-        self.primary_run_time += (end_run - start_run)
-    
-    def handle_results(self):
-        def _finalize_and_filter():
-            def _filter_by_lifespan():
-                for id, trk in self.all_trks.items():
-                    lifespan = trk.span[1] - trk.span[0]
+        if not prior_pipeline:
+            if self.continuous_mode == True:
+                target = 'inactive_trks'
+            elif self.continuous_mode == False:
+                target = 'all_trks'
 
-                    if (
-                        (lifespan < self.min_lifespan) and
-                        (not trk.identity)
-                    ):
-                        self.filtered_trks[id] = trk
-                        self.lifespan_filtered += 1
+            self.assign_identities(target)
+            self.filter_tracks(target)
+            self.get_track_images('all_trks')
+
+            if self.continuous_mode == True:
+                self.save_pipeline_state()
+            
+            end_run = time.perf_counter()
+            self.primary_run_time += (end_run - start_run)
+            self.save_runtime_data()
+        
+    def assign_identities(self, target):
+        def _group_tracks(trk_ids, target_trks):
+            def _construct_track_graph(trk_ids):
+                track_graph = np.diag([1] * len(trk_ids)).tolist()
+
+                for i in range(len(trk_ids)):
+                    trk = target_trks[trk_ids[i]]
+                    for j in range(i + 1, len(trk_ids)):
+                        trk2 = target_trks[trk_ids[j]]
+
+                        if utils.is_coincident(trk.span, trk2.span):
+                            track_graph[i][j] = 1
+                            track_graph[j][i] = 1
+
+                return np.array(track_graph)
+            
+            def _construct_meta_graph(trk_sets):
+                set_graph = np.diag([1] * len(trk_sets)).tolist()
+
+                for i in range(len(trk_sets)):
+                    for j in range(i + 1, len(trk_sets)):
+                        if bool(set(track_sets[i]) & set(trk_sets[j])):
+                            set_graph[i][j] = 1
+                            set_graph[j][i] = 1
+
+                return np.array(set_graph)
+
+            def _build_sets(graph):
+                num_tracks = len(graph)
+                visited = [False] * num_tracks
+                all_sets = []
+
+                for track in range(num_tracks):
+                    if not visited[track]:
+                        neighbor_set = []
+
+                        for neighbor in range(num_tracks):
+                            if graph[track][neighbor] == 1:
+                                neighbor_set.append(neighbor)
+                                visited[neighbor] = True
+
+                        all_sets.append(neighbor_set)
+                    
+                return all_sets
+            
+            def _isolate_groups(meta_sets):
+                grouped = [False] * len(meta_sets)
+
+                group_contents = []
+                groups = []
+
+                for i in range(len(meta_sets)):
+                    if grouped[i]:
+                        continue
+        
+                    group_contents.append(meta_sets[i])
+                    grouped[i] = True
+
+                    groups.append([i])
+
+                    for j in range(i + 1, len(meta_sets)):
+                        if bool(set(group_contents[-1]) & set(meta_sets[j])):
+                            
+                            group_contents[-1] += meta_sets[j]
+
+                            groups[-1].append(j)
+                            grouped[j] = True
+
+                return groups
+            
+            track_graph = _construct_track_graph(trk_ids)
+            track_sets = _build_sets(track_graph)
+
+            meta_graph = _construct_meta_graph(track_sets)
+            meta_sets = _build_sets(meta_graph)
+
+            groups = _isolate_groups(meta_sets)
+
+            return groups, meta_sets, track_sets
+
+        def _build_cost_matrices(cost_data, track_sets):
+            trk_ids = sorted(cost_data.keys())
+            idx_to_id = {idx: trk_id for idx, trk_id in enumerate(trk_ids)}
+
+            matrices = []
+
+            track_mappings = {}
+            identity_mappings = {}
+
+            for k, track_set in enumerate(track_sets):
+                tracks = sorted([idx_to_id[track_index] for track_index in track_set])
+                identities = sorted(list(set(
+                    [identity for trk_id in tracks for identity in cost_data[trk_id]]
+                )))
+
+                identity_mappings[k] = []
+                track_mappings[k] = []
+
+                for identity in identities:
+                    identity_mappings[k].append(identity)
                 
-                for id in self.filtered_trks.keys():
-                    try:
-                        del self.all_trks[id]
-                    except KeyError:
-                        continue
+                rows = len(tracks)
+                cols = len(identities)
+
+                cost_matrix = [[float('inf')] * cols for _ in range(rows)]
+                for i, trk_id in enumerate(tracks):
+                    for j, identity in enumerate(identities):
+                        if identity not in cost_data[trk_id]:
+                            continue
+
+                        cost = cost_data[trk_id][identity]
+                        cost_matrix[i][j] = cost
+
+                    track_mappings[k].append(trk_id)
         
-            def _filter_by_keypoints(expected_kps=3, expected_conf=.55):
-                expected_avg = (expected_kps * expected_conf) / 17
+                matrices.append(np.array(cost_matrix))
+            
+            return matrices, track_mappings, identity_mappings
 
-                for id, trk in self.all_trks.items():
-                    if trk.identity:
-                        continue
-                    n_frames = len(trk.keypoints.keys())
-                    if n_frames == 0:
-                        trk.kp_avg = 0
-                        self.filtered_trks[id] = trk
-                        continue
+        def _permute_constraint_cascades(groups, meta_sets):
+            def _remove_duplicates(track_order):
+                seen = set()
+                return [x for x in track_order if not (x in seen or seen.add(x))]
+            
+            def _filter_redundant(groups, group_permutations, meta_sets):
+                def _find_independent(group_members, meta_sets):
+                    independent = []
 
-                    total_conf = sum(trk.keypoints[f][:, 2].sum()
-                                    for f in trk.keypoints.keys())
-                    trk.kp_avg = total_conf / (n_frames * 17)
-
-                    if trk.kp_avg < expected_avg:
-                        self.filtered_trks[id] = trk
-                        self.kp_filtered += 1
-
-                for id in self.filtered_trks.keys():
-                    try:
-                        del self.all_trks[id]
-                    except KeyError:
-                        continue
-
-            def _filter_by_size():
-                expected_avg = (self.resolution[0] / 24) * (self.resolution[1] / 12)
-                for id, trk in self.all_trks.items():
-                    if trk.identity:
-                        continue
-                    box_sizes = [math.prod(detection[2:4]) for detection in trk.detections.values()]
-                    avg = sum(box_sizes) / len(box_sizes)
-
-                    if avg < expected_avg:
-                        self.filtered_trks[id] = trk
-                        self.size_filtered += 1
+                    for i in range(len(group_members)):
+                        for j in range(i + 1, len(group_members)):
+                            if not bool(set(meta_sets[i]) & set(meta_sets[j])):
+                                independent.append(str([i, j]).strip('[]'))
+                    
+                    return independent
                 
-                for id in self.filtered_trks.keys():
+                filtered_group_permutations = []
+
+                for i in range(len(group_permutations)):
+                    group_members = groups[i]
+                    group_member_permutations = group_permutations[i]
+                    if len(group_members) < 2:
+                        filtered_group_permutations.append(group_member_permutations)
+                        continue
+                    filtered_gm_permutations = []
+                    independent = _find_independent(group_members, meta_sets)
+                    for j in range(len(group_member_permutations)):
+                        for sequence in independent:
+                            if sequence not in str(group_member_permutations[j]):
+                                filtered_gm_permutations.append(
+                                    group_member_permutations[j]
+                                )
+                    filtered_group_permutations.append(filtered_gm_permutations)
+                
+                return filtered_group_permutations
+
+            group_permutations = []
+
+            for group in groups:
+                group_permutations.append(list(set(permutations(group))))
+            
+            group_permutations = _filter_redundant(
+                groups, group_permutations, meta_sets
+            )
+            
+            all_orders = []
+
+            for group in group_permutations:
+                group_orders = []
+
+                for meta_order in group:
+                    track_processing_permutations = [[]]
+
+                    for meta_idx in meta_order:
+                        meta_set = meta_sets[meta_idx]
+                        meta_set_permutations = list(permutations(meta_set))
+
+                        track_processing_permutations = [
+                            existing_order + list(new_order)
+                            for existing_order in track_processing_permutations
+                            for new_order in meta_set_permutations
+                        ]
+
+                    unique_orders = set()
+                    for track_order in track_processing_permutations:
+                        cleaned_track_order = tuple(_remove_duplicates(track_order))
+                        unique_orders.add(cleaned_track_order)
+
+                    group_orders.extend(list(unique_orders))
+
+
+                all_orders.append(group_orders)
+
+            return all_orders
+
+        def _sync_prior_assignments(assigned, tracks, identities, matrix):
+            for trk_idx, track in enumerate(tracks):
+                if track in assigned:
                     try:
-                        del self.all_trks[id]
-                    except KeyError:
+                        id_idx = identities.index(assigned[track])
+                        matrix[trk_idx, :] = float('inf')
+                        matrix[:, id_idx] = float('inf')
+                        matrix[trk_idx, id_idx] = 0
+                    except ValueError:
+                        print("Non-overlapping identity")
                         continue
-
-            _filter_by_lifespan()
-            _filter_by_keypoints()
-            _filter_by_size()
+            return matrix
         
-        def _get_track_images(tracks, vid_dir='../files/input/'):
-            vid_path = os.path.join(vid_dir, self.video_file)
-            cap = cv2.VideoCapture(vid_path)
-            if not cap.isOpened():
-                return None
+        start_assign = time.perf_counter()
 
-            for trk in tracks.values():
-                images = []
+        target_trks = getattr(self, target)
+        cost_data = {}
 
-                percentile = 75
-                clear_frames = None
-                while (not clear_frames) and (percentile >= 25):
-                    clear_frames = trk.get_high_keypoint_frames(percentile=percentile)
-                    percentile -= 10
-
-                if clear_frames:
-                    frames = [clear_frames[0], clear_frames[-1]]
-                else:
-                    frames = trk.span
-
-                for f in frames:
-                    x, y, w, h = map(int, trk.detections[f][:4])
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, f)
-                    ret, frame = cap.read()
-                    if not ret:
-                        images.append(None)
-                        continue
-                    cropped = frame[y:y+h, x:x+w]
-                    images.append(cropped)
-
-                trk.start_img = io_utils.save_event_image(images[0])
-                trk.end_img = io_utils.save_event_image(images[1])
-
-            cap.release()
+        for trk_id, trk in target_trks.items():
+            id_assn_costs = trk.calc_id_costs()
+            if not id_assn_costs:
+                continue
+            cost_data[trk_id] = id_assn_costs
         
-        if self.continuous:
-            for trk in self.all_trks.values():
-                self.cost_method_data.extend(trk.cost_method_data)
-            self.save_pipeline_state()
+        trk_ids = sorted(cost_data.keys())
+        groups, meta_sets, track_sets = _group_tracks(trk_ids, target_trks)
 
-        _get_track_images(self.all_trks)
+        results = _build_cost_matrices(cost_data, track_sets)
+        trk_set_cost_matrices, track_mappings, identity_mappings = results
 
-        self.save_runtime_data()
-        _finalize_and_filter()
+        unique_cascades = _permute_constraint_cascades(groups, meta_sets)
+
+        all_optimal_assignments = {}
+        for group in unique_cascades:
+            min_cost = float('inf')
+            optimal_assignments = {}
+            for permutation in group:
+                assigned = {}
+                cost = 0
+                ordered_matrices = [
+                    trk_set_cost_matrices[k].copy() for k in permutation
+                ]
+                permutation_to_original = {k: i for k, i in enumerate(permutation)}
+
+                for k, matrix in enumerate(ordered_matrices):
+                    original_index = permutation_to_original[k]
+                    tracks = track_mappings[original_index]
+                    identities = identity_mappings[original_index]
+
+                    matrix = _sync_prior_assignments(assigned, tracks,
+                                                    identities, matrix)
+
+                    viable_rows = ~np.isinf(matrix).all(axis=1)
+                    viable_cols = ~np.isinf(matrix).all(axis=0)
+
+                    if viable_rows.any() and viable_cols.any():
+                        try:
+                            filtered_matrix = matrix[np.ix_(viable_rows,
+                                                            viable_cols)]
+
+                            if filtered_matrix.size > 0:
+                                row_ind, col_ind = linear_sum_assignment(
+                                    filtered_matrix
+                                )
+
+                                orig_row_ind = np.where(viable_rows)[0]
+                                orig_col_ind = np.where(viable_cols)[0]
+
+                                for i, j in zip(row_ind, col_ind):
+                                    orig_row = orig_row_ind[i]
+                                    orig_col = orig_col_ind[j]
+                                    cost += matrix[orig_row, orig_col]
+                                    assigned[tracks[orig_row]] = (
+                                        identities[orig_col]
+                                    )
+
+                        except ValueError:
+                            filtered_matrix, keep = utils.filter_sparse_rows(
+                                filtered_matrix
+                            )
+                            keep_to_orig_row_map = (
+                                np.where(viable_rows)[0][keep]
+                            )
+                            if filtered_matrix.size > 0:
+                                try:
+                                    row_ind, col_ind = linear_sum_assignment(
+                                        filtered_matrix
+                                    )
+                                    orig_row_ind = [keep[i] for i in row_ind]
+                                    for i, j in zip(row_ind, col_ind):
+                                        orig_row = keep_to_orig_row_map[i]
+                                        orig_col = np.where(viable_cols)[0][j]
+                                        cost += matrix[orig_row, orig_col]
+                                        assigned[tracks[orig_row]] = (
+                                            identities[orig_col]
+                                        )
+                                except ValueError:
+                                    print('No feasible identity assignments')
+    
+                if cost < min_cost:
+                    min_cost = cost
+                    optimal_assignments = assigned
+            
+            for trk_id, identity in optimal_assignments.items():
+                target_trks[trk_id].identity = identity
+            
+            all_optimal_assignments.update(optimal_assignments)
+        
+        end_assign = time.perf_counter()
+        self.identity_matching_time = (end_assign - start_assign)
+
+        return all_optimal_assignments
+
+    def filter_tracks(self, target):
+        def _filter_by_lifespan(eligible_trk_ids, target_trks):
+            for trk_id in eligible_trk_ids:
+                trk = target_trks[trk_id]
+
+                lifespan = trk.span[1] - trk.span[0]
+
+                if (lifespan < self.min_lifespan):
+                    self.filtered_trks[trk_id] = trk
+                    self.lifespan_filtered += 1
+            
+            for trk_id in self.filtered_trks.keys():
+                try:
+                    del target_trks[trk_id]
+                except KeyError:
+                    continue
+
+        def _filter_by_keypoints(eligible_trk_ids, target_trks, expected_kps=3,
+                                 expected_conf=.55):
+            expected_avg = (expected_kps * expected_conf) / 17
+
+            for trk_id in eligible_trk_ids:
+                trk = target_trks[trk_id]
+                n_frames = len(trk.keypoints.keys())
+                if n_frames == 0:
+                    trk.kp_avg = 0
+                    self.filtered_trks[trk_id] = trk
+                    continue
+
+                total_conf = sum(trk.keypoints[f][:, 2].sum()
+                                 for f in trk.keypoints.keys())
+                trk.kp_avg = total_conf / (n_frames * 17)
+
+                if trk.kp_avg < expected_avg:
+                    self.filtered_trks[trk_id] = trk
+                    self.kp_filtered += 1
+
+            for trk_id in self.filtered_trks.keys():
+                try:
+                    del target_trks[trk_id]
+                except KeyError:
+                    continue
+
+        def _filter_by_size(eligible_trk_ids, target_trks):
+            expected_avg = (self.resolution[0] / 24) * (self.resolution[1] / 12)
+            for trk_id in eligible_trk_ids:
+                trk = target_trks[trk_id]
+                box_sizes = [math.prod(detection[2:4]) for detection in trk.detections.values()]
+                avg = sum(box_sizes) / len(box_sizes)
+
+                if avg < expected_avg:
+                    self.filtered_trks[trk_id] = trk
+                    self.size_filtered += 1
+            
+            for trk_id in self.filtered_trks.keys():
+                try:
+                    del target_trks[trk_id]
+                except KeyError:
+                    continue
+        
+        target_trks = getattr(self, target)
+        eligible_trk_ids = []
+
+        for trk_id, trk in target_trks.items():
+            if not trk.identity:
+                eligible_trk_ids.append(trk_id)
+
+        _filter_by_lifespan(eligible_trk_ids, target_trks)
+        _filter_by_keypoints(eligible_trk_ids, target_trks)
+        _filter_by_size(eligible_trk_ids, target_trks)
+
+    def get_track_images(self, target, vid_dir='../files/input/'):
+        vid_path = os.path.join(vid_dir, self.video_file)
+        cap = cv2.VideoCapture(vid_path)
+        if not cap.isOpened():
+            return None
+        
+        target_trks = getattr(self, target)
+
+        for trk in target_trks.values():
+            images = []
+
+            percentile = 75
+            clear_frames = None
+            while (not clear_frames) and (percentile >= 25):
+                clear_frames = trk.get_high_keypoint_frames(percentile=percentile)
+                percentile -= 10
+
+            if clear_frames:
+                frames = [clear_frames[0], clear_frames[-1]]
+            else:
+                frames = trk.span
+
+            for f in frames:
+                x, y, w, h = map(int, trk.detections[f][:4])
+                cap.set(cv2.CAP_PROP_POS_FRAMES, f)
+                ret, frame = cap.read()
+                if not ret:
+                    images.append(None)
+                    continue
+                cropped = frame[y:y+h, x:x+w]
+                images.append(cropped)
+
+            trk.start_img = io_utils.save_event_image(images[0])
+            trk.end_img = io_utils.save_event_image(images[1])
+
+        cap.release()
+
+    def save_pipeline_state(self, output_dir='../files/output'):
+        os.makedirs(output_dir, exist_ok=True)
+        file_prefix = self.video_file.split('.')[0]
+
+        print(f'{len(self.active_trks.keys())} tracks saved to be continued')
+
+        save_path = os.path.join(output_dir, f'{file_prefix}.pkl')
+
+        start_pkl_mgmt = time.perf_counter()
+        with open(save_path, "wb") as f:
+            pickle.dump(self, f)
+        
+        if self.prior_pkl:
+            prior_path = os.path.join(output_dir, self.prior_pkl)
+            if os.path.exists(prior_path) and os.path.isfile(prior_path):
+                os.remove(prior_path)
+        
+        end_pkl_mgmt = time.perf_counter()
+        self.pkl_io_time += (end_pkl_mgmt - start_pkl_mgmt)
+
+        print('Tracking pipeline saved')
 
     def save_runtime_data(self, output_dir='../files/output/runtime_data'):
         commit_hash, commit_datetime = utils.get_git_commit_info()
         clip_identifier = self.video_file.split('.')[0] + '_' + commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
-        all_tracks = {**self.active_trks, **self.trk_cache, **self.filtered_trks}
+        all_tracks = {**self.active_trks, **self.inactive_trks, **self.filtered_trks}
 
         config_data = {
             'module': [
@@ -1024,6 +962,7 @@ class TrackingPipeline:
         config_df = pd.DataFrame(config_data)
 
         for trk in all_tracks.values():
+            self.cost_method_data.extend(trk.cost_method_data)
             self.spatial_analysis_time += trk.sp_analysis_time
             self.feature_analysis_time += trk.ft_analysis_time
             self.tensor_conversion_time += trk.tensor_conversion_time
@@ -1125,32 +1064,10 @@ class TrackingPipeline:
         except Exception as e:
             print(f"Failed to save Excel file: {e}")
 
-    def save_pipeline_state(self, output_dir='../files/output'):
-        os.makedirs(output_dir, exist_ok=True)
-        file_prefix = self.video_file.split('.')[0]
-
-        print(f'{len(self.active_trks.keys())} tracks saved to be continued')
-
-        save_path = os.path.join(output_dir, f'{file_prefix}.pkl')
-
-        start_pkl_mgmt = time.perf_counter()
-        with open(save_path, "wb") as f:
-            pickle.dump(self, f)
-        
-        if self.prior_pkl:
-            prior_path = os.path.join(output_dir, self.prior_pkl)
-            if os.path.exists(prior_path) and os.path.isfile(prior_path):
-                os.remove(prior_path)
-        
-        end_pkl_mgmt = time.perf_counter()
-        self.pkl_io_time += (end_pkl_mgmt - start_pkl_mgmt)
-
-        print('Tracking pipeline saved')
-
     def generate_output_vid(self, input_dir='../files/input/', output_dir='../files/output/videos'):
         print(f'Generating output video for {self.video_file}')
 
-        all_trks = {**self.active_trks, **self.trk_cache, **self.filtered_trks}
+        all_trks = {**self.active_trks, **self.inactive_trks, **self.filtered_trks}
 
         cap = cv2.VideoCapture(os.path.join(input_dir, self.video_file))
         fps = cap.get(cv2.CAP_PROP_FPS)

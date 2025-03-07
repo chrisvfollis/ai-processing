@@ -23,7 +23,7 @@ def handle_early_termination(signum, frame):
     sys.exit(0)
 
 
-def process_video(row, model_info, device, credentials):
+def run_processing_pipelines(row, model_info, device, credentials):
     gc.set_debug(gc.DEBUG_SAVEALL)
 
     io_utils.clear_memory()
@@ -47,37 +47,37 @@ def process_video(row, model_info, device, credentials):
     if not io_utils.download_s3_footage(video_file, credentials):
         return False
 
-    inference = InferencePipeline(video_file, model_info, device)
+    inference_pipeline = InferencePipeline(video_file, model_info, device)
 
-    if not inference.skim():
+    if not inference_pipeline.skim():
         io_utils.delete_s3_footage(video_file, credentials)
         return False
     
     try:
-        inference_output = inference.run()
+        inference_output = inference_pipeline.run()
     except Exception as e:
         print(f'Error in inference pipeline: {e}')
 
+    tracking_pipeline = TrackingPipeline(video_file, time_prefix,
+                                *inference_output, device)
+
+    del inference_pipeline, inference_output
+    io_utils.clear_memory()
+
     try:
-        tracking = TrackingPipeline(
-            video_file, time_prefix, *inference_output, device
-        )
-
-        del inference, inference_output
-        io_utils.clear_memory()
-
-        tracking.run()
-
+        tracking_pipeline.run()
     except Exception as e:
         print(f'Error in tracking pipeline: {e}')
 
-    io_utils.save_track_info(time_prefix, camera, tracking.all_trks,
-                             fps=tracking.fps)
+    io_utils.save_track_info(
+        time_prefix, camera, tracking_pipeline.inactive_trks,
+        fps=tracking_pipeline.fps
+    )
 
     print(f"Processed {video_file}")
 
 
-def run_pipeline(device, model_info, credentials):
+def run_master_process(device, model_info, credentials):
     def _clear_local_data():
         io_utils.clear_track_info('all')
         io_utils.delete_local_files('all')
@@ -118,7 +118,7 @@ def run_pipeline(device, model_info, credentials):
             initial_pids = {p.pid for p in pool._pool if p.is_alive()}
 
             async_results = pool.starmap_async(
-                process_video, tasks
+                run_processing_pipelines, tasks
             )
 
             worker_monitor = utils.observability_thread(
@@ -147,4 +147,4 @@ if __name__ == '__main__':
     memory_monitor, _ = utils.observability_thread('low_memory')
     memory_monitor.start()
 
-    run_pipeline(device, model_info, credentials)
+    run_master_process(device, model_info, credentials)

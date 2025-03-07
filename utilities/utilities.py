@@ -128,7 +128,6 @@ def memory_usage(focus, n=5, threshold=None):
                 print(f'Largest {obj_category} objects:')
                 for obj, size in object_list[:n]:
                     print(f'Size: {size} MB | Type: {type(obj)}')
-                    print(obj)
 
             else:
                 print(f'No {obj_category} objects found')
@@ -602,3 +601,56 @@ def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, m
         regions.append((region_x1, region_y1, (region_x2 - region_x1), (region_y2 - region_y1)))
 
     return regions
+
+
+def filter_sparse_rows(cost_matrix):
+    '''
+    This function helps ensure linear assignment is feasible on a cost matrix
+    by whittling down problematic sets of sparse rows. These sets are
+    characterized by the following properties:
+
+    - Each row has only one column it could possibly be assigned to. It is the
+    one column with a finite cost value in that row; all the others contain "inf".
+    - The one viable column in a given row is the one viable column in the
+    entire set. In other words, only one row from each set can ultimately be
+    matched with a column. 
+    
+    Once all such sets have been identified, each is reduced to a single row
+    (whichever has the lowest match cost to the viable volumn). The other rows
+    from each set are filtered from the cost matrix, increasing the number of
+    new tracks to subsequently initialize for this frame.
+    '''
+
+    matrix_coordinates = []
+    unique_cols = set()
+    keep = []
+    filtered_matrix = []
+
+    # For any row containing one finite entry, store the entry's matrix
+    # coordinates and add its column index to unique_cols:
+    for r in range(len(cost_matrix)):
+        row = cost_matrix[r]
+        if np.isfinite(row).sum() == 1:
+            c = int(np.where(row != float('inf'))[0][0])
+            matrix_coordinates.append((r, c))
+            unique_cols.add(c)
+
+    # For each column index from the relevant entries identified above,
+    # add the row index of the minimum-value entry in that column:
+    for c in unique_cols:
+        rows_w_finite_vals = [rc[0] for rc in matrix_coordinates if rc[1] == c]
+        min_val_row = min(rows_w_finite_vals, key=lambda r: cost_matrix[r, c])
+
+        keep.append(min_val_row)
+
+    all_rows = set(range(cost_matrix.shape[0]))
+    used_rows = set(rc[0] for rc in matrix_coordinates)
+
+    unused = list(all_rows - used_rows)
+    keep.extend(unused)
+    keep = sorted(keep)
+
+    for i in keep:
+        filtered_matrix.append(cost_matrix[i])
+
+    return np.array(filtered_matrix), keep
