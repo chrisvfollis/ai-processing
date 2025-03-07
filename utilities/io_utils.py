@@ -310,10 +310,10 @@ def build_db_schema(db_path='../files/data.db'):
     ''')
 
     cursor.execute('''
-        CREATE TABLE images (
+        CREATE TABLE face_images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             person_id INTEGER NOT NULL,
-            image_filename TEXT NOT NULL,
+            filename TEXT NOT NULL,
             FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
         );
     ''')
@@ -338,6 +338,18 @@ def build_db_schema(db_path='../files/data.db'):
     ''')
     conn.commit()
     conn.close()
+
+
+def lookup_image(image_path, db_path='../files/data.db'):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT people.*
+        FROM people
+        JOIN face_images ON people.id = face_images.person_id
+        WHERE face_images.filename = ?;
+    ''')
 
 
 def save_track_info(time_prefix, camera, target_trks, fps=30,

@@ -455,10 +455,11 @@ class TrackingPipeline:
             _create_new_tracks()
             _associate_faces()
 
+            project_dir = '/home/ubuntu/ai-processing'
             if (self.f_num % (self.fps * 2)) == 0:
                 memory_snapshot = utils.memory_usage(
                     'allocation_lines', threshold=threshold,
-                    filter_key=lambda x: x.startswith('/home/ubuntu/ai-processing')
+                    filter_key=lambda x: x.startswith(project_dir)
                 )
                 if memory_snapshot > threshold:
                     threshold = memory_snapshot * 1.2
