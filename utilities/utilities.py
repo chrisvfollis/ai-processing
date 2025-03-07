@@ -93,7 +93,7 @@ def log_failed_workers(pool, initial_pids, async_result):
             print(f"[WARNING] Workers {disappeared} disappeared (possible crash)")
 
 
-def memory_usage(focus, n=5, log_threshold=None):
+def memory_usage(focus, n=5, threshold=None):
     if focus == 'processes':
         def _log_largest_processes(process_list, n):
             if process_list:
@@ -117,7 +117,7 @@ def memory_usage(focus, n=5, log_threshold=None):
         processes.sort(key=lambda x: x[2], reverse=True)
 
         total_process_memory = sum([process[2] for process in processes])
-        if (log_threshold is None) or (total_process_memory > log_threshold):
+        if (threshold is None) or (total_process_memory > threshold):
             _log_largest_processes(processes, n)
 
         return total_process_memory
@@ -163,8 +163,8 @@ def memory_usage(focus, n=5, log_threshold=None):
         total_obj_memory = sum(cpu_obj_totals) + sum(gpu_obj_totals)
     
         if (
-            (log_threshold is None) or
-            (total_obj_memory > (log_threshold))
+            (threshold is None) or
+            (total_obj_memory > (threshold))
         ):
 
             print(f'Total standard object memory: {cpu_obj_totals[0]:.2f} MB')
