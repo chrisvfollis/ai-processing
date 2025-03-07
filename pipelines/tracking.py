@@ -169,40 +169,29 @@ class TrackingPipeline:
 
     def run(self, prior_pipeline=False):
         def _get_measurements():
-            detections = self.detection_data.get(self.f_num, None)
+            detections = self.detection_data.get(self.f_num, [])
             if not detections:
                 return None
-            start_convert = time.perf_counter()
-            detection_tensor = torch.tensor(detections)
-
-            end_convert = time.perf_counter()
-            self.tensor_conversion_time += (end_convert - start_convert)
-
-            conf_mask = detection_tensor[:, 4] > self.conf_thresh
+            detections = np.array(detections)
+            conf_mask = detections[:, 4] > self.conf_thresh
 
             start_read = time.perf_counter()
             embeddings = io_utils.read_embeddings(
                 self.embedding_path, self.f_num, self.device
             )
-
             end_read = time.perf_counter()
             self.embedding_read_time += (end_read - start_read)
 
-            start_convert = time.perf_counter()
-            detections = detection_tensor[conf_mask].tolist()
+            if not (conf_mask.shape[0] == embeddings.shape[0]):
+                print(f'detections shape: {detections.shape}')
+                print(f'conf_mask shape: {conf_mask.shape}')
+                print(f'embeddings shape: {embeddings.shape}')
 
-            end_convert = time.perf_counter()
-            self.tensor_conversion_time += (end_convert - start_convert)
+            detections = detections[conf_mask].tolist()
 
-            if self.f_num % 100 == 0:
-                torch.cuda.empty_cache()
-                gc.collect()
-
-            print(f'detection_tensor shape: {detection_tensor.shape}')
-            print(f'conf_mask shape: {conf_mask.shape}')
-            print(f'embeddings shape: {embeddings.shape}')
-
+            conf_mask = torch.from_numpy(conf_mask).to(self.device)
             embeddings = embeddings[conf_mask]
+
             keypoints = self.keypoint_data.get(self.f_num, None)
 
             return detections, embeddings, keypoints
@@ -447,6 +436,7 @@ class TrackingPipeline:
             start_run = time.perf_counter()
 
         memory_snapshot = utils.memory_usage('objects')
+        threshold = memory_snapshot * 1.5
 
         while self.f_num < self.total_frames:
             if self.active_trks:
@@ -462,12 +452,16 @@ class TrackingPipeline:
             _create_new_tracks()
             _associate_faces()
 
-            if (self.f_num != 0) and (self.f_num % self.fps == 0):
-                memory_snapshot *= 1.1
-            if self.f_num % (self.fps * 5) == 0:
+            if self.f_num % self.fps == 0:
                 memory_snapshot = utils.memory_usage(
-                    'objects', threshold=memory_snapshot
+                    'objects', threshold=threshold
                 )
+                if memory_snapshot > threshold:
+                    threshold = memory_snapshot * 1.5
+
+            if self.f_num % 100 == 0:
+                io_utils.clear_memory()
+
             self.f_num += 1
 
         if not prior_pipeline:
