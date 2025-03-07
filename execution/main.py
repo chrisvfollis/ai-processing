@@ -66,7 +66,8 @@ def run_processing_pipelines(row, model_info, device, credentials):
     tracking_pipeline = TrackingPipeline(
         video_file, time_prefix,
         *inference_output,
-        device
+        device,
+        credentials
     )
 
     del inference_pipeline, inference_output

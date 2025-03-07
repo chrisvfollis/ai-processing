@@ -94,7 +94,7 @@ def log_failed_workers(pool, initial_pids, async_result):
             print(f"[WARNING] Workers {disappeared} disappeared (possible crash)")
 
 
-def memory_usage(focus, n=5, threshold=None):
+def memory_usage(focus, n=5, threshold=None, filter_key=None):
     if focus == 'processes':
         def _log_largest_processes(process_list, n):
             if process_list:
@@ -190,17 +190,22 @@ def memory_usage(focus, n=5, threshold=None):
 
         total_alloc_memory = sum([x[2] for x in allocation_lines])
 
+        if filter_key is not None:
+            allocation_lines = [
+                (file, line_num, memory) for file, line_num, memory
+                in allocation_lines if filter_key(file)
+            ]
         if (
             (threshold is None) or
             (total_alloc_memory > threshold)
         ):
             print('Top allocation lines:')
             for line_info in allocation_lines[:n]:
-                filename, line_number, allocated_memory = line_info
+                file, line_num, memory = line_info
 
                 print(
-                    f'File {filename}, line {line_number},' +
-                    f'allocated {allocated_memory:.2f} MB'
+                    f'File {file}, line {line_num},' +
+                    f'allocated {memory:.2f} MB'
                 )
 
         return total_alloc_memory

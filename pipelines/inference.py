@@ -179,39 +179,6 @@ class InferencePipeline:
             current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
 
             return (prev_frame, current_frame)
-            
-        def _finalize():
-            def _format_face_data(face_data):
-                merged_dfs = []
-                for frame, dfs in face_data.items():
-                    valid_dfs = [df for df in dfs if not df.empty]
-                    if valid_dfs:
-                        merged_df = pd.concat(valid_dfs, ignore_index=True)
-                        merged_df['f'] = frame
-                        merged_dfs.append(merged_df)
-
-                if not merged_dfs:
-                    return None
-
-                full_df = pd.concat(merged_dfs, ignore_index=True)
-
-                drop_columns = [
-                    'target_x', 'target_y', 'target_w', 'target_h', 'threshold'
-                ]
-                full_df = full_df.drop([col for col in drop_columns if col in full_df.columns], axis=1)
-
-                full_df = full_df.rename(columns={'source_x': 'x', 'source_y': 'y',
-                                                'source_w': 'w', 'source_h': 'h'})
-
-                return full_df
-
-            if len(self.osnet.embedding_buffer) > 0:
-                self.osnet.flush_buffers()
-            self.osnet.release_buffers()
-    
-            self.face_data = _format_face_data(self.face_data)
-    
-            self.save_runtime_data()
 
         print(f'Running inference pipeline for {self.video_file}...')
         start_run = time.perf_counter()
@@ -239,12 +206,44 @@ class InferencePipeline:
         print(f'Exiting inference run on frame {self.f_num}')
 
         cap.release()
-        _finalize()
+        
+        if len(self.osnet.embedding_buffer) > 0:
+            self.osnet.flush_buffers(release=True)
+        else:
+            self.osnet.release_buffers()
+
+        self.face_data = self.format_face_data(self.face_data)
+
+        self.save_runtime_data()
 
         end_run = time.perf_counter()
         self.primary_run_time += (end_run - start_run)
 
         return self.person_data, self.keypoint_data, self.face_data
+
+    def format_face_data(self, face_data):
+        merged_dfs = []
+        for frame, dfs in face_data.items():
+            valid_dfs = [df for df in dfs if not df.empty]
+            if valid_dfs:
+                merged_df = pd.concat(valid_dfs, ignore_index=True)
+                merged_df['f'] = frame
+                merged_dfs.append(merged_df)
+
+        if not merged_dfs:
+            return None
+
+        full_df = pd.concat(merged_dfs, ignore_index=True)
+
+        drop_columns = [
+            'target_x', 'target_y', 'target_w', 'target_h', 'threshold'
+        ]
+        full_df = full_df.drop([col for col in drop_columns if col in full_df.columns], axis=1)
+
+        full_df = full_df.rename(columns={'source_x': 'x', 'source_y': 'y',
+                                        'source_w': 'w', 'source_h': 'h'})
+
+        return full_df
 
     def save_runtime_data(self, output_dir='../files/output/runtime_data'):
         commit_hash, commit_datetime = utils.get_git_commit_info()

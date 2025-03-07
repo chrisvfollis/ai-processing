@@ -20,7 +20,18 @@ tracemalloc.start()
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
-                 face_data, device, continuous_mode=True, conf_thresh=0.65):
+                 face_data, device, credentials, continuous_mode=True,
+                 conf_thresh=0.65):
+        
+        self.active_trks, self.inactive_trks, self.filtered_trks = {}, {}, {}        
+        self.trk_id = 0
+
+        self.min_lifespan = self.fps * 15
+        self.max_absence = self.fps * 3
+
+        self.device = device
+        self.credentials = credentials
+
         self.video_file = video_file
         self.cam = video_file.split('.')[0].split('_')[-1]
         self.f_num = 0
@@ -30,29 +41,18 @@ class TrackingPipeline:
         self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.resolution = [cap.get(cv2.CAP_PROP_FRAME_WIDTH),
                            cap.get(cv2.CAP_PROP_FRAME_HEIGHT)]
-        
-        self.start_time = utils.frame_timestamp(time_prefix)
-        self.end_time = utils.frame_timestamp(time_prefix, self.total_frames,
-                                              self.fps)
         cap.release()
 
         self.frame_diag = math.dist([0, 0], self.resolution)
-
-        self.device = device
-
-        self.active_trks = {}
-        self.inactive_trks = {}
-
-        self.filtered_trks = {}
-
+        
+        self.start_time = utils.frame_timestamp(time_prefix)
+        self.end_time = utils.frame_timestamp(
+            time_prefix, self.total_frames, self.fps
+        )
+        
         self.kp_filtered = 0
         self.lifespan_filtered = 0
         self.size_filtered = 0
-
-        self.trk_id = 0
-
-        self.min_lifespan = self.fps * 15
-        self.max_absence = self.fps * 3
 
         self.detection_data = detection_data
         self.keypoint_data = keypoint_data
@@ -457,7 +457,8 @@ class TrackingPipeline:
 
             if (self.f_num % (self.fps * 2)) == 0:
                 memory_snapshot = utils.memory_usage(
-                    'allocation_lines', threshold=threshold
+                    'allocation_lines', threshold=threshold,
+                    filter_key=lambda x: x.startswith('/home/ubuntu/ai-processing')
                 )
                 if memory_snapshot > threshold:
                     threshold = memory_snapshot * 1.2
@@ -869,6 +870,7 @@ class TrackingPipeline:
 
     def get_track_images(self, target, vid_dir='../files/input/'):
         vid_path = os.path.join(vid_dir, self.video_file)
+
         cap = cv2.VideoCapture(vid_path)
         if not cap.isOpened():
             return None
@@ -899,8 +901,8 @@ class TrackingPipeline:
                 cropped = frame[y:y+h, x:x+w]
                 images.append(cropped)
 
-            trk.start_img = io_utils.save_event_image(images[0])
-            trk.end_img = io_utils.save_event_image(images[1])
+            trk.start_img = io_utils.save_event_image(images[0], self.credentials)
+            trk.end_img = io_utils.save_event_image(images[1], self.credentials)
 
         cap.release()
 

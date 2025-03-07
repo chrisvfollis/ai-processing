@@ -107,13 +107,14 @@ class OSNet:
         def _postprocess(outputs):
             return [output.cpu().detach().numpy().flatten() for output in outputs]
 
-        def _update_buffers(embeddings, f_num, num_detections):
+        def _update_buffers(embeddings, f_num):
+            num_embeddings = len(embeddings)
             if len(self.embedding_buffer) >= self.buffer_limit:
                 self.flush_buffers()
 
             self.embedding_buffer.extend(embeddings)
-            self.frame_buffer.extend([f_num] * num_detections)
-            self.box_index_buffer.extend(list(range(num_detections)))
+            self.frame_buffer.extend([f_num] * num_embeddings)
+            self.box_index_buffer.extend(list(range(num_embeddings)))
         
         batch_images = []
 
@@ -130,7 +131,7 @@ class OSNet:
         self.embedding_time += (end_extract - start_extract)
 
         embeddings = _postprocess(batch_output)
-        _update_buffers(embeddings, f_num, len(embeddings))
+        _update_buffers(embeddings, f_num)
 
     def activate_buffers(self, video_file, output_dir='../files/output',
                          buffer_limit=None):
@@ -139,7 +140,7 @@ class OSNet:
         )
         self.hdf5_file = h5py.File(self.output_path, 'a')
 
-        buffer_limit = buffer_limit if buffer_limit else self.buffer_limit
+        self.buffer_limit = buffer_limit if buffer_limit else self.buffer_limit
 
         self.embedding_buffer = deque(maxlen=None)
         self.frame_buffer = deque(maxlen=None)
@@ -157,13 +158,15 @@ class OSNet:
     def flush_buffers(self, release=False):
         start_flush = time.perf_counter()
 
-        io_utils.write_embeddings(
-            self.hdf5_file, self.embedding_buffer, self.frame_buffer,
-            self.box_index_buffer
-        )
-        self.embedding_buffer.clear()
-        self.frame_buffer.clear()
-        self.box_index_buffer.clear()
+        unwritten_data = (len(self.embedding_buffer) > 0)
+        if unwritten_data:
+            io_utils.write_embeddings(
+                self.hdf5_file, self.embedding_buffer, self.frame_buffer,
+                self.box_index_buffer
+            )
+            self.embedding_buffer.clear()
+            self.frame_buffer.clear()
+            self.box_index_buffer.clear()
 
         if release:
             self.release_buffers()
