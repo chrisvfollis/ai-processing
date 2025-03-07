@@ -1,6 +1,7 @@
 from shapely.geometry import Polygon, box
 from datetime import datetime, timedelta
 import numpy as np
+import torch
 import cv2
 import subprocess
 import os
@@ -126,32 +127,36 @@ def log_current_memory_usage(focus, n=5):
             print(f'PID {pid} - {name}: {mem:.2f} MB')
 
     elif focus == 'objects':
+        import tensorflow as tf
+
         gc.collect()
         objects = gc.get_objects()
 
-        object_sizes = [(obj, _safe_sizeof(obj)) for obj in objects]
-        object_sizes.sort(key=lambda x: x[1], reverse=True)
+        obj_sizes = [(obj, _safe_sizeof(obj)) for obj in objects]
+        obj_sizes.sort(key=lambda x: x[1], reverse=True)
         
-        object_mem_total = sum([size for _, size in object_sizes])
-        print(f'Total object memory: {object_mem_total} MB')
-        print(f'Top {n} objects by memory usage:')
-        for obj, size in object_sizes[:n]:
+        obj_total = sum([size for _, size in obj_sizes])
+        print(f'Total standard object memory: {obj_total} MB')
+        print(f'Top {n} standard objects by memory usage:')
+        for obj, size in obj_sizes[1:n+1]:
             print(f'Size: {size} MB | Type: {type(obj)}')
         
-        unreachable_objects = gc.garbage
-        if unreachable_objects:
-            unreachable_object_sizes = [(obj, _safe_sizeof(obj))
-                                        for obj in unreachable_objects]
-            unreachable_object_mem_total = sum([size for _, size in
-                                                unreachable_object_sizes])
-            print(f'Total dereferenced object memory: {unreachable_object_mem_total} MB')
-            print(f'Top {n} dereferenced objects by memory usage:')
-            for obj, size in unreachable_objects[:10]:
+        uncollectible_objects = gc.garbage
+        if uncollectible_objects:
+            uc_obj_sizes = [(obj, _safe_sizeof(obj))
+                             for obj in uncollectible_objects]
+            uc_obj_total = sum([size for _, size in uc_obj_sizes])
+            print(f'Total uncollectible standard object memory: {uc_obj_total} MB')
+            print(f'Top {n} uncollectible standard objects by memory usage:')
+            for obj, size in uc_obj_sizes[:n]:
                 print(f'Size: {size} MB | Type: {type(obj)}')
         else:
-            print('No unreferenced objects found.')
+            print('No uncollectible standard objects found.')
         
-        gc.garbage.clear()
+        pt_obj_total_cpu = torch.cuda.memory_allocated(device='cpu') / 1e6
+        pt_obj_total_gpu = torch.cuda.memory_allocated() / 1e6
+        print(f"Total pytorch object CPU memory: {pt_obj_total_cpu:.2f} MB")
+        print(f"Total pytorch object GPU memory: {pt_obj_total_gpu:.2f} MB")
 
 
 def log_low_memory_warnings(stop_event, threshold, interval):

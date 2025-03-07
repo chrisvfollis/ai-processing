@@ -5,7 +5,6 @@ import time
 import sys
 from utilities import io_utils
 from utilities import utilities as utils
-import threading
 import gc
 import signal
 
@@ -103,7 +102,7 @@ def run_pipeline(device, model_info, credentials):
 
     while True:
         io_utils.cleanup_semaphores()
-        
+
         queue_block = io_utils.get_queue_block()
 
         if not queue_block:
