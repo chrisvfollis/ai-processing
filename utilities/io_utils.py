@@ -309,6 +309,7 @@ def lookup_identities(image_paths, db_path='../files/data.db'):
             - last_name
             - designation: determines whether the person's data is reported 
     '''
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -318,7 +319,7 @@ def lookup_identities(image_paths, db_path='../files/data.db'):
     query = f'''
         SELECT people.*, faces.file
         FROM people
-        JOIN facs ON people.id = faces.person
+        JOIN faces ON people.id = faces.person
         WHERE faces.file = {placeholders};
     '''
     cursor.execute(query, filenames)
