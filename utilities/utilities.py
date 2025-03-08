@@ -312,8 +312,7 @@ def out_of_bounds(coordinates, img_dims=[1920, 1080]):
         (x_max < -margin_x) or (x_min > img_w + margin_x) or
         (y_max < -margin_y) or (y_min > img_h + margin_y)
     )
-    if result:
-        print('Out of bounds...')
+
     return result
 
 

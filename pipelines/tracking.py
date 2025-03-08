@@ -1022,7 +1022,7 @@ class TrackingPipeline:
             ],
             'metric': [
                 'total',
-                'identified'
+                'identified',
                 'keypoint_filtered',
                 'lifespan_filtered',
                 'size_filtered'
