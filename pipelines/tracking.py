@@ -438,8 +438,11 @@ class TrackingPipeline:
             print(f"Running tracking pipeline for {self.video_file}...")
             start_run = time.perf_counter()
 
-        memory_snapshot = utils.memory_usage('allocation_lines')
-        threshold = memory_snapshot * 1.2
+        project_dir = '/home/ubuntu/ai-processing'
+        memory_snapshot = utils.memory_usage(
+            'allocation_lines', log_filter_key=lambda x: x.startswith(project_dir)
+        )
+        threshold = memory_snapshot * 1.1
 
         while self.f_num < self.total_frames:
             if self.active_trks:
@@ -455,14 +458,13 @@ class TrackingPipeline:
             _create_new_tracks()
             _associate_faces()
 
-            project_dir = '/home/ubuntu/ai-processing'
             if (self.f_num % (self.fps * 2)) == 0:
                 memory_snapshot = utils.memory_usage(
                     'allocation_lines', threshold=threshold,
-                    filter_key=lambda x: x.startswith(project_dir)
+                    log_filter_key=lambda x: x.startswith(project_dir)
                 )
                 if memory_snapshot > threshold:
-                    threshold = memory_snapshot * 1.2
+                    threshold = memory_snapshot * 1.1
 
             if self.f_num % 100 == 0:
                 io_utils.clear_memory()

@@ -2,6 +2,7 @@ from deepface import DeepFace
 import time
 from utilities import io_utils
 import time
+import pandas as pd
 
 
 class FaceIq:
@@ -25,11 +26,13 @@ class FaceIq:
             filtered_face_dfs = []
     
             for df in all_face_dfs:
-                df['identity'] = (
-                    df['identity'].map(lambda x: io_utils.get_employee(
-                        x, db_path=self.db_path
-                    ))
+                results = io_utils.lookup_identities(df['identity'])
+
+                df[['identity', 'name', 'designation']] = pd.DataFrame(
+                    [(result[1], f'{result[3]}_{result[4]}', result[5])
+                     for result in results]
                 )
+
                 df = df.loc[df.groupby('identity')['distance'].idxmin()]
                 filtered_face_dfs.append(df)
             

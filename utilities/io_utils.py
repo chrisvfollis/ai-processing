@@ -273,6 +273,7 @@ def get_shop(db_path):
     return results
 
 
+
 def get_employee(image_path, db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -295,52 +296,19 @@ def get_employee(image_path, db_path='../files/data.db'):
         return None
 
 
-def build_db_schema(db_path='../files/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS people (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uuid TEXT UNIQUE NOT NULL,
-            first_name TEXT,
-            last_name TEXT,
-            designation TEXT NOT NULL
-        );
-    ''')
-
-    cursor.execute('''
-        CREATE TABLE face_images (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            person_id INTEGER NOT NULL,
-            filename TEXT NOT NULL,
-            FOREIGN KEY (person_id) REFERENCES people (id) ON DELETE CASCADE
-        );
-    ''')
-
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS track_info (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            track_id TEXT,
-            camera TEXT,
-            time_prefix TEXT,
-            identity TEXT,
-            id_method TEXT,
-            id_cost FLOAT,
-            start_img TEXT,
-            end_img TEXT,
-            id_img TEXT,
-            start_time DATETIME,
-            end_time DATETIME,
-            entry INTEGER,
-            exit INTEGER
-        );
-    ''')
-    conn.commit()
-    conn.close()
-
-
-def lookup_image_identity(image_paths, db_path='../files/data.db'):
+def lookup_identities(image_paths, db_path='../files/data.db'):
+    '''
+    Returns:
+        results (List[Tuple]):
+            A list of tuples corresponding to rows in the database. The order
+            is as follows:
+            - id: integer primary key
+            - identity_uuid: the person's unique identifier
+            - shop_uuid: the unique identifier of the shop
+            - first_name
+            - last_name
+            - designation: determines whether the person's data is reported 
+    '''
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -348,17 +316,55 @@ def lookup_image_identity(image_paths, db_path='../files/data.db'):
     placeholders = ', '.join(['?'] * len(filenames))
 
     query = f'''
-        SELECT people.*, face_images.filename
+        SELECT people.*, faces.file
         FROM people
-        JOIN face_images ON people.id = face_images.person_id
-        WHERE face_images.filename = {placeholders};
+        JOIN facs ON people.id = faces.person
+        WHERE faces.file = {placeholders};
     '''
     cursor.execute(query, filenames)
-    
+
     results = cursor.fetchall(); conn.close()
     results_map = {row[-1]: row[:-1] for row in results}
 
     return [results_map.get(filename) for filename in filenames]
+
+
+def build_db_schema(db_path='../files/data.db'):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS people (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identity_uuid TEXT UNIQUE NOT NULL,
+            shop_uuid TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            designation TEXT NOT NULL
+        );
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE faces (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            person INTEGER NOT NULL,
+            file TEXT NOT NULL,
+            FOREIGN KEY (person) REFERENCES people (id) ON DELETE CASCADE
+        );
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS track_info (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            track_id TEXT, camera TEXT, time_prefix TEXT,
+            identity TEXT, id_method TEXT, id_cost FLOAT,
+            start_img TEXT, end_img TEXT, id_img TEXT,
+            start_time DATETIME, end_time DATETIME,
+            entry INTEGER, exit INTEGER
+        );
+    ''')
+    conn.commit()
+    conn.close()
 
 
 def save_track_info(time_prefix, camera, target_trks, fps=30,
