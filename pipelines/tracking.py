@@ -1016,6 +1016,8 @@ class TrackingPipeline:
         }
         performance_df = pd.DataFrame(performance_data)
         
+        identified = [trk for trk in all_tracks.values() if 
+                     (hasattr(trk, 'identity') and trk.identity)]
         stats_data = {
             'module': [
                 *['tracks'] * 5
@@ -1029,6 +1031,7 @@ class TrackingPipeline:
             ],
             'value': [
                 len(all_tracks),
+                len(identified),
                 self.kp_filtered,
                 self.lifespan_filtered,
                 self.size_filtered
