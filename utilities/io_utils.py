@@ -320,7 +320,7 @@ def lookup_identities(image_paths, db_path='../files/data.db'):
         SELECT people.*, faces.file
         FROM people
         JOIN faces ON people.id = faces.person
-        WHERE faces.file = {placeholders};
+        WHERE faces.file = ({placeholders});
     '''
     cursor.execute(query, filenames)
 
