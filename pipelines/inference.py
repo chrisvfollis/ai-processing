@@ -90,7 +90,7 @@ class InferencePipeline:
         stride = self.fps * 2
 
         prev_frame, f_num = (-1, 0)
-
+        result = False
         while f_num < self.total_frames:
             cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
 
@@ -99,11 +99,9 @@ class InferencePipeline:
 
             if (not ret) or (current_frame == prev_frame):
                 print(f'Nothing to process in {self.video_file}')
-                result = False
                 break
             elif utils.is_grayscale(frame, threshold=10):
                 print(f'Footage too dark in {self.video_file}')
-                result = False
                 break
 
             if f_num % stride == 0:
