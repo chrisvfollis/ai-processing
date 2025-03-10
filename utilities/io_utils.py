@@ -409,7 +409,7 @@ def get_track_info(time_prefix, designation=None, db_path='../files/data.db'):
     query = '''
         SELECT track_info.*
         FROM track_info
-        JOIN people ON track_info.identity = people.uuid
+        JOIN people ON track_info.identity = people.identity_uuid
         WHERE track_info.time_prefix = ?
     '''
     params = [time_prefix]

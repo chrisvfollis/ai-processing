@@ -204,13 +204,14 @@ class InferencePipeline:
             del frame
 
         print(f'Exiting inference run on frame {self.f_num}')
-
         cap.release()
-        
+
         if len(self.osnet.embedding_buffer) > 0:
             self.osnet.flush_buffers(release=True)
         else:
             self.osnet.release_buffers()
+
+        io_utils.clear_memory()
 
         self.face_data = self.format_face_data(self.face_data)
 
