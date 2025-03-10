@@ -613,7 +613,7 @@ def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
     
     response = requests.post(url, json=data, headers=headers)
     if response.status_code == 200:
-        print("Success")
+        print(f"Success: posted {len(data['event']) / 2} tracks")
         clear_track_info(time_prefix)
         return True
     else:
