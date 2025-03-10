@@ -15,6 +15,7 @@ import re
 import getpass
 import subprocess
 import gc
+import psutil
 
 
 def clear_memory():
@@ -178,6 +179,14 @@ def cleanup_semaphores():
         if posix_semaphores:
             for sem in posix_semaphores:
                 sem_path = f'/dev/shm/{sem}'
+
+                if any(
+                    sem in p.open_files() for p in
+                    psutil.process_iter(['open_files'])
+                ):
+                    print(f'Skipping active semaphore: {sem_path}')
+                    continue
+    
                 try:
                     os.unlink(sem_path)
                     print(f'Removed unused POSIX semaphore: {sem_path}')
