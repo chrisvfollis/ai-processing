@@ -3,6 +3,9 @@ import os
 from utilities import initial_s3_setup
 from typing import Union
 from datetime import datetime, timezone
+import re
+from dotenv import load_dotenv
+import requests
 
 
 def list_download(object_keys: Union[list, str], output_dir='resources/downloads',
@@ -64,11 +67,44 @@ def list_delete(object_keys: Union[list, str], config: Union[dict, str] = None,
     return results
 
 
+def clear_queue_block(timestamp):
+    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+    
+    load_dotenv()
+    headers = {
+        'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
+        'Content-Type': 'application/json'
+    }
+
+    update_queue_url = base_url + 'api/service/update_queue/'
+
+    response = requests.post(
+        update_queue_url, json={
+            'action': 'clear_section', 'timestamp': timestamp.isoformat()},
+        headers=headers
+    )
+
+    if response.status_code == 200:
+        print(f"Cleared queue section for {timestamp}")
+    else:
+        print(f"Failed posting to internal API: {response.text}")
+        print(response.status_code)
+
+
 def time_delete(
         start: Union[datetime, list] = None, end: Union[datetime, list] = None,
         config: Union[dict, str] = None, existing_setup: list = None
     ):
-
+    def _parse_timestamp_from_key(obj_key):
+        try:
+            matches = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})', obj_key)
+            if matches:
+                time_str = matches.group(1)
+                return datetime.strptime(time_str, "%Y-%m-%d_%H-%M-%S")
+        except ValueError:
+            pass
+        return None
+    
     if (start is None) and (end is None):
         raise ValueError(
             "Both arguments for 'start' and 'end' are None. At least\n" +
@@ -91,6 +127,7 @@ def time_delete(
         end = end.replace(tzinfo=timezone.utc)
 
     object_keys = []
+    timestamps_to_clear = set()
     results = {'deleted': [], 'failed': {}}
     
     try:
@@ -109,11 +146,17 @@ def time_delete(
                     ((end is None) or (last_modified < end))
                 ):
                     object_keys.append(obj_key)
+                    timestamp = _parse_timestamp_from_key(obj_key)
+                    if timestamp:
+                        timestamps_to_clear.add(timestamp)
+
         print(f'Matching object keys: {object_keys}')
 
     except ClientError as e:
         print(f"Error listing objects: {e}")
 
     results = list_delete(object_keys, existing_setup=[s3_client, bucket])
+    for timestamp in timestamps_to_clear:
+        clear_queue_block(timestamp)
 
     return results
