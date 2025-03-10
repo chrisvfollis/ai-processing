@@ -16,13 +16,11 @@ import tracemalloc
 from utilities import io_utils
 from utilities import utilities as utils
 
-tracemalloc.start()
 
 class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
                  face_data, device, credentials, continuous_mode=True,
                  conf_thresh=0.65):
-        
         self.active_trks, self.inactive_trks, self.filtered_trks = {}, {}, {}
         self.trk_id = 0
 
@@ -433,6 +431,8 @@ class TrackingPipeline:
             
             end_associate = time.perf_counter()
             self.identity_matching_time = (end_associate - start_associate)
+        
+        tracemalloc.start()
 
         if not prior_pipeline:
             print(f"Running tracking pipeline for {self.video_file}...")
@@ -865,6 +865,7 @@ class TrackingPipeline:
                 except KeyError:
                     continue
         
+
         target_trks = getattr(self, target)
 
         _filter_by_lifespan(target_trks)

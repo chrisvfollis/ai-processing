@@ -377,36 +377,51 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
         identity = trk.identity if trk.identity is not None else str(uuid.uuid4())
         
         start_img = trk.start_img if trk.start_img is not None else ""
+        start_frame = trk.span[0]
         start_time = utils.frame_timestamp(
-            time_prefix, frame=trk.span[0], fps=fps
+            time_prefix, frame=start_frame, fps=fps
         )
         end_img = trk.end_img if trk.end_img is not None else ""
+        end_frame = trk.span[1]
         end_time = utils.frame_timestamp(
-            time_prefix, frame=trk.span[1], fps=fps
+            time_prefix, frame=end_frame, fps=fps
         )
 
         cursor.execute('''
             INSERT INTO track_info (
                 track_id, camera, time_prefix, identity,
-                start_img, end_img, start_time, end_time
+                start_img, start_frame, start_time,
+                end_img, end_frame, end_time
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (trk_id, camera, time_prefix, identity,
-              start_img, end_img, start_time, end_time))
+              start_img, start_frame, start_time,
+              end_img, end_frame, end_time))
 
     conn.commit()
     conn.close()
 
 
-def get_track_info(time_prefix, db_path='../files/data.db'):
+def get_track_info(time_prefix, designation=None, db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM track_info
-        WHERE time_prefix = ?
-    ''', (time_prefix,))
+
+    query = '''
+        SELECT track_info.*
+        FROM track_info
+        JOIN people ON track_info.identity = people.uuid
+        WHERE track_info.time_prefix = ?
+    '''
+    params = [time_prefix]
+
+    if designation is not None:
+        query += ' AND people.designation = ?'
+        params.append(designation)
+
+    cursor.execute(query, tuple(params))
     results = cursor.fetchall()
     conn.close()
+
     return results
 
 
@@ -537,8 +552,9 @@ def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
     WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
     url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/save_employee_event_logs/'
 
-    results = get_track_info(time_prefix)
+    results = get_track_info(time_prefix, designation='tracked_employee')
     if (not results) or (len(results) == 0):
+        print('No tracked_employee tracks found')
         return None
     
     columns = [
