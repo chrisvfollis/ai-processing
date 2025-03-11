@@ -438,9 +438,7 @@ class TrackingPipeline:
             print(f"Running tracking pipeline for {self.video_file}...")
             start_run = time.perf_counter()
 
-        memory_snapshot = utils.memory_usage(
-            'allocation_lines'
-        )
+        memory_snapshot = utils.memory_usage('allocation_lines')
         threshold = memory_snapshot * 1.5
 
         while self.f_num < self.total_frames:
