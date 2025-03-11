@@ -438,11 +438,10 @@ class TrackingPipeline:
             print(f"Running tracking pipeline for {self.video_file}...")
             start_run = time.perf_counter()
 
-        project_dir = '/home/ubuntu/ai-processing'
         memory_snapshot = utils.memory_usage(
-            'allocation_lines', log_filter_key=lambda x: x.startswith(project_dir)
+            'allocation_lines'
         )
-        threshold = memory_snapshot * 1.1
+        threshold = memory_snapshot * 1.5
 
         while self.f_num < self.total_frames:
             if self.active_trks:
@@ -460,11 +459,10 @@ class TrackingPipeline:
 
             if (self.f_num % (self.fps * 2)) == 0:
                 memory_snapshot = utils.memory_usage(
-                    'allocation_lines', threshold=threshold,
-                    log_filter_key=lambda x: x.startswith(project_dir)
+                    'allocation_lines', threshold=threshold
                 )
                 if memory_snapshot > threshold:
-                    threshold = memory_snapshot * 1.1
+                    threshold = memory_snapshot * 1.5
 
             if self.f_num % 100 == 0:
                 io_utils.clear_memory()
@@ -865,7 +863,6 @@ class TrackingPipeline:
                 except KeyError:
                     continue
         
-
         target_trks = getattr(self, target)
 
         _filter_by_lifespan(target_trks)
@@ -1017,8 +1014,13 @@ class TrackingPipeline:
         }
         performance_df = pd.DataFrame(performance_data)
         
-        identified = [trk for trk in all_tracks.values() if 
-                     (hasattr(trk, 'identity') and trk.identity)]
+        identified_tracks = [trk for trk in all_tracks.values() if 
+                             (hasattr(trk, 'identity') and trk.identity)]
+        ignored_tracks = [
+            trk for trk in identified_tracks if
+            io_utils.get_designation(trk.identity) != 'tracked_employee'
+        ]
+    
         stats_data = {
             'module': [
                 *['tracks'] * 5
@@ -1026,13 +1028,15 @@ class TrackingPipeline:
             'metric': [
                 'total',
                 'identified',
+                'ignored',
                 'keypoint_filtered',
                 'lifespan_filtered',
                 'size_filtered'
             ],
             'value': [
                 len(all_tracks),
-                len(identified),
+                len(identified_tracks),
+                len(ignored_tracks),
                 self.kp_filtered,
                 self.lifespan_filtered,
                 self.size_filtered

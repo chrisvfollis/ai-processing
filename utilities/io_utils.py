@@ -270,75 +270,6 @@ def get_aws_creds():
 # Local Database Functions:
 
 
-def get_shop(db_path):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM shop
-        LIMIT 1
-    ''')
-    results = cursor.fetchall()[0]
-    conn.close()
-    return results
-
-
-
-def get_employee(image_path, db_path='../files/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    image = image_path.split('/')[-1]
-
-    cursor.execute('''
-            SELECT uuid FROM employees
-            WHERE front_image = ?
-            OR left_image = ?
-            OR right_image = ?
-            LIMIT 1
-        ''', (image, image, image))
-
-    result = cursor.fetchone()
-    conn.close()
-    if len(result) > 0:
-        return result[0]
-    else:
-        return None
-
-
-def lookup_identities(image_paths, db_path='../files/data.db'):
-    '''
-    Returns:
-        results (List[Tuple]):
-            A list of tuples corresponding to rows in the database. The order
-            is as follows:
-            - id: integer primary key
-            - identity_uuid: the person's unique identifier
-            - shop_uuid: the unique identifier of the shop
-            - first_name
-            - last_name
-            - designation: determines whether the person's data is reported 
-    '''
-
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    filenames = [img_path.split('/')[-1] for img_path in image_paths]
-    placeholders = ', '.join(['?'] * len(filenames))
-
-    query = f'''
-        SELECT people.*, faces.file
-        FROM people
-        JOIN faces ON people.id = faces.person
-        WHERE faces.file IN ({placeholders});
-    '''
-    cursor.execute(query, tuple(filenames))
-    results = cursor.fetchall()
-    conn.close()
-    results_map = {row[-1]: row[:-1] for row in results}
-
-    return [results_map.get(filename) for filename in filenames]
-
-
 def build_db_schema(db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -375,6 +306,67 @@ def build_db_schema(db_path='../files/data.db'):
     ''')
     conn.commit()
     conn.close()
+
+
+def get_shop(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT * FROM shop
+        LIMIT 1
+    ''')
+    results = cursor.fetchall()[0]
+    conn.close()
+    return results
+
+
+def lookup_identities(image_paths, db_path='../files/data.db'):
+    '''
+    Returns:
+        results (List[Tuple]):
+            A list of tuples corresponding to rows in the database. The order
+            is as follows:
+            - id: integer primary key
+            - identity_uuid: the person's unique identifier
+            - shop_uuid: the unique identifier of the shop
+            - first_name
+            - last_name
+            - designation: determines whether the person's data is reported 
+    '''
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    filenames = [img_path.split('/')[-1] for img_path in image_paths]
+    placeholders = ', '.join(['?'] * len(filenames))
+
+    query = f'''
+        SELECT people.*, faces.file
+        FROM people
+        JOIN faces ON people.id = faces.person
+        WHERE faces.file IN ({placeholders});
+    '''
+    cursor.execute(query, tuple(filenames))
+    results = cursor.fetchall()
+    conn.close()
+    results_map = {row[-1]: row[:-1] for row in results}
+
+    return [results_map.get(filename) for filename in filenames]
+
+
+def get_designation(identity, db_path='../files/data.db'):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    query = '''
+        SELECT designation FROM people
+        WHERE identity_uuid = ?
+        LIMIT 1;
+    '''
+    cursor.execute(query, (identity,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else None
 
 
 def save_track_info(time_prefix, camera, target_trks, fps=30,
@@ -416,15 +408,15 @@ def get_track_info(time_prefix, designation=None, db_path='../files/data.db'):
     cursor = conn.cursor()
 
     query = '''
-        SELECT track_info.*
+        SELECT track_info.*, people.designation
         FROM track_info
-        JOIN people ON track_info.identity = people.identity_uuid
+        LEFT JOIN people ON track_info.identity = people.identity_uuid
         WHERE track_info.time_prefix = ?
     '''
     params = [time_prefix]
 
     if designation is not None:
-        query += ' AND people.designation = ?'
+        query += ' AND (people.designation = ? OR people.designation IS NULL)'
         params.append(designation)
 
     cursor.execute(query, tuple(params))
