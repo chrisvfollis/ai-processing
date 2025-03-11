@@ -21,8 +21,11 @@ class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
                  face_data, device, credentials, continuous_mode=True,
                  conf_thresh=0.65):
-        self.active_trks, self.inactive_trks, self.filtered_trks = {}, {}, {}
         self.trk_id = 0
+
+        self.active_trks = {}
+        self.inactive_trks = {}
+        self.filtered_trks = {}
 
         self.device = device
         self.credentials = credentials
@@ -114,6 +117,14 @@ class TrackingPipeline:
         return {**self.active_trks, **self.inactive_trks}
 
     def persist_prior_tracks(self):
+        def _reset_trk_ids(prior_pipeline):
+            active_trks = {}
+            for trk in prior_pipeline.active_trks.values():
+                active_trks[self.trk_id] = trk
+                trk.set_id(self.trk_id)
+                self.trk_id += 1
+            return active_trks
+            
         start_persist = time.perf_counter()
 
         output_dir = '../files/output'
@@ -133,35 +144,28 @@ class TrackingPipeline:
         end_pkl_load = time.perf_counter()
         self.pkl_io_time += (end_pkl_load - start_pkl_load)
         
-        interim = (self.start_time - prior_pipeline.end_time).total_seconds()
-        interim_frames = int(round(interim * self.fps, 0))
-        prior_pipeline.total_frames += interim_frames
+        interim = (
+            (self.start_time - prior_pipeline.end_time)
+            .total_seconds() * self.fps
+        )
+        prior_pipeline.total_frames += int(round(interim, 0))
 
-        prior_pipeline.trk_cache = {}
-        reset_ids = {}
-        for trk in prior_pipeline.active_trks.values():
-            reset_ids[self.trk_id] = trk
-            self.trk_id += 1
-        prior_pipeline.active_trks = reset_ids
+        prior_pipeline.active_trks = _reset_trk_ids(prior_pipeline)
+        prior_pipeline.inactive_trks = {}
 
         prior_pipeline.run(prior_pipeline=True)
 
-        reset_active = {}
         for trk_id, trk in prior_pipeline.active_trks.items():
             trk.span[0] = -1 * (prior_pipeline.total_frames - trk.span[0])
             trk.span[1] = -1 * (prior_pipeline.total_frames - trk.span[1])
             
-            reset_active[trk_id] = trk
-        
-        reset_cached = {}
-        for trk_id, trk in prior_pipeline.trk_cache.items():
+            self.active_trks[trk_id] = trk
+
+        for trk_id, trk in prior_pipeline.inactive_trks.items():
             trk.span[0] = -1 * (prior_pipeline.total_frames - trk.span[0])
             trk.span[1] = -1 * (prior_pipeline.total_frames - trk.span[1])
             
-            reset_cached[trk_id] = trk
-
-        self.active_trks = reset_active
-        self.inactive_trks = reset_cached
+            self.inactive_trks[trk_id] = trk
 
         end_persist = time.perf_counter()
         self.persist_time += (end_persist - start_persist)
@@ -220,6 +224,7 @@ class TrackingPipeline:
                     new_track.add_keypoints(keypoints[i], self.f_num)
     
                 self.active_trks[self.trk_id] = new_track
+                new_track.set_id(self.trk_id)
                 self.trk_id += 1
 
             self.unmatched = []
@@ -1021,7 +1026,7 @@ class TrackingPipeline:
     
         stats_data = {
             'module': [
-                *['tracks'] * 5
+                *['tracks'] * 6
             ],
             'metric': [
                 'total',
@@ -1179,9 +1184,11 @@ class Track(KalmanFilter):
         self.embedding_cache = deque(maxlen=20)
         self.span = [args[0], args[0]]
 
-        self.coincident_trks = []
+        self.track_id = None
         self.identity = None
 
+        self.coincident_trks = []
+        
         self.cost_method_data = []
 
         self.sp_analysis_time = 0
@@ -1209,6 +1216,9 @@ class Track(KalmanFilter):
 
         self.embedding_cache = deque([emb.to(device) for emb in state['embedding_cache']], maxlen=20)
         self.embedding_cache_tensor = self.embedding_cache_tensor.to(device)
+
+    def set_id(self, track_id):
+        self.track_id = track_id
 
     def add_embedding(self, embedding):
         self.embedding_cache.append(embedding)
@@ -1421,7 +1431,7 @@ class Track(KalmanFilter):
 
         self.cost_method_data.append({
             'frame': f_num,
-            'track_id': id(self),
+            'track_id': self.track_id,
             'detection_count': len(new_detections),
             'spatial_costs': [],
             'dissimilarity_costs': [],
