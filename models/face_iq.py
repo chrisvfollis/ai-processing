@@ -55,7 +55,7 @@ class FaceIq:
 
         if not regions:
             try:
-                img_resized = cv2.resize(img, (1920, 1080))
+                img_resized = cv2.resize(img, (1080, 720))
                 all_face_dfs = DeepFace.find(img_path=img, **config)
                 del img_resized
                 gc.collect()
