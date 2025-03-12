@@ -63,8 +63,8 @@ class InferencePipeline:
             ((total_frames // 4) // self.track_stride) * self.track_stride
         )
 
-        self.person_data = {}
-        self.face_data = {}
+        self.object_detections = {}
+        self.face_detections = {}
 
         self.primary_run_time = 0
         self.read_time = 0
@@ -120,7 +120,7 @@ class InferencePipeline:
                 bboxes = self.yolov4.detect(frame, 0)
                 if bboxes:
                     self.osnet.extraction_batch(frame, bboxes, self.f_num)
-                    self.person_data[self.f_num] = bboxes
+                    self.object_detections[self.f_num] = bboxes
                     
             face_dfs = []
             if self.f_num % self.id_stride == 0:
@@ -138,7 +138,7 @@ class InferencePipeline:
                             frame, id_cutoff=0.8
                         )
                 if face_dfs:
-                    self.face_data[self.f_num] = face_dfs
+                    self.face_detections[self.f_num] = face_dfs
     
         def _continue_forward(cap, current_frame):
             if self.track_stride <= 15:
@@ -197,14 +197,14 @@ class InferencePipeline:
 
         io_utils.clear_memory()
 
-        self.face_data = self.format_face_data(self.face_data)
+        self.face_detections = self.format_face_data(self.face_detections)
 
         self.save_runtime_data()
 
         end_run = time.perf_counter()
         self.primary_run_time += (end_run - start_run)
 
-        return self.person_data, self.face_data
+        return (self.object_detections, self.face_detections)
 
     def format_face_data(self, face_data):
         merged_dfs = []
@@ -342,7 +342,7 @@ class InferencePipeline:
         os.makedirs(output_dir, exist_ok=True)
         file_prefix = self.video_file.split('.')[0]
 
-        data = [self.person_data, self.face_data]
+        data = [self.object_detections, self.face_detections]
 
         filename = io_utils.get_unique_filename(
             output_dir, f'{file_prefix}_inference_data.pkl'

@@ -195,7 +195,6 @@ class TrackingPipeline:
             conf_mask = torch.from_numpy(conf_mask).to(self.device)
             embeddings = embeddings[conf_mask]
 
-
             return detections, embeddings
 
         def _create_new_tracks():
@@ -248,7 +247,7 @@ class TrackingPipeline:
             end_prediction = time.perf_counter()
             self.prediction_time += (end_prediction - start_prediction)
 
-        def _match_and_update(new_measurements):
+        def _match_and_update(detections, embeddings):
             def _construct_cost_matrix(new_detections, new_embeddings):
                 active_tracks = sorted(self.active_trks.keys())
                 cost_list = []
@@ -327,7 +326,6 @@ class TrackingPipeline:
             start_match = time.perf_counter()
 
             trk_ids = sorted(self.active_trks.keys())
-            detections, embeddings = new_measurements
 
             cost_matrix = _construct_cost_matrix(detections, embeddings)
             assignments = _assign_matches(cost_matrix)
@@ -391,7 +389,7 @@ class TrackingPipeline:
             for trk_id in trk_ids:
                 trk = self.active_trks[trk_id]
                 try:
-                    box = trk.detections[self.f_num][:4]
+                    box = trk.object_detections[self.f_num][:4]
                 except KeyError:
                     state = trk.x[:4]
                     x, y = utils.centroid(state, reverse=True)
@@ -439,7 +437,7 @@ class TrackingPipeline:
 
             new_measurements = _get_measurements()
             if new_measurements and self.active_trks:
-                _match_and_update(new_measurements)
+                _match_and_update(*new_measurements)
 
             elif new_measurements and (not self.active_trks):
                 self.unmatched = new_measurements
@@ -840,7 +838,7 @@ class TrackingPipeline:
                 if trk.identity:
                     continue
 
-                box_sizes = [math.prod(detection[2:4]) for detection in trk.detections.values()]
+                box_sizes = [math.prod(detection[2:4]) for detection in trk.object_detections.values()]
                 avg = sum(box_sizes) / len(box_sizes)
 
                 if avg < expected_avg:
@@ -883,14 +881,17 @@ class TrackingPipeline:
                 frames = trk.span
 
             for f in frames:
-                x, y, w, h = map(int, trk.detections[f][:4])
-                cap.set(cv2.CAP_PROP_POS_FRAMES, f)
-                ret, frame = cap.read()
-                if not ret:
-                    images.append(None)
-                    continue
-                cropped = frame[y:y+h, x:x+w]
-                images.append(cropped)
+                try:
+                    x, y, w, h = map(int, trk.object_detections[f][:4])
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, f)
+                    ret, frame = cap.read()
+                    if not ret:
+                        images.append(None)
+                        continue
+                    cropped = frame[y:y+h, x:x+w]
+                    images.append(cropped)
+                except TypeError:
+                    print(trk.object_detections[f])
 
             trk.start_img = io_utils.save_event_image(images[0], self.credentials)
             trk.end_img = io_utils.save_event_image(images[1], self.credentials)
@@ -1034,7 +1035,7 @@ class TrackingPipeline:
 
         track_data = []
         for trk_id, trk in all_tracks.items():
-            for frame, detection in trk.detections.items():
+            for frame, detection in trk.object_detections.items():
                 detection_conf = detection[-1] if len(detection) == 5 else None
                 face_detections = trk.face_detections.get(frame, None)
                 cosine_distance = (
@@ -1104,7 +1105,7 @@ class TrackingPipeline:
                     cv2.putText(frame, f'{trk.identity}', (x2 - 5, y2 - 5),
                                 cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
                 
-                det_box = trk.detections.get(f_num, None)
+                det_box = trk.object_detections.get(f_num, None)
                 if det_box is not None:
                     x, y, w, h = det_box[:4]
                     x1, y1 = int(x), int(y)
@@ -1158,8 +1159,9 @@ class Track(KalmanFilter):
     def __init__(self, detection, embedding, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.object_detections = {args[0]: detection}
         self.face_detections = {}
-        self.detections = {args[0]: detection}
+        
         self.keypoints = {}
         self.embedding_cache = deque(maxlen=20)
         self.span = [args[0], args[0]]
@@ -1213,7 +1215,7 @@ class Track(KalmanFilter):
         self.tensor_conversion_time += (end_convert - start_convert)
 
     def add_detection(self, new_detection, frame_number):
-        self.detections[frame_number] = new_detection
+        self.object_detections[frame_number] = new_detection
         self.span[1] = frame_number
     
     def add_keypoints(self, new_keypoints, frame_number):

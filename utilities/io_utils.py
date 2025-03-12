@@ -518,7 +518,7 @@ def clear_queue_block(timestamp):
     )
 
     if response.status_code == 200:
-        print("Success")
+        print("Successfully cleared queue block")
     else:
         print(f"Failed posting to internal API: {response.text}")
         print(response.status_code) 
