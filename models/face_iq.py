@@ -58,7 +58,9 @@ class FaceIq:
 
         if not regions:
             try:
-                all_face_dfs = DeepFace.find(img_path=img, **config)
+                img_resized = cv2.resize(img, (1280, 720))
+                all_face_dfs = DeepFace.find(img_path=img_resized, **config)
+                del img_resized
             except Exception as e:
                 print(f"DeepFace error: {e}")
                 

@@ -133,9 +133,10 @@ class InferencePipeline:
                             frame, id_cutoff=0.8, regions=regions
                         )
                 elif focus == 'global':
-                    face_dfs = self.face_iq.identify_faces(
-                        frame, id_cutoff=0.8
-                    )
+                    if bboxes:
+                        face_dfs = self.face_iq.identify_faces(
+                            frame, id_cutoff=0.8
+                        )
                 if face_dfs:
                     self.face_data[self.f_num] = face_dfs
     
