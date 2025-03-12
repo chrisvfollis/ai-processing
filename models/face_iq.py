@@ -110,7 +110,7 @@ class FaceIq:
 
 
 class CenterFace:
-    def __init__(self, weights_path='weights/centerface.trt', landmarks=True):
+    def __init__(self, weights_path='../models/weights/centerface.trt', landmarks=True):
         '''
         Adapted from https://github.com/Star-Clouds/CenterFace/ and modified
         for compatibility with DeepFace
@@ -422,12 +422,6 @@ def find(
     must_save_pickle = False
     new_images, old_images, replaced_images = set(), set(), set()
 
-    if not refresh_database:
-        logger.info(
-            f"Could be some changes in {db_path} not tracked."
-            "Set refresh_database to true to assure that any changes will be tracked."
-        )
-
     # Enforce data consistency amongst on disk images and pickle file
     if refresh_database:
         # embedded images
@@ -446,7 +440,6 @@ def find(
             alpha_hash = current_representation["hash"]
             beta_hash = image_utils.find_image_hash(identity)
             if alpha_hash != beta_hash:
-                logger.debug(f"Even though {identity} represented before, it's replaced later.")
                 replaced_images.add(identity)
 
     # append replaced images into both old and new images. these will be dropped and re-added.
