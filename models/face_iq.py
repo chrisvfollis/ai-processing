@@ -1,14 +1,9 @@
-from deepface import DeepFace
 from utilities import io_utils
 import time
 import pandas as pd
 import gc
 import cv2
 import numpy as np
-import datetime
-import pycuda.autoinit
-import pycuda.driver as cuda
-import tensorrt as trt
 import os
 import pickle
 from tqdm import tqdm
@@ -134,16 +129,6 @@ class CenterFace:
         return self.detect_faces(img, threshold)
 
     def detect_faces(self, img: np.ndarray, threshold=0.5) -> List[FacialAreaRegion]:
-        """
-        Detect and align faces in an image.
-
-        Args:
-            img (np.ndarray): Pre-loaded image as a numpy array.
-            threshold (float): Confidence threshold for detection.
-
-        Returns:
-            List[FacialAreaRegion]: List of detected faces with facial landmarks.
-        """
         detections = self.inference_pytorch(img, threshold)
 
         if self.landmarks:
@@ -183,7 +168,7 @@ class CenterFace:
 
     def inference_pytorch(self, img, threshold):
         image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
-        blob = image_cv[:, :, (2, 1, 0)].transpose(2, 0, 1).astype("float32")  # BGR to RGB
+        blob = image_cv[:, :, (2, 1, 0)].transpose(2, 0, 1).astype("float32")
         tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
 
         with torch.no_grad():

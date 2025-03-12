@@ -37,7 +37,6 @@ speedtest-cli = "*"
 openpyxl = "*"
 facenet-pytorch = "*"
 xlsxwriter = "*"
-pycuda = "*"
 
 [dev-packages]
 

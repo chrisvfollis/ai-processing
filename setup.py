@@ -37,7 +37,6 @@ setup(
         "openpyxl",
         "facenet-pytorch",
         "xlsxwriter",
-        "pycuda",
     ],
     python_requires=">=3.10,<3.11",
 )
