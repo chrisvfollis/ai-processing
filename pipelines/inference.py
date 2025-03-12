@@ -182,7 +182,7 @@ class InferencePipeline:
             if (not ret) or (current_frame == prev_frame):
                 break
 
-            _process_frame(frame, focus='global')
+            _process_frame(frame, focus='local')
     
             frame_position = _continue_forward(cap, current_frame)
             del frame
