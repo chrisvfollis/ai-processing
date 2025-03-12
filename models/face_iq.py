@@ -168,13 +168,19 @@ class CenterFace:
 
     def inference_pytorch(self, img, threshold):
         image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
-        blob = image_cv[:, :, (2, 1, 0)].transpose(2, 0, 1).astype("float32")
+        blob = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype("float32")
         tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             outputs = self.model(tensor)
 
         heatmap, scale, offset, lms = outputs
+        print('Model output shapes:')
+        for output in outputs:
+            try:
+                print(output.shape)
+            except Exception as e:
+                continue
 
         return self.postprocess(
             heatmap.cpu().numpy(), lms.cpu().numpy(), offset.cpu().numpy(),
