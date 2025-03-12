@@ -88,7 +88,7 @@ class FaceIq:
                 crop = img[y1:y2, x1:x2].copy()
 
                 try:
-                    local_face_dfs = DeepFace.find(img_path=crop, **config)
+                    local_face_dfs = find(img_path=crop, **config)
                     del crop
                     gc.collect()
                     if local_face_dfs:
