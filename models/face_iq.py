@@ -123,12 +123,12 @@ class CenterFace:
 
         self.img_h_new, self.img_w_new, self.scale_h, self.scale_w = 0, 0, 0, 0
 
-    def __call__(self, img, height, width, threshold=0.5):
-        h, w = img.shape[:2]
-        self.img_h_new, self.img_w_new, self.scale_h, self.scale_w = height, width, height / h, width / w
-        return self.detect_faces(img, threshold)
 
     def detect_faces(self, img: np.ndarray, threshold=0.5) -> List[FacialAreaRegion]:
+        h, w = img.shape[:2]
+        self.img_h_new, self.img_w_new = h, w
+        self.scale_h, self.scale_w = 1, 1
+
         detections = self.inference_pytorch(img, threshold)
 
         if self.landmarks:
