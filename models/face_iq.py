@@ -18,6 +18,7 @@ from deepface.commons.logger import Logger
 from deepface.models.Detector import Detector, DetectedFace, FacialAreaRegion
 from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional
 from heapq import nlargest
+import torch
 
 
 class FaceIq:
@@ -110,17 +111,20 @@ class FaceIq:
 
 
 class CenterFace:
-    def __init__(self, weights_path='../models/weights/centerface.trt', landmarks=True):
+    def __init__(self, weights_path='../models/weights/centerface.pth', landmarks=True):
         '''
         Adapted from https://github.com/Star-Clouds/CenterFace/ and modified
         for compatibility with DeepFace
         '''
     
         self.landmarks = landmarks
-        self.trt_logger = trt.Logger()
-        with open(weights_path, "rb") as f:
-            runtime = trt.Runtime(self.trt_logger)
-            self.net = runtime.deserialize_cuda_engine(f.read())
+        
+        self.model = torch.load(weights_path, map_location='cuda' if
+                                torch.cuda.is_available() else 'cpu')
+        self.model.eval()
+
+        self.device =torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
 
         self.img_h_new, self.img_w_new, self.scale_h, self.scale_w = 0, 0, 0, 0
 
@@ -140,7 +144,7 @@ class CenterFace:
         Returns:
             List[FacialAreaRegion]: List of detected faces with facial landmarks.
         """
-        detections = self.inference_tensorrt(img, threshold)
+        detections = self.inference_pytorch(img, threshold)
 
         if self.landmarks:
             dets, lms = detections
@@ -177,68 +181,22 @@ class CenterFace:
 
         return detected_faces
 
-    def inference_tensorrt(self, img, threshold):
-        """
-        Perform inference using TensorRT.
-
-        Args:
-            img (np.ndarray): Input image.
-            threshold (float): Detection confidence threshold.
-
-        Returns:
-            Tuple (detections, landmarks) if self.landmarks is True, else detections only.
-        """
-
-        class HostDeviceMem(object):
-            def __init__(self, host_mem, device_mem):
-                self.host = host_mem
-                self.device = device_mem
-
-        def allocate_buffers(engine):
-            inputs, outputs, bindings = [], [], []
-            stream = cuda.Stream()
-            for binding in engine:
-                size = trt.volume(engine.get_binding_shape(binding)) * engine.max_batch_size
-                dtype = trt.nptype(engine.get_binding_dtype(binding))
-                host_mem = cuda.pagelocked_empty(size, dtype)
-                device_mem = cuda.mem_alloc(host_mem.nbytes)
-                bindings.append(int(device_mem))
-                if engine.binding_is_input(binding):
-                    inputs.append(HostDeviceMem(host_mem, device_mem))
-                else:
-                    outputs.append(HostDeviceMem(host_mem, device_mem))
-            return inputs, outputs, bindings, stream
-
-        def do_inference(context, bindings, inputs, outputs, stream, batch_size=1):
-            [cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs]
-            context.execute_async(batch_size=batch_size, bindings=bindings, stream_handle=stream.handle)
-            [cuda.memcpy_dtoh_async(out.host, out.device, stream) for out in outputs]
-            stream.synchronize()
-            return [out.host for out in outputs]
-
+    def inference_pytorch(self, img, threshold):
         image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
-        blob = np.expand_dims(image_cv[:, :, (2, 1, 0)].transpose(2, 0, 1), axis=0).astype("float32")
-        engine = self.net
+        blob = image_cv[:, :, (2, 1, 0)].transpose(2, 0, 1).astype("float32")  # BGR to RGB
+        tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
 
-        context = engine.create_execution_context()
-        inputs, outputs, bindings, stream = allocate_buffers(engine)
+        with torch.no_grad():
+            outputs = self.model(tensor)
 
-        shape_of_output = [(1, 1, int(self.img_h_new / 4), int(self.img_w_new / 4)),
-                           (1, 2, int(self.img_h_new / 4), int(self.img_w_new / 4)),
-                           (1, 2, int(self.img_h_new / 4), int(self.img_w_new / 4)),
-                           (1, 10, int(self.img_h_new / 4), int(self.img_w_new / 4))]
+        heatmap, scale, offset, lms = outputs
 
-        inputs[0].host = blob.reshape(-1)
-        trt_outputs = do_inference(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream)
-
-        heatmap, scale, offset, lms = [output.reshape(shape) for output, shape in zip(trt_outputs, shape_of_output)]
-
-        return self.postprocess(heatmap, lms, offset, scale, threshold)
+        return self.postprocess(
+            heatmap.cpu().numpy(), lms.cpu().numpy(), offset.cpu().numpy(),
+            scale.cpu().numpy(), threshold
+        )
 
     def postprocess(self, heatmap, lms, offset, scale, threshold):
-        """
-        Postprocess inference results.
-        """
         if self.landmarks:
             dets, lms = self.decode(heatmap, scale, offset, lms, (self.img_h_new, self.img_w_new), threshold=threshold)
         else:
@@ -364,16 +322,11 @@ def find(
         raise ValueError(f"Passed image path {img_path} does not exist!")
 
     file_parts = [
-        "ds",
-        "model",
-        model_name,
-        "detector",
-        detector_backend,
+        "ds", "model", model_name,
+        "detector", detector_backend,
         "aligned" if align else "unaligned",
-        "normalization",
-        normalization,
-        "expand",
-        str(expand_percentage),
+        "normalization", normalization,
+        "expand", str(expand_percentage),
     ]
 
     file_name = "_".join(file_parts) + ".pkl"
@@ -393,12 +346,10 @@ def find(
         "target_h",
     }
 
-    # Ensure the proper pickle file exists
     if not os.path.exists(datastore_path):
         with open(datastore_path, "wb") as f:
             pickle.dump([], f, pickle.HIGHEST_PROTOCOL)
 
-    # Load the representations from the pickle file
     with open(datastore_path, "rb") as f:
         representations = pickle.load(f)
 
@@ -661,7 +612,6 @@ def extract_faces(
 
     resp_objs = []
 
-    # img might be path, base64 or numpy array. Convert it to numpy whatever it is.
     img, img_name = image_utils.load_image(img_path)
 
     if img is None:
@@ -682,7 +632,6 @@ def extract_faces(
             max_faces=max_faces,
         )
 
-    # in case of no face found
     if len(face_objs) == 0 and enforce_detection is True:
         if img_name is not None:
             raise ValueError(
