@@ -28,15 +28,18 @@ class FaceIq:
             filtered_face_dfs = []
     
             for df in all_face_dfs:
-                results = io_utils.lookup_identities(df['identity'])
+                if not df.empty:
+                    results = io_utils.lookup_identities(df['identity'])
 
-                df[['identity', 'name', 'designation']] = pd.DataFrame(
-                    [(result[1], f'{result[3]}_{result[4]}', result[5])
-                     for result in results]
-                )
+                    df[['identity', 'name', 'designation']] = pd.DataFrame(
+                        [(result[1], f'{result[3]}_{result[4]}', result[5])
+                        for result in results]
+                    )
 
-                df = df.loc[df.groupby('identity')['distance'].idxmin()]
-                filtered_face_dfs.append(df)
+                    df = df.loc[df.groupby('identity')['distance'].idxmin()]
+                    filtered_face_dfs.append(df)
+                else:
+                    continue
             
             end_postprocess = time.perf_counter()
             self.postprocess_time += (end_postprocess - start_postprocess)
@@ -55,8 +58,8 @@ class FaceIq:
 
         if not regions:
             try:
-                img_resized = cv2.resize(img, (640, 640))
-                all_face_dfs = DeepFace.find(img_path=img, **config)
+                img_resized = cv2.resize(img, (1280, 720))
+                all_face_dfs = DeepFace.find(img_path=img_resized, **config)
                 del img_resized
                 gc.collect()
             except Exception as e:
