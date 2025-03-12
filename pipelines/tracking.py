@@ -882,19 +882,28 @@ class TrackingPipeline:
 
             for f in frames:
                 try:
-                    x, y, w, h = map(int, trk.object_detections[f][:4])
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, f)
-                    ret, frame = cap.read()
-                    if not ret:
-                        images.append(None)
-                        continue
-                    cropped = frame[y:y+h, x:x+w]
-                    images.append(cropped)
+                    detection = trk.object_detections[f]
                 except TypeError:
                     print(trk.object_detections)
+                    continue
+                try:
+                    x, y, w, h = map(int, detection[:4])
+                except TypeError:
+                    print(detection)
+                    continue
+                cap.set(cv2.CAP_PROP_POS_FRAMES, f)
+                ret, frame = cap.read()
+                if not ret:
+                    images.append(None)
+                    continue
+                cropped = frame[y:y+h, x:x+w]
+                images.append(cropped)
 
-            trk.start_img = io_utils.save_event_image(images[0], self.credentials)
-            trk.end_img = io_utils.save_event_image(images[1], self.credentials)
+
+            if images: 
+                trk.start_img = io_utils.save_event_image(images[0], self.credentials)
+                trk.end_img = io_utils.save_event_image(images[1], self.credentials)
+
 
         cap.release()
 
