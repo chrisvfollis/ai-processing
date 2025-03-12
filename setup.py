@@ -36,7 +36,9 @@ setup(
         "speedtest-cli",
         "openpyxl",
         "facenet-pytorch",
-        "xlsxwriter"
+        "xlsxwriter",
+        "pycuda",
+        "tensorrt"
     ],
     python_requires=">=3.10,<3.11",
 )

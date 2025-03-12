@@ -891,7 +891,7 @@ class TrackingPipeline:
                     cropped = frame[y:y+h, x:x+w]
                     images.append(cropped)
                 except TypeError:
-                    print(trk.object_detections[f])
+                    print(trk.object_detections)
 
             trk.start_img = io_utils.save_event_image(images[0], self.credentials)
             trk.end_img = io_utils.save_event_image(images[1], self.credentials)
