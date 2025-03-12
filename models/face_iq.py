@@ -3,6 +3,8 @@ import time
 from utilities import io_utils
 import time
 import pandas as pd
+import gc
+import cv2
 
 
 class FaceIq:
@@ -53,7 +55,10 @@ class FaceIq:
 
         if not regions:
             try:
+                img_resized = cv2.resize(img, (1920, 1080))
                 all_face_dfs = DeepFace.find(img_path=img, **config)
+                del img_resized
+                gc.collect()
             except Exception as e:
                 print(f"DeepFace error: {e}")
                 
@@ -65,11 +70,12 @@ class FaceIq:
             for region in regions:
                 x1, y1 = region[0], region[1]
                 x2, y2 = region[0] + region[2], region[1] + region[3]
-                crop = img[y1:y2, x1:x2]
+                crop = img[y1:y2, x1:x2].copy()
 
                 try:
                     local_face_dfs = DeepFace.find(img_path=crop, **config)
                     del crop
+                    gc.collect()
                     if local_face_dfs:
                         for df in local_face_dfs:
                             if not df.empty:
