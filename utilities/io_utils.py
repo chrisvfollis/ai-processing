@@ -561,7 +561,7 @@ def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
     columns = [
         'id', 'track_id', 'camera', 'time_prefix', 'identity', 'id_method', 
         'id_cost', 'start_img', 'end_img', 'id_img', 'start_frame', 
-        'start_time', 'end_frame', 'end_time', 'entry', 'exit'
+        'start_time', 'end_frame', 'end_time', 'entry', 'exit', 'designation'
     ]
 
     df = pd.DataFrame(results, columns=columns)
