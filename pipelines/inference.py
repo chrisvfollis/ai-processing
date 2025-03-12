@@ -10,6 +10,7 @@ import gc
 import time
 import torch
 import pickle
+import tracemalloc
 
 
 class InferencePipeline:
@@ -165,7 +166,11 @@ class InferencePipeline:
 
         print(f'Running inference pipeline for {self.video_file}...')
         start_run = time.perf_counter()
-        
+        tracemalloc.start()
+
+        memory_snapshot = utils.memory_usage('allocation_lines')
+        threshold = memory_snapshot * 1.5
+
         cap = cv2.VideoCapture(self.video_path)
         frame_position = (-1, 0)
 
@@ -182,6 +187,13 @@ class InferencePipeline:
                 break
 
             _process_frame(frame, focus='global')
+
+            if (self.f_num % (self.fps)) == 0:
+                memory_snapshot = utils.memory_usage(
+                    'allocation_lines', threshold=threshold
+                )
+                if memory_snapshot > threshold:
+                    threshold = memory_snapshot * 1.5
     
             frame_position = _continue_forward(cap, current_frame)
             del frame
