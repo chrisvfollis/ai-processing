@@ -18,8 +18,8 @@ from utilities import utilities as utils
 
 
 class TrackingPipeline:
-    def __init__(self, video_file, time_prefix, detection_data, keypoint_data,
-                 face_data, device, credentials, continuous_mode=True,
+    def __init__(self, video_file, time_prefix, detection_data, face_data,
+                 device, credentials, continuous_mode=True,
                  conf_thresh=0.65):
         self.trk_id = 0
 
@@ -51,12 +51,10 @@ class TrackingPipeline:
         self.min_lifespan = self.fps * 15
         self.max_absence = self.fps * 3
     
-        self.kp_filtered = 0
         self.lifespan_filtered = 0
         self.size_filtered = 0
 
         self.detection_data = detection_data
-        self.keypoint_data = keypoint_data
         self.face_data = face_data
         self.embedding_path = os.path.join(
             "../files/output/",
@@ -197,15 +195,14 @@ class TrackingPipeline:
             conf_mask = torch.from_numpy(conf_mask).to(self.device)
             embeddings = embeddings[conf_mask]
 
-            keypoints = self.keypoint_data.get(self.f_num, None)
 
-            return detections, embeddings, keypoints
+            return detections, embeddings
 
         def _create_new_tracks():
             start_creation = time.perf_counter()
 
             try:
-                detections, embeddings, keypoints = self.unmatched
+                detections, embeddings = self.unmatched
             except ValueError:
                 return None
 
@@ -220,8 +217,6 @@ class TrackingPipeline:
                 )
 
                 new_track = Track(box, embeddings[i], self.f_num, *kf_args)
-                if keypoints:
-                    new_track.add_keypoints(keypoints[i], self.f_num)
     
                 self.active_trks[self.trk_id] = new_track
                 new_track.set_id(self.trk_id)
@@ -332,7 +327,7 @@ class TrackingPipeline:
             start_match = time.perf_counter()
 
             trk_ids = sorted(self.active_trks.keys())
-            detections, embeddings, keypoints = new_measurements
+            detections, embeddings = new_measurements
 
             cost_matrix = _construct_cost_matrix(detections, embeddings)
             assignments = _assign_matches(cost_matrix)
@@ -354,22 +349,14 @@ class TrackingPipeline:
                 trk.add_detection(box, self.f_num)
                 trk.add_embedding(embeddings[measurement_index])
     
-                if keypoints:
-                    trk.add_keypoints(keypoints[measurement_index], self.f_num)
 
             unmatched_detections = [detections[j] for j in range(len(detections))
                                     if j not in matched]
             unmatched_embeddings = [embeddings[j] for j in range(len(embeddings))
                                     if j not in matched]
-            if keypoints:
-                unmatched_keypoints = [
-                    keypoints[j] for j in range(len(keypoints)) if j not in matched
-                ]
-            else:
-                unmatched_keypoints = []
+
             
-            self.unmatched = [unmatched_detections, unmatched_embeddings,
-                              unmatched_keypoints]
+            self.unmatched = [unmatched_detections, unmatched_embeddings]
             
             end_match = time.perf_counter()
             self.measurement_matching_time += (end_match - start_match)
@@ -869,7 +856,6 @@ class TrackingPipeline:
         target_trks = getattr(self, target)
 
         _filter_by_lifespan(target_trks)
-        _filter_by_keypoints(target_trks)
         _filter_by_size(target_trks)
 
     def get_track_images(self, target, vid_dir='../files/input/'):
@@ -884,11 +870,12 @@ class TrackingPipeline:
         for trk in target_trks.values():
             images = []
 
-            percentile = 75
             clear_frames = None
-            while (not clear_frames) and (percentile >= 25):
-                clear_frames = trk.get_high_keypoint_frames(percentile=percentile)
-                percentile -= 10
+            if trk.face_detections:
+                clear_frames = [
+                    trk.face_detections[min(trk.face_detections.keys())],
+                    trk.face_detections[max(trk.face_detections.keys())]
+                ]
 
             if clear_frames:
                 frames = [clear_frames[0], clear_frames[-1]]
@@ -1026,13 +1013,12 @@ class TrackingPipeline:
     
         stats_data = {
             'module': [
-                *['tracks'] * 6
+                *['tracks'] * 5
             ],
             'metric': [
                 'total',
                 'identified',
                 'ignored',
-                'keypoint_filtered',
                 'lifespan_filtered',
                 'size_filtered'
             ],
@@ -1040,7 +1026,6 @@ class TrackingPipeline:
                 len(all_tracks),
                 len(identified_tracks),
                 len(ignored_tracks),
-                self.kp_filtered,
                 self.lifespan_filtered,
                 self.size_filtered
             ]
@@ -1055,17 +1040,12 @@ class TrackingPipeline:
                 cosine_distance = (
                     face_detections['distance'].min() if face_detections is not None else None
                 )
-                keypoints = trk.keypoints.get(frame, None)
-                keypoint_conf = keypoints[:, 2].sum() if keypoints is not None else None
-                num_keypoints = keypoints.shape[0] if keypoints is not None else 0
 
                 track_data.append({
                     'track_id': trk_id,
                     'frame': frame,
                     'detection_confidence': detection_conf,
                     'facial_cos_dist': cosine_distance,
-                    'keypoint_confidence': keypoint_conf,
-                    'num_keypoints': num_keypoints,
                 })
         track_df = pd.DataFrame(track_data)
 

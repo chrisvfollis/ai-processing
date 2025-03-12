@@ -5,7 +5,6 @@ from utilities import utilities as utils
 from utilities import io_utils
 from models.yolov4 import YOLOv4
 from models.osnet import OSNet
-from models.movenet import MoveNet
 from models.face_iq import FaceIq
 import gc
 import time
@@ -15,10 +14,10 @@ import pickle
 
 class InferencePipeline:
     def __init__(self, video_file, model_info, device, yolo_params=None,
-                 osnet_params=None, movenet_params=None, faceiq_params=None,
+                 osnet_params=None, faceiq_params=None,
                  footage_dir='../files/input/'):
         def _instantiate_models(model_info, device, yolo_params, osnet_params,
-                                movenet_params, faceiq_params):
+                                faceiq_params):
             if not yolo_params:
                 yolov4 = YOLOv4(model_info[0], device)
             else:
@@ -31,17 +30,12 @@ class InferencePipeline:
             
             osnet.activate_buffers(video_file)
             
-            if not movenet_params:
-                movenet = MoveNet(model_info[2])
-            else:
-                movenet = MoveNet(model_info[2], **movenet_params)
-            
             if not faceiq_params:
-                face_iq = FaceIq(*model_info[3])
+                face_iq = FaceIq(*model_info[2])
             else:
-                face_iq = FaceIq(*model_info[3], **faceiq_params)
+                face_iq = FaceIq(*model_info[2], **faceiq_params)
             
-            return yolov4, osnet, movenet, face_iq
+            return yolov4, osnet, face_iq
         
         start_init = time.perf_counter()
 
@@ -54,19 +48,16 @@ class InferencePipeline:
         self.resolution = resolution
         self.f_num = 0
 
-        yolov4, osnet, movenet, face_iq = _instantiate_models(
-            model_info, device, yolo_params, osnet_params, movenet_params,
-            faceiq_params
+        yolov4, osnet, face_iq = _instantiate_models(
+            model_info, device, yolo_params, osnet_params, faceiq_params
         )
 
         self.yolov4 = yolov4
         self.osnet = osnet
-        self.movenet = movenet
         self.face_iq = face_iq
 
         self.track_stride = max(1, self.fps // 10)
         self.id_stride = (self.fps // self.track_stride) * self.track_stride
-        self.kp_stride = self.id_stride * 3
 
         self.progress_interval = (
             ((total_frames // 4) // self.track_stride) * self.track_stride
@@ -74,7 +65,6 @@ class InferencePipeline:
 
         self.person_data = {}
         self.face_data = {}
-        self.keypoint_data = {}
 
         self.primary_run_time = 0
         self.read_time = 0
@@ -148,11 +138,6 @@ class InferencePipeline:
                     )
                 if face_dfs:
                     self.face_data[self.f_num] = face_dfs
-        
-            if self.f_num % self.kp_stride == 0:
-                all_keypoints = self.movenet.detection_batch(frame, bboxes)
-                if all_keypoints:
-                    self.keypoint_data[self.f_num] = all_keypoints
     
         def _continue_forward(cap, current_frame):
             if self.track_stride <= 15:
@@ -196,7 +181,7 @@ class InferencePipeline:
             if (not ret) or (current_frame == prev_frame):
                 break
 
-            _process_frame(frame, focus='local')
+            _process_frame(frame, focus='global')
     
             frame_position = _continue_forward(cap, current_frame)
             del frame
@@ -218,7 +203,7 @@ class InferencePipeline:
         end_run = time.perf_counter()
         self.primary_run_time += (end_run - start_run)
 
-        return self.person_data, self.keypoint_data, self.face_data
+        return self.person_data, self.face_data
 
     def format_face_data(self, face_data):
         merged_dfs = []
@@ -256,7 +241,6 @@ class InferencePipeline:
                 *['video'] * 2,
                 *['yolov4'] * 3,
                 *['osnet'] * 2,
-                *['movenet'] * 1,
                 *['faceiq'] * 2
             ],
             'parameter': [
@@ -272,8 +256,6 @@ class InferencePipeline:
 
                 'input_dims',               # OSNet
                 'output_shape',
-
-                'confidence_threshold',     # MoveNet
 
                 'detection_model',          # Faceiq
                 'recognition_model'
@@ -292,8 +274,6 @@ class InferencePipeline:
                 self.osnet.input_dims,                          
                 self.osnet.output_shape,
     
-                self.movenet.conf_thresh,
-
                 self.face_iq.detection_model,
                 self.face_iq.recognition_model
             ]
@@ -305,7 +285,6 @@ class InferencePipeline:
                 *['pipeline'] * 5,
                 *['yolov4'] * 3,
                 *['osnet'] * 3,
-                *['movenet'] * 3,
                 *['faceiq'] * 2
             ],
             'metric': [             
@@ -322,10 +301,6 @@ class InferencePipeline:
                 'preprocess_time',                  # OSNet
                 'inference_time',
                 'flush_time',
-
-                'preprocess_time',                  # Movenet
-                'inference_time',
-                'postprocess_time',
 
                 'inference_time',                   # Faceiq
                 'postprocess_time'
@@ -344,10 +319,6 @@ class InferencePipeline:
                 self.osnet.preprocess_time,
                 self.osnet.embedding_time,
                 self.osnet.flush_time,
-
-                self.movenet.preprocess_time,
-                self.movenet.detection_time,
-                self.movenet.postprocess_time,
 
                 self.face_iq.identification_time,
                 self.face_iq.postprocess_time
@@ -370,7 +341,7 @@ class InferencePipeline:
         os.makedirs(output_dir, exist_ok=True)
         file_prefix = self.video_file.split('.')[0]
 
-        data = [self.person_data, self.keypoint_data, self.face_data]
+        data = [self.person_data, self.face_data]
 
         filename = io_utils.get_unique_filename(
             output_dir, f'{file_prefix}_inference_data.pkl'

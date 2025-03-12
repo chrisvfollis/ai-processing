@@ -199,7 +199,7 @@ def memory_usage(focus, n=5, threshold=None, log_filter_key=None):
             (threshold is None) or
             (total_alloc_memory > threshold)
         ):
-            print(f'Total allocated memory: {total_alloc_memory}')
+            print(f'Total allocated memory: {round(total_alloc_memory, 2)} MB')
             print('Top allocation lines:')
             for line_info in allocation_lines[:n]:
                 file, line_num, memory = line_info

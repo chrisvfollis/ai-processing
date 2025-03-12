@@ -145,8 +145,8 @@ if __name__ == '__main__':
 
     device = torch.device('cuda:0')
     model_info = [
-        '../models/weights/YOLOv4.pth', '../models/weights/OSNet.pth.tar-250',
-        '../models/weights/movenet', ('Facenet512','centerface')
+        '../models/weights/YOLOv4.pth', '../models/weights/OSNet.pth.tar-250'
+        , ('Facenet512','centerface')
     ]
 
     credentials = io_utils.get_aws_creds()
