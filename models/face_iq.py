@@ -167,24 +167,13 @@ class CenterFace:
         return detected_faces
 
     def inference_pytorch(self, img, threshold):
-        try:
-            image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
-        except Exception as e:
-            print(f'Error from resizing line: {e}')
-        try:
-            blob = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype("float32")
-        except Exception as e:
-            print(f'Error from blob line: {e}')
-        try:
-            tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
-        except Exception as e:
-            print(f'Error from tensor line: {e}')
+        image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
+        blob = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype("float32")
+        tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
 
-        try:
-            with torch.no_grad():
-                outputs = self.model(tensor)
-        except Exception as e:
-            print(f'Error from model inference line: {e}')
+        print(f'Input tensor shape: {tensor.shape}')    # Expected: (1, 3, H, W)
+        with torch.no_grad():
+            outputs = self.model(tensor)
 
         heatmap, scale, offset, lms = outputs
 
