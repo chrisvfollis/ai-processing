@@ -433,7 +433,6 @@ class FaceIq:
             face_objs = [DetectedFace(img=img, facial_area=base_region, confidence=0)]
         else:
             face_objs = self.detect_faces(
-                detector_backend=detector_backend,
                 img=img,
                 align=align,
                 expand_percentage=expand_percentage,
