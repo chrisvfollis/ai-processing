@@ -34,8 +34,10 @@ class FaceIq:
         self.face_dir = face_dir
         self.db_path = db_path
 
-        self.identification_time = 0
-        self.postprocess_time = 0
+        self.identification_pipeline_time = 0
+        self.face_detection_time = 0
+        self.face_recognition_time = 0
+        self.other_processing_time = 0
 
     def identify_faces(self, img, id_cutoff=None, regions=None):
         def _postprocess_output(all_face_dfs):
@@ -66,7 +68,7 @@ class FaceIq:
 
         config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
                   'detector_backend': self.detection_model, 'threshold': id_cutoff,
-                  'enforce_detection': False, 'silent': True}
+                  'enforce_detection': False, 'silent': True, 'batched': True}
         
         all_face_dfs = []
         
@@ -105,7 +107,7 @@ class FaceIq:
                     print(f"DeepFace error: {e}")
 
         end_id = time.perf_counter()
-        self.identification_time += (end_id - start_id)
+        self.identification_pipeline_time += (end_id - start_id)
         
         results = _postprocess_output(all_face_dfs)
 
@@ -138,7 +140,7 @@ class FaceIq:
             normalization: str = "base",
             silent: bool = False,
         ) -> List[Dict["str", Any]]:
-
+            
             representations = []
             for employee in tqdm(
                 employees,
@@ -147,8 +149,9 @@ class FaceIq:
             ):
                 file_hash = image_utils.find_image_hash(employee)
 
+                start_detection = time.perf_counter()
                 try:
-                    img_objs = detection.extract_faces(
+                    img_objs = self.extract_faces(
                         img_path=employee,
                         detector_backend=detector_backend,
                         grayscale=False,
@@ -161,6 +164,9 @@ class FaceIq:
                 except ValueError as err:
                     self.logger.error(f"Exception while extracting faces from {employee}: {str(err)}")
                     img_objs = []
+
+                end_detection = time.perf_counter()
+                self.face_detection_time += (end_detection - start_detection)
 
                 if len(img_objs) == 0:
                     representations.append(
@@ -178,6 +184,9 @@ class FaceIq:
                     for img_obj in img_objs:
                         img_content = img_obj["face"]
                         img_region = img_obj["facial_area"]
+
+                        start_recognition = time.perf_counter()
+
                         embedding_obj = representation.represent(
                             img_path=img_content,
                             model_name=model_name,
@@ -186,6 +195,9 @@ class FaceIq:
                             align=align,
                             normalization=normalization,
                         )
+
+                        end_recognition = time.perf_counter()
+                        self.face_recognition_time += (end_recognition - start_recognition)
 
                         img_representation = embedding_obj[0]["embedding"]
                         representations.append(
@@ -202,6 +214,7 @@ class FaceIq:
 
             return representations
 
+        start_other_processing = time.perf_counter()
         self.logger = Logger()
 
         if not os.path.isdir(db_path):
@@ -292,6 +305,9 @@ class FaceIq:
             representations = [rep for rep in representations if rep["identity"] not in old_images]
             must_save_pickle = True
 
+        end_other_processing = time.perf_counter()
+        self.other_processing_time += (start_other_processing - end_other_processing)
+
         # find representations for new images
         if len(new_images) > 0:
             representations += __find_bulk_embeddings(
@@ -306,14 +322,18 @@ class FaceIq:
             )  # add new images
             must_save_pickle = True
 
+        start_other_processing = time.perf_counter()
         if must_save_pickle:
             with open(datastore_path, "wb") as f:
                 pickle.dump(representations, f, pickle.HIGHEST_PROTOCOL)
 
+        end_other_processing = time.perf_counter()
+        self.other_processing_time += (start_other_processing - end_other_processing)
+
         # Should we have no representations bailout
         if len(representations) == 0:
             return []
-
+        
         # ----------------------------
         # now, we got representations for facial database
 
@@ -329,7 +349,9 @@ class FaceIq:
         )
 
         if batched:
-            return recognition.find_batched(
+            start_recognition = time.perf_counter()
+
+            batched_results = recognition.find_batched(
                 representations,
                 source_objs,
                 model_name,
@@ -341,6 +363,11 @@ class FaceIq:
                 anti_spoofing,
             )
 
+            end_recognition = time.perf_counter()
+            self.face_recognition_time += (end_recognition - start_recognition)
+
+            return batched_results
+        
         df = pd.DataFrame(representations)
 
         resp_obj = []
@@ -350,6 +377,9 @@ class FaceIq:
                 raise ValueError("Spoof detected in the given image.")
             source_img = source_obj["face"]
             source_region = source_obj["facial_area"]
+
+            start_recognition = time.perf_counter()
+
             target_embedding_obj = representation.represent(
                 img_path=source_img,
                 model_name=model_name,
@@ -358,6 +388,11 @@ class FaceIq:
                 align=align,
                 normalization=normalization,
             )
+
+            end_recognition = time.perf_counter()
+            self.face_recognition_time += (end_recognition - start_recognition)
+
+            start_other_processing = time.perf_counter()
 
             target_representation = target_embedding_obj[0]["embedding"]
 
@@ -401,6 +436,9 @@ class FaceIq:
             result_df = result_df.sort_values(by=["distance"], ascending=True).reset_index(drop=True)
 
             resp_obj.append(result_df)
+
+            end_other_processing = time.perf_counter()
+            self.other_processing_time += (start_other_processing - end_other_processing)
 
         return resp_obj
 
@@ -557,14 +595,19 @@ class FaceIq:
             )
 
         # find facial areas of given image
+        start_detection = time.perf_counter()
         facial_areas = self.face_detector.detect_faces(img)
+        
+        end_detection = time.perf_counter()
+        self.face_detection_time += (end_detection - start_detection)
 
+        start_other_processing = time.perf_counter()
         if max_faces is not None and max_faces < len(facial_areas):
             facial_areas = nlargest(
                 max_faces, facial_areas, key=lambda facial_area: facial_area.w * facial_area.h
             )
 
-        return [
+        results = [
             self.extract_face(
                 facial_area=facial_area,
                 img=img,
@@ -575,6 +618,11 @@ class FaceIq:
             )
             for facial_area in facial_areas
         ]
+
+        end_other_processing = time.perf_counter()
+        self.other_processing_time += (start_other_processing - end_other_processing)
+
+        return results
 
     def extract_face(
         self, 

@@ -286,7 +286,7 @@ class InferencePipeline:
                 *['pipeline'] * 5,
                 *['yolov4'] * 3,
                 *['osnet'] * 3,
-                *['faceiq'] * 2
+                *['faceiq'] * 4
             ],
             'metric': [             
                 'primary_run_time',                 # Pipeline            
@@ -303,7 +303,9 @@ class InferencePipeline:
                 'inference_time',
                 'flush_time',
 
-                'inference_time',                   # Faceiq
+                'identification_pipeline_time',     # Faceiq
+                'detection_inference_time',
+                'recognition_inference_time',
                 'postprocess_time'
             ],
             'value': [
@@ -321,8 +323,10 @@ class InferencePipeline:
                 self.osnet.embedding_time,
                 self.osnet.flush_time,
 
-                self.face_iq.identification_time,
-                self.face_iq.postprocess_time
+                self.face_iq.identification_pipeline_time,
+                self.face_iq.face_detection_time,
+                self.face_iq.face_recognition_time,
+                self.face_iq.other_processing_time
             ]
         }
         performance_df = pd.DataFrame(performance_data)
