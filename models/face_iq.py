@@ -37,8 +37,6 @@ class FaceIq:
         self.identification_time = 0
         self.postprocess_time = 0
 
-
-
     def identify_faces(self, img, id_cutoff=None, regions=None):
         def _postprocess_output(all_face_dfs):
             start_postprocess = time.perf_counter()
@@ -77,7 +75,7 @@ class FaceIq:
         if not regions:
             try:
                 img_resized = cv2.resize(img, (1280, 720))
-                all_face_dfs = find(img_path=img_resized, **config)
+                all_face_dfs = self.find(img_path=img_resized, **config)
                 del img_resized
             except Exception as e:
                 print(f"DeepFace error: {e}")
@@ -93,7 +91,7 @@ class FaceIq:
                 crop = img[y1:y2, x1:x2].copy()
 
                 try:
-                    local_face_dfs = find(img_path=crop, **config)
+                    local_face_dfs = self.find(img_path=crop, **config)
                     del crop
                     gc.collect()
                     if local_face_dfs:
@@ -130,7 +128,6 @@ class FaceIq:
         anti_spoofing: bool = False,
         batched: bool = False,
     ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
-        
         def __find_bulk_embeddings(
             employees: Set[str],
             model_name: str = "VGG-Face",
@@ -162,7 +159,7 @@ class FaceIq:
                     )
 
                 except ValueError as err:
-                    logger.error(f"Exception while extracting faces from {employee}: {str(err)}")
+                    self.logger.error(f"Exception while extracting faces from {employee}: {str(err)}")
                     img_objs = []
 
                 if len(img_objs) == 0:
@@ -204,6 +201,8 @@ class FaceIq:
                         )
 
             return representations
+
+        self.logger = Logger()
 
         if not os.path.isdir(db_path):
             raise ValueError(f"Passed path {db_path} does not exist!")
@@ -465,7 +464,7 @@ class FaceIq:
                 continue
 
             if grayscale is True:
-                logger.warn("Parameter grayscale is deprecated. Use color_face instead.")
+                self.logger.warn("Parameter grayscale is deprecated. Use color_face instead.")
                 current_img = cv2.cvtColor(current_img, cv2.COLOR_BGR2GRAY)
             else:
                 if color_face == "rgb":
@@ -537,7 +536,7 @@ class FaceIq:
 
         # validate expand percentage score
         if expand_percentage < 0:
-            logger.warn(
+            self.logger.warn(
                 f"Expand percentage cannot be negative but you set it to {expand_percentage}."
                 "Overwritten it to 0."
             )
@@ -991,17 +990,3 @@ class CenterFace:
                     suppressed[j] = True
 
         return keep
-
-
-# ---------------------- DeepFace Find -------------------------
-
-
-logger = Logger()
-
-
-
-
-
-
-
-# ---------------------- DeepFace Extract -------------------------
