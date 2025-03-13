@@ -126,8 +126,12 @@ class CenterFace:
 
     def detect_faces(self, img: np.ndarray, threshold=0.5) -> List[FacialAreaRegion]:
         h, w = img.shape[:2]
-        self.img_h_new, self.img_w_new = h, w
-        self.scale_h, self.scale_w = 1, 1
+
+        self.img_h_new = (h // 32) * 32
+        self.img_w_new = (w // 32) * 32
+
+        self.scale_h = h / self.img_h_new
+        self.scale_w = w / self.img_w_new
 
         detections = self.inference_pytorch(img, threshold)
 
