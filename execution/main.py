@@ -154,7 +154,7 @@ if __name__ == '__main__':
     ]
 
     credentials = io_utils.get_aws_creds()
-    shop_id = io_utils.get_shop('../files/data.db')
+    shop_id, _ = io_utils.get_shop('../files/data.db')
 
     memory_monitor, _ = utils.observability_thread('low_memory')
     memory_monitor.start()
