@@ -42,7 +42,7 @@ class FaceIq:
 
     def identify_faces(self, img, id_cutoff=None, regions=None):
         def _postprocess_output(all_face_dfs):
-            start_postprocess = time.perf_counter()
+            start_other_processing = time.perf_counter()
     
             filtered_face_dfs = []
     
@@ -60,8 +60,8 @@ class FaceIq:
                 else:
                     continue
             
-            end_postprocess = time.perf_counter()
-            self.postprocess_time += (end_postprocess - start_postprocess)
+            end_other_processing = time.perf_counter()
+            self.other_processing_time += (end_other_processing - start_other_processing)
 
             return filtered_face_dfs
 
@@ -70,7 +70,7 @@ class FaceIq:
         config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
                   'detector_backend': self.detection_model, 'threshold': id_cutoff,
                   'enforce_detection': False, 'silent': True, 'batched': False}
-        
+
         all_face_dfs = []
         
         start_id = time.perf_counter()
