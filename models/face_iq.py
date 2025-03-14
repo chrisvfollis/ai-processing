@@ -8,12 +8,13 @@ import os
 import pickle
 from tqdm import tqdm
 from deepface.commons import image_utils
-from deepface.modules import modeling, representation, detection, verification, recognition
+from deepface.modules import modeling, representation, verification, recognition
 from deepface.commons.logger import Logger
 from deepface.models.Detector import Detector, DetectedFace, FacialAreaRegion
 from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional
 from heapq import nlargest
 import torch
+import traceback
 
 
 class FaceIq:
@@ -41,7 +42,7 @@ class FaceIq:
 
     def identify_faces(self, img, id_cutoff=None, regions=None):
         def _postprocess_output(all_face_dfs):
-            start_other_processing = time.perf_counter()
+            start_postprocess = time.perf_counter()
     
             filtered_face_dfs = []
     
@@ -59,8 +60,8 @@ class FaceIq:
                 else:
                     continue
             
-            end_other_processing = time.perf_counter()
-            self.other_processing_time += (end_other_processing - start_other_processing)
+            end_postprocess = time.perf_counter()
+            self.postprocess_time += (end_postprocess - start_postprocess)
 
             return filtered_face_dfs
 
@@ -104,7 +105,8 @@ class FaceIq:
 
                                 all_face_dfs.append(df)
                 except Exception as e:
-                    print(f"DeepFace error: {e}")
+                    print(f"Error: {e}")
+                    print(traceback.format_exc())
 
         end_id = time.perf_counter()
         self.identification_pipeline_time += (end_id - start_id)
@@ -881,12 +883,17 @@ class CenterFace:
 
         self.img_h_new, self.img_w_new, self.scale_h, self.scale_w = 0, 0, 0, 0
 
-
     def detect_faces(self, img: np.ndarray, threshold=0.5) -> List[FacialAreaRegion]:
         h, w = img.shape[:2]
+        if (h == 0) or (w == 0):
+            return []
 
-        self.img_h_new = (h // 32) * 32
-        self.img_w_new = (w // 32) * 32
+        if (h >= 32) and (w >= 32):
+            self.img_h_new = (h // 32) * 32
+            self.img_w_new = (w // 32) * 32
+        else:
+            self.img_h_new = h + 1 if ((h % 2) != 0) else h
+            self.img_w_new = w + 1 if ((w % 2) != 0) else w
 
         self.scale_h = h / self.img_h_new
         self.scale_w = w / self.img_w_new
@@ -930,7 +937,11 @@ class CenterFace:
 
     def inference_pytorch(self, img, threshold):
         image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
-        blob = cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB).transpose(2, 0, 1).astype("float32")
+        blob = (
+            cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
+            .transpose(2, 0, 1)
+            .astype("float32")
+        )
         tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
