@@ -49,7 +49,9 @@ class FaceIq:
     
             for df in all_face_dfs:
                 if not df.empty:
-                    results = io_utils.lookup_identities(df['identity'])
+                    results = io_utils.lookup_identities(
+                        df['identity'], db_path=self.db_path
+                    )
 
                     df[['identity', 'name', 'designation']] = pd.DataFrame(
                         [(result[1], f'{result[3]}_{result[4]}', result[5])
