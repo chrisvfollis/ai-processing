@@ -71,8 +71,8 @@ def get_latest_file(dir_path, base_name):
 def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
     if img is None:
         return None
-    file_name = f'{uuid.uuid4()}.jpg'
-    file_path = os.path.join(img_dir, file_name)
+    object_key = f'{uuid.uuid4()}.jpg'
+    file_path = os.path.join(img_dir, object_key)
     cv2.imwrite(file_path, img)
     try:
         s3_client = boto3.client(
@@ -82,11 +82,13 @@ def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
             region_name='us-west-1'
         )
         bucket_name = 'timemanager-event-imgs'
-        s3_client.upload_file(file_path, bucket_name, file_name)
+        s3_client.upload_file(file_path, bucket_name, object_key)
+        if os.path.exists(file_path):
+            os.remove(file_path)
     except (EndpointConnectionError, NoCredentialsError) as e:
         pass
 
-    return file_name
+    return object_key
 
 
 def write_embeddings(hdf5_file, embeddings, frames, box_indices):

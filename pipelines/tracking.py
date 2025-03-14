@@ -867,7 +867,6 @@ class TrackingPipeline:
 
         for trk in target_trks.values():
             images = []
-
             clear_frames = None
             if trk.face_detections:
                 clear_frames = [
@@ -881,6 +880,9 @@ class TrackingPipeline:
                 frames = trk.span
 
             for f in frames:
+                if f < 0:   # Handle persisted tracks from prior runs
+                    continue
+
                 try:
                     detection = trk.object_detections[f]
                 except TypeError:
@@ -899,11 +901,9 @@ class TrackingPipeline:
                 cropped = frame[y:y+h, x:x+w]
                 images.append(cropped)
 
-
             if images: 
                 trk.start_img = io_utils.save_event_image(images[0], self.credentials)
                 trk.end_img = io_utils.save_event_image(images[1], self.credentials)
-
 
         cap.release()
 

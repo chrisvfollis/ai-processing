@@ -236,6 +236,14 @@ class InferencePipeline:
         clip_identifier = self.video_file.split('.')[0] + '_' + commit_hash
         os.makedirs(output_dir, exist_ok=True)
 
+        prior_runtime_data = os.listdir(output_dir)
+        if len(prior_runtime_data) > 200:
+            for filename in prior_runtime_data:
+                file_path = os.path.join(output_dir, filename)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+
+
         config_data = {
             'module': [
                 *['software'] * 2,
