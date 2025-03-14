@@ -68,7 +68,7 @@ class FaceIq:
 
         config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
                   'detector_backend': self.detection_model, 'threshold': id_cutoff,
-                  'enforce_detection': False, 'silent': True, 'batched': True}
+                  'enforce_detection': False, 'silent': True, 'batched': False}
         
         all_face_dfs = []
         
