@@ -141,7 +141,7 @@ def cropped_detections(video, yolov4, face_iq):
         if f_num % fps == 0:
             start = time.perf_counter()
             detections = yolov4.detect(frame, 0, conf_thresh=0.65,
-                                       resize_dims=(416, 416))
+                                       input_dims=(416, 416))
             end = time.perf_counter()
             detect_total += (end - start)
 
@@ -198,7 +198,7 @@ def cropped_detections(video, yolov4, face_iq):
     print(f'Main execution time: {ex_end - ex_start}\n')
     print(f'Total detection time: {detect_total}')
     print(f'Total ID time: {id_total}\n')
-    print(f'YOLOv4 input size: {yolov4.resize_dims}')
+    print(f'YOLOv4 input size: {yolov4.input_dims}')
 
     face_df = pd.DataFrame(face_data)
     face_df['correct_id'] = ''
