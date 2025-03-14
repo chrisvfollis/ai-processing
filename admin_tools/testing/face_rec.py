@@ -84,10 +84,11 @@ def whole_image(video, face_iq):
 
                 cropped_image = frame[y1:y2, x1:x2]
 
-                output_path = os.path.join('output', 'faces', f'{image_num}.jpg')
+                output_path = os.path.join('output', 'faces', f'{f_num}_{image_num}.jpg')
                 cv2.imwrite(output_path, cropped_image)
 
                 face_data.append({
+                    'frame_num': f_num,
                     'img_num': image_num,
                     'identity': predicted_identity,
                     'distance': cosine_distance
