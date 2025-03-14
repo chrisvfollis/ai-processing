@@ -19,12 +19,13 @@ import traceback
 
 class FaceIq:
     def __init__(self, recognition_model, detection_model, id_cutoff=0.8,
-                 face_dir='../files/input/faces', db_path='../files/data.db'):
+                 face_dir='../files/input/faces', db_path='../files/data.db',
+                 weights_path='../models/weights/centerface.pth'):
         self.recognition_model = recognition_model
         self.detection_model = detection_model
 
         if detection_model == 'centerface_gpu':
-            self.face_detector = CenterFace()
+            self.face_detector = CenterFace(weights_path=weights_path)
         else:
             self.face_detector: Detector = modeling.build_model(
                 task="face_detector", model_name=detection_model

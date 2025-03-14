@@ -15,8 +15,9 @@ import math
 def run_function(fx, video):
     video_path = os.path.join('input', video)
 
-    face_iq = FaceIq('Facenet512', 'centerface', face_dir='../../files/input/faces',
-                     db_path='../../files/data.db')
+    face_iq = FaceIq('Facenet512', 'centerface_gpu', face_dir='../../files/input/faces',
+                     db_path='../../files/data.db',
+                     weights_path='../../models/weights/centerface.pth')
 
     if fx == 'whole_image':
         whole_image(video_path, face_iq)
