@@ -42,10 +42,12 @@ def run_processing_pipelines(row, model_info, device, credentials):
     from pipelines.inference import InferencePipeline
     from pipelines.tracking import TrackingPipeline
 
-    video_file = row[0]
+    object_key = row[0]
+    video_file = object_key.split('/')[-1]
+
     time_prefix, camera = utils.parse_clip_filename(video_file)
 
-    if not io_utils.download_s3_footage(video_file, credentials):
+    if not io_utils.download_s3_footage(object_key, credentials):
         return False
 
     try:
@@ -55,7 +57,7 @@ def run_processing_pipelines(row, model_info, device, credentials):
         )
         valid = inference_pipeline.skim()
         if not valid:
-            io_utils.delete_s3_footage(video_file, credentials)
+            io_utils.delete_s3_footage(object_key, credentials)
             return False
         
         inference_output = inference_pipeline.run()
@@ -84,22 +86,24 @@ def run_processing_pipelines(row, model_info, device, credentials):
         return False
 
 
-def run_master_process(device, model_info, credentials):
+def run_master_process(device, model_info, shop_id, credentials):
     def _clear_local_data():
         io_utils.clear_track_info('all')
         io_utils.delete_local_files('all')
 
-    def _finalize(queue_block):
-        time_prefix = utils.parse_clip_filename(queue_block[0][0], data='time')
+    def _finalize(shop_id, queue_block):
+        time_prefix = utils.parse_clip_filename(
+            queue_block[0][0].split('/')[-1], data='time'
+        )
         timestamp = utils.frame_timestamp(time_prefix)
 
         io_utils.post_events_to_webapp(time_prefix)
 
-        video_files = [row[0] for row in queue_block]
-        for video_file in video_files:
-            io_utils.delete_s3_footage(video_file, credentials)
+        object_keys = [row[0] for row in queue_block]
+        for object_key in object_keys:
+            io_utils.delete_s3_footage(object_key, credentials)
 
-        io_utils.clear_queue_block(timestamp)
+        io_utils.clear_queue_block(shop_id, timestamp)
         io_utils.delete_local_files(time_prefix)
     
     signal.signal(signal.SIGTERM, handle_early_termination)
@@ -110,7 +114,7 @@ def run_master_process(device, model_info, credentials):
     while True:
         io_utils.cleanup_semaphores()
 
-        queue_block = io_utils.get_queue_block()
+        queue_block = io_utils.get_queue_block(shop_id)
 
         if not queue_block:
             time.sleep(60)
@@ -135,7 +139,7 @@ def run_master_process(device, model_info, credentials):
             
             async_results.get()
 
-        _finalize(queue_block)
+        _finalize(shop_id, queue_block)
         stop_timing.set()
         time_logger.join()
 
@@ -150,8 +154,9 @@ if __name__ == '__main__':
     ]
 
     credentials = io_utils.get_aws_creds()
+    shop_id = io_utils.get_shop('../files/data.db')
 
     memory_monitor, _ = utils.observability_thread('low_memory')
     memory_monitor.start()
 
-    run_master_process(device, model_info, credentials)
+    run_master_process(device, model_info, shop_id, credentials)

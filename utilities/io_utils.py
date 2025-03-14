@@ -227,7 +227,9 @@ def download_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
         aws_secret_access_key=credentials[1],
         region_name='us-west-1'
     )
-    local_path = os.path.join('../files/input', object_key)
+
+    video_file = object_key.split('/')[-1]
+    local_path = os.path.join('../files/input', video_file)
 
     try:
         s3.download_file(bucket_name, object_key, local_path)
@@ -470,19 +472,33 @@ def clear_track_info(identifier, db_path='../files/data.db'):
 # Remote Database Functions:
 
 
-def get_queue_block():
-    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
-    
+def get_queue_block(shop_id):
+    '''
+    Returns:
+        queue_block (List[List]):
+            A list of lists, where each sublist contains the information for
+            one of the multiple video files recorded concurrently by the shop's
+            cameras over a given period of time. The order is as follows:
+            - vid_object_key
+            - timestamp
+            - camera
+    '''
     load_dotenv()
+
+    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+    endpoint = 'api/service/get_queue_block/'
+
+    endpoint_url = base_url + endpoint
+
     headers = {
         'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
         'Content-Type': 'application/json'
     }
 
-    get_queue_url = base_url + 'api/service/get_queue_block/'
+    params = {'shop_id': shop_id}
 
     try:
-        response = requests.get(get_queue_url, headers=headers)
+        response = requests.get(endpoint_url, headers=headers, params=params)
         data = response.json()
 
         queue_block = data.get('results', [])
@@ -500,22 +516,24 @@ def get_queue_block():
         return False
 
 
-def clear_queue_block(timestamp):
-    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
-    
+def clear_queue_block(shop_id, timestamp):
     load_dotenv()
+
+    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
+    endpoint = 'api/service/update_queue/'
+    endpoint_url = base_url + endpoint
+    
     headers = {
         'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
         'Content-Type': 'application/json'
     }
 
-    update_queue_url = base_url + 'api/service/update_queue/'
-
-    response = requests.post(
-        update_queue_url, json={
-            'action': 'clear_section', 'timestamp': timestamp.isoformat()},
-        headers=headers
-    )
+    payload = {
+        'action': 'clear_section',
+        'shop_id': shop_id,
+        'timestamp': timestamp.isoformat()
+    }
+    response = requests.post(endpoint_url, headers=headers, json=payload)
 
     if response.status_code == 200:
         print("Successfully cleared queue block")
