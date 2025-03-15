@@ -15,6 +15,7 @@ from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional
 from heapq import nlargest
 import torch
 import traceback
+import uuid
 
 
 class FaceIq:
@@ -1051,3 +1052,50 @@ class CenterFace:
                     suppressed[j] = True
 
         return keep
+
+    def visualize_detections(
+            self, image: np.ndarray, detected_faces: List[FacialAreaRegion],
+            output_path: str = None
+        ):
+        '''
+        Visualizes detected faces and their landmarks on the input image.
+
+        Args:
+            img (np.ndarray): The original input image.
+            detected_faces (List[FacialAreaRegion]): The detected face regions with landmarks.
+        '''
+
+        annotated_image = image.copy()
+
+        for face in detected_faces:
+            x1, y1 = face.x, face.y
+            x2, y2 = (
+                face.x + face.w,
+                face.y + face.h
+            )
+
+            cv2.rectangle(annotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            
+            for eye in (face.left_eye, face.right_eye):
+                if not eye:
+                    continue
+                cv2.circle(annotated_image, eye, 3, (255, 0, 0), -1)
+            
+            for mouth_side in (face.mouth_left, face.mouth_right):
+                if not mouth_side:
+                    continue
+                cv2.circle(annotated_image, mouth_side, 3, (0, 255, 255), -1)
+            
+            if face.nose:
+                cv2.circle(annotated_image, face.nose, 3, (0, 0, 255), -1)
+
+            cv2.putText(
+                annotated_image, f'{face.confidence:.2f}',
+                (face.x, face.y - 5), cv2.FONT_HERSHEY_SIMPLEX,
+                0.5, (255, 255, 255), 2
+            )
+
+            if output_path:
+                cv2.imwrite(output_path, annotated_image)
+
+        return annotated_image
