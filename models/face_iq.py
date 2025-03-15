@@ -1054,7 +1054,7 @@ class CenterFace:
         return keep
 
     def visualize_detections(
-            self, image: np.ndarray, detected_faces: List[FacialAreaRegion],
+            self, image: np.ndarray, face_detections: List[FacialAreaRegion],
             output_path: str = None
         ):
         '''
@@ -1064,38 +1064,46 @@ class CenterFace:
             img (np.ndarray): The original input image.
             detected_faces (List[FacialAreaRegion]): The detected face regions with landmarks.
         '''
+        def _bgr_color_tuples():
+            blue, green, red = (255, 0, 0), (0, 255, 0), (0, 0, 255)
+            yellow, white = (0, 255, 255), (255, 255, 255)
+            return blue, green, red, yellow, white
 
-        annotated_image = image.copy()
+        def _xyxy_box(face):
+            x1 = face.x
+            y1 = face.y
 
-        for face in detected_faces:
-            x1, y1 = face.x, face.y
-            x2, y2 = (
-                face.x + face.w,
-                face.y + face.h
-            )
+            x2 = face.x + face.w
+            y2 = face.y + face.h
 
-            cv2.rectangle(annotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            
-            for eye in (face.left_eye, face.right_eye):
-                if not eye:
-                    continue
-                cv2.circle(annotated_image, eye, 3, (255, 0, 0), -1)
-            
-            for mouth_side in (face.mouth_left, face.mouth_right):
-                if not mouth_side:
-                    continue
-                cv2.circle(annotated_image, mouth_side, 3, (0, 255, 255), -1)
-            
-            if face.nose:
-                cv2.circle(annotated_image, face.nose, 3, (0, 0, 255), -1)
+            return x1, y1, x2, y2
+
+        image = image.copy()
+        blue, green, red, yellow, white = _bgr_color_tuples()
+
+        for face in face_detections:
+            x1, y1, x2, y2 = _xyxy_box(face)
+            cv2.rectangle(image, (x1, y1), (x2, y2), green, 2)
 
             cv2.putText(
-                annotated_image, f'{face.confidence:.2f}',
-                (face.x, face.y - 5), cv2.FONT_HERSHEY_SIMPLEX,
-                0.5, (255, 255, 255), 2
+                image, f'confidence: {face.confidence:.2f}', (x1, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, white, 2
             )
 
-            if output_path:
-                cv2.imwrite(output_path, annotated_image)
+            eyes = [face.left_eye, face.right_eye]
+            mouth = [face.mouth_left, face.mouth_right]
+            nose = face.nose
+            
+            for point in eyes:
+                if point:
+                    cv2.circle(image, point, 3, blue, -1)
+            for point in mouth:
+                if point:
+                    cv2.circle(image, point, 3, yellow, -1)
+            if nose:
+                cv2.circle(image, nose, 3, red, -1)
+    
+        if output_path:
+            cv2.imwrite(output_path, image)
 
-        return annotated_image
+        return image
