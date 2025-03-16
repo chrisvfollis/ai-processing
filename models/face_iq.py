@@ -1,7 +1,7 @@
 # standard dependencies
 import os
 import traceback
-from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional
+from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional, Sequence
 import pickle
 from heapq import nlargest
 import time
@@ -20,6 +20,7 @@ from tqdm import tqdm
 
 # internal dependencies
 from utilities import io_utils
+from utilities import utilities as utils
 
 
 class FaceIq:
@@ -891,7 +892,11 @@ class CenterFace:
 
         self.img_h_new, self.img_w_new, self.scale_h, self.scale_w = 0, 0, 0, 0
 
-    def detect_faces(self, img: np.ndarray, threshold=0.5) -> List[FacialAreaRegion]:
+    def detect_faces(
+            self, img: np.ndarray, threshold=0.5,
+            offset: Sequence = None
+        ) -> List[FacialAreaRegion]:
+    
         h, w = img.shape[:2]
         if (h == 0) or (w == 0):
             return []
@@ -909,35 +914,43 @@ class CenterFace:
         detections = self.inference_pytorch(img, threshold)
 
         if self.landmarks:
-            dets, lms = detections
+            all_dets, all_lms = detections
         else:
-            dets = detections
+            all_dets = detections
             lms = None
 
         detected_faces = []
-        for i, box in enumerate(dets):
-            x1, y1, x2, y2, score = box
-            w, h = x2 - x1, y2 - y1
+        for i, box in enumerate(all_dets):
+            x1, y1, x2, y2 = map(int, box[:4])
+            if offset:
+                x1, y1 = utils.apply_offset((x1, y1), offset)
+                x2, y2 = utils.apply_offset((x2, y2), offset)
+            
+            score = float(box[4])
+            w, h = (x2 - x1), (y2 - y1)
+            
+            if all_lms is not None:
+                lms = [
+                    tuple(map(all_lms[i][j:j+2])) for j in range(0, 8, 2)
+                ]
+                if offset:
+                    lms = utils.apply_offset(lms, offset)
 
-            left_eye = right_eye = nose = mouth_right = mouth_left = None
-            if lms is not None:
-                left_eye = (int(lms[i][0]), int(lms[i][1]))
-                right_eye = (int(lms[i][2]), int(lms[i][3]))
-                nose = (int(lms[i][4]), int(lms[i][5]))
-                mouth_right = (int(lms[i][6]), int(lms[i][7]))
-                mouth_left = (int(lms[i][8]), int(lms[i][9]))
+                left_eye, right_eye, nose, mouth_right, mouth_left = lms
+            else:
+                left_eye = right_eye = nose = mouth_right = mouth_left = None
 
             face_region = FacialAreaRegion(
-                x=int(x1),
-                y=int(y1),
-                w=int(w),
-                h=int(h),
+                x=x1,
+                y=y1,
+                w=w,
+                h=h,
                 left_eye=left_eye,
                 right_eye=right_eye,
                 nose=nose,
                 mouth_right=mouth_right,
                 mouth_left=mouth_left,
-                confidence=float(score)
+                confidence=score
             )
             detected_faces.append(face_region)
 

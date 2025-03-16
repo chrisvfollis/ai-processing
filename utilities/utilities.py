@@ -9,6 +9,7 @@ import threading
 import gc
 from datetime import datetime, timedelta
 import time
+from typing import Union, Sequence
 
 # 3rd-party dependencies
 import numpy as np
@@ -693,3 +694,20 @@ def filter_sparse_rows(cost_matrix):
         filtered_matrix.append(cost_matrix[i])
 
     return np.array(filtered_matrix), keep
+
+
+def apply_offset(coordinates: Union[Sequence[int], Sequence[Sequence[int]]],
+                 offset: Sequence[int]):
+    
+    if isinstance(coordinates[0], int):
+        x = coordinates[0] + offset[0]
+        y = coordinates[1] + offset[1]
+        return (x, y)
+    else:
+        offset_coordinates = []
+        for xy in coordinates:
+            x = xy[0] + offset[0]
+            y = xy[1] + offset[1]
+            offset_coordinates.append((x, y))
+        return offset_coordinates
+
