@@ -30,8 +30,8 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
     detector = CenterFace()
 
     if isinstance(image, str):
-        image = cv2.imread(image)
         image_name = image.split('/')[-1]
+        image = cv2.imread(image)
 
     if not image_name:
         image_name = str(uuid.uuid4())
