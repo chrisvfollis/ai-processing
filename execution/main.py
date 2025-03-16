@@ -151,7 +151,7 @@ def run_master_process(device, model_info, shop_id, credentials):
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
 
-    device = torch.device('cuda:0')
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model_info = [
         '../models/weights/YOLOv4.pth', '../models/weights/OSNet.pth.tar-250'
         , ('Facenet512', 'centerface_gpu')
