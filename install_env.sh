@@ -24,6 +24,7 @@ name = "pytorch-cu121"
 # Deep Learning Frameworks:
 
 torch = {version = "*", index = "pytorch-cu121"}
+onnx2torch = "*"
 tensorflow = "==2.15.0"
 keras = "==2.15.0"
 
@@ -92,6 +93,7 @@ name = "pytorch-cpu"
 # Deep Learning Frameworks:
 
 torch = {version = "*", index = "pytorch-cpu"}
+onnx2torch = "*"
 tensorflow = "==2.15.0"
 keras = "==2.15.0"
 

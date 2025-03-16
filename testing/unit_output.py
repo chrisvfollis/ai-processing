@@ -73,20 +73,26 @@ if __name__ == '__main__':
 
         if subcategory == 'people':
             if input_type == 'img':
+                print('Detecting people in image...')
                 detect_people_in_image()
             elif input_type == 'vid':
+                print('Detecting people in video...')
                 detect_people_in_video()
 
         elif subcategory == 'faces':
             if input_type == 'img':
+                print('Detecting faces in image...')
                 detect_faces_in_image(input_path)
             elif input_type == 'vid':
                 detect_faces_in_video()
-    
+                print('Detecting faces in image...')
+
     elif category == 'recognize':
         input_type, input_path = sys.argv[2].split('=')
 
         if input_type == 'img':
+            print('Recognizing faces in image...')
             recognize_faces_in_image()
         elif input_type == 'vid':
+            print('Recognizing faces in video...')
             recognize_faces_in_video()
