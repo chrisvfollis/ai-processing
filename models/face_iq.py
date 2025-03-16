@@ -931,7 +931,7 @@ class CenterFace:
             
             if all_lms is not None:
                 lms = [
-                    tuple(map(int, all_lms[i][j:j+2])) for j in range(0, 8, 2)
+                    tuple(map(int, all_lms[i][j:j+2])) for j in range(0, 9, 2)
                 ]
                 if offset:
                     lms = utils.apply_offset(lms, offset)
