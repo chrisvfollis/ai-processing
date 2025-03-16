@@ -100,7 +100,7 @@ def detect_faces_in_video(
                         region_crop, offset=region
                     )
 
-                    face_detections.append(region_face_detections)
+                    face_detections += region_face_detections
     
             frame = detector.visualize_detections(frame, face_detections)
 
