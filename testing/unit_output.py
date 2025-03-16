@@ -71,9 +71,10 @@ def detect_faces_in_video(
     while f_num < total_frames:
         ret, frame = cap.read()
         if not ret:
+            print('Nothing returned')
             break
 
-        if f_num % fps:
+        if (f_num % fps) == 0:
             if focus == 'global':
                 face_detections = detector.detect_faces(frame)
             
