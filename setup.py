@@ -12,6 +12,7 @@ setup(
         "torch",
         "torchvision",
         "torchreid",
+        "onnx2torch",
         "tensorflow==2.15.0",
         "keras==2.15.0",
 
