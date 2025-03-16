@@ -1,11 +1,16 @@
-from botocore.exceptions import ClientError
+# standard dependencies
 import os
-from utilities import initial_s3_setup
+import re
 from typing import Union
 from datetime import datetime, timezone
-import re
-from dotenv import load_dotenv
+
+# 3rd-party dependencies
 import requests
+from dotenv import load_dotenv
+from botocore.exceptions import ClientError
+
+# internal dependencies
+from .utilities import initial_s3_setup
 
 
 def list_download(object_keys: Union[list, str], output_dir='resources/downloads',

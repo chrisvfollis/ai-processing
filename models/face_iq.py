@@ -1,21 +1,25 @@
-from utilities import io_utils
-import time
-import pandas as pd
-import gc
-import cv2
-import numpy as np
+# standard dependencies
 import os
+import traceback
+from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional
 import pickle
-from tqdm import tqdm
+from heapq import nlargest
+import time
+import gc
+
+# 3rd-party dependencies
+import numpy as np
+import pandas as pd
+import cv2
+import torch
 from deepface.commons import image_utils
 from deepface.modules import modeling, representation, verification, recognition
 from deepface.commons.logger import Logger
 from deepface.models.Detector import Detector, DetectedFace, FacialAreaRegion
-from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional
-from heapq import nlargest
-import torch
-import traceback
-import uuid
+from tqdm import tqdm
+
+# internal dependencies
+from utilities import io_utils
 
 
 class FaceIq:

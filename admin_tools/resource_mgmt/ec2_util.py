@@ -1,7 +1,12 @@
+# standard dependencies
 import subprocess
 import os
+
+# 3rd-party dependencies
+pass
+
+# internal dependencies
 from admin_tools import admin_utils
-import boto3
 
 
 def scp_download(remote_dir, local_dir, config, cfg_dir=None,

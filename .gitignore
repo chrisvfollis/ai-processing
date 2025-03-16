@@ -24,4 +24,5 @@ scratch.py
 
 *.egg-info/
 
-capture/utilities/Scan
+Pipfile
+Pipfile.lock

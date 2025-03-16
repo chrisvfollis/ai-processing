@@ -1,6 +1,12 @@
+# standard dependencies
 import os
+
+# 3rd-party dependencies
 from dotenv import load_dotenv
 import boto3
+
+# internal dependencies
+pass
 
 
 def validate_filepath(file_name, dir_path):

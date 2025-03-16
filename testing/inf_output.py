@@ -1,18 +1,21 @@
-import torch
-import multiprocessing
-import time
+# standard dependencies
 import os
-from dotenv import load_dotenv
-import signal
 import sys
-from utilities import io_utils
-from utilities import utilities as utils
+import multiprocessing
 import threading
+import time
 
-os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
+# 3rd-party dependencies
+from dotenv import load_dotenv
+import torch
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
+
+# internal dependencies
+from utilities import io_utils
+from utilities import utilities as utils
 
 
 def generate_inf_data(video_file, credentials, model_info, device, params=None,

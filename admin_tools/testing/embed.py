@@ -1,13 +1,15 @@
+# standard dependencies
 import os
-import torch
-import cv2
-from models.yolov4 import YOLOv4
-import cv2
-import torch.nn.functional as F
-from torchvision import transforms
-from torchvision.io import read_image
-from torchvision.transforms import ConvertImageDtype, Pad, Compose
 
+# 3rd-party dependencies
+import cv2
+import torch
+from torchvision import transforms
+from torchvision.transforms import ConvertImageDtype
+from torchvision.io import read_image
+
+# internal dependencies
+from models.yolov4 import YOLOv4
 
 
 def generate_detections(video_file, detector, stride=60, start=0):

@@ -1,21 +1,26 @@
-import h5py
+# standard dependencies
 import os
 import sqlite3
-import numpy as np
-import uuid
-import cv2
-import boto3
-from botocore.exceptions import EndpointConnectionError, NoCredentialsError
-from dotenv import load_dotenv
-import requests
-import pandas as pd
-from utilities import utilities as utils
-import torch
 import re
 import getpass
 import subprocess
 import gc
+import uuid
+
+# 3rd-party dependencies
+import numpy as np
+import pandas as pd
+import h5py
+import cv2
+import torch
+from dotenv import load_dotenv
+import boto3
+from botocore.exceptions import EndpointConnectionError, NoCredentialsError
+import requests
 import psutil
+
+# internal dependencies
+from utilities import utilities as utils
 
 
 def clear_memory():

@@ -27,6 +27,7 @@ setup(
         "scipy",
         "openpyxl",
         "xlsxwriter",
+        "h5py",
 
         # Networks, APIs, etc:
         "requests",
@@ -36,6 +37,8 @@ setup(
         # Other Libraries:
         "shapely",
         "tqdm==4.43.0",
+        "psutil"
+
     ],
     python_requires=">=3.10,<3.11",
 )

@@ -1,18 +1,22 @@
+# standard dependencies
 import os
-import multiprocessing
-import torch
-import time
 import sys
-from utilities import io_utils
-from utilities import utilities as utils
-import gc
-import signal
 import traceback
+import signal
+import gc
+import multiprocessing
+import time
 
-os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
+# 3rd-party dependencies
+import torch
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
+
+# internal dependencies
+from utilities import io_utils
+from utilities import utilities as utils
 
 
 def handle_early_termination(signum, frame):

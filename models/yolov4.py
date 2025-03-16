@@ -1,12 +1,16 @@
-import cv2
-import torch
-import numpy as np
+# standard dependencies
+import sys
 import time
+
+# 3rd-party dependencies
+import numpy as np
+import cv2
 import torch
 from torch import nn
 import torch.nn.functional as F
-import numpy as np
-import sys
+
+# internal dependencies
+pass
 
 
 class YOLOv4:

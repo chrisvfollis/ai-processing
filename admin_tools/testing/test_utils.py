@@ -1,8 +1,14 @@
+# standard dependencies
+import os
+
+# 3rd-party dependencies
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.utils.dataframe import dataframe_to_rows
-import os
+
+# internal dependencies
+pass
 
 
 def add_imgs_to_spreadsheet(df):

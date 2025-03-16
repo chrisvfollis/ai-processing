@@ -1,18 +1,21 @@
-import cv2
+# standard dependencies
+import os
+import tracemalloc
+import pickle
+import time
+import math
+from itertools import permutations
+from collections import deque
+
+# 3rd-party dependencies
 import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
-import os
-import numpy as np
-from itertools import permutations
-import time
-import pickle
-import math
+import cv2
 import torch
 import torch.nn.functional as F
-from collections import deque
-import tracemalloc
 
+# internal dependencies
 from utilities import io_utils
 from utilities import utilities as utils
 

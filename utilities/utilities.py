@@ -1,17 +1,23 @@
-from shapely.geometry import Polygon, box
-from datetime import datetime, timedelta
-import numpy as np
-import torch
-import cv2
-import subprocess
+# standard dependencies
 import os
-import time
+import sys
 import psutil
 from psutil import NoSuchProcess, AccessDenied, ZombieProcess
-import gc
-import sys
-import threading
 import tracemalloc
+import subprocess
+import threading
+import gc
+from datetime import datetime, timedelta
+import time
+
+# 3rd-party dependencies
+import numpy as np
+import cv2
+import torch
+from shapely.geometry import Polygon, box
+
+# internal dependencies
+pass
 
 
 def observability_thread(target, args=None):

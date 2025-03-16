@@ -1,22 +1,24 @@
-import torch
-import numpy as np
-import cv2
-import time
+# standard dependencies
 import os
-import h5py
-from utilities import io_utils
 import time
 from collections import deque
-import torch
 import gc
-
 import warnings
+
+# 3rd-party dependencies
+import numpy as np
+import h5py
+import cv2
+import torch
+
 warnings.filterwarnings(
-    "ignore",
-    message="Cython evaluation",
+    "ignore", message="Cython evaluation",
     module="torchreid.reid.metrics.rank"
 )
 from torchreid import models as reid
+
+# internal dependencies
+from utilities import io_utils
 
 
 class OSNet:

@@ -1,17 +1,16 @@
-import torch
-import multiprocessing
+# standard dependencies
 import os
-from dotenv import load_dotenv
-from utilities import io_utils
-from utilities import utilities as utils
+import multiprocessing
+import threading
 import pickle
 import time
-import threading
 
-os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "false"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow as tf
+# 3rd-party dependencies
+import torch
+
+# internal dependencies
+from utilities import io_utils
+from utilities import utilities as utils
 
 
 def process_inf_output(video_file, device, output_dir='../files/output'):

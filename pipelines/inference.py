@@ -1,15 +1,20 @@
-import pandas as pd
+# standard dependencies
 import os
+import time
+import pickle
+import gc
+
+# 3rd-party dependencies
+import pandas as pd
 import cv2
-from utilities import utilities as utils
-from utilities import io_utils
+import torch
+
+# internal dependencies
 from models.yolov4 import YOLOv4
 from models.osnet import OSNet
 from models.face_iq import FaceIq
-import gc
-import time
-import torch
-import pickle
+from utilities import utilities as utils
+from utilities import io_utils
 
 
 class InferencePipeline:

@@ -1,7 +1,12 @@
+# standard dependencies
+import time
+
+# 3rd-party dependencies
 import numpy as np
 import tensorflow as tf
-import cv2
-import time
+
+# internal dependencies
+pass
 
 
 class MoveNet:

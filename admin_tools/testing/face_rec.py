@@ -1,15 +1,17 @@
-import pandas as pd
-import tensorflow
-from deepface import DeepFace
-import torch
-import cv2
+# standard dependencies
 import os
-import numpy as np
 import time
+import math
+
+# 3rd-party dependencies
+import pandas as pd
+import cv2
+import torch
+
+# internal dependencies
 from models.yolov4 import YOLOv4
 from models.face_iq import FaceIq
 from utilities import utilities as utils
-import math
 
 
 def run_function(fx, video):

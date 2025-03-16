@@ -45,6 +45,7 @@ pandas = "*"
 scipy = "*"
 openpyxl = "*"
 xlsxwriter = "*"
+h5py = "*"
 
 # -------------------
 # Networks, APIs, etc:
@@ -58,6 +59,7 @@ python-dotenv = "*"
 
 shapely = "*"
 tqdm = "4.43.0"
+psutil = "*"
 
 # ----------------------------------------------------------------------------
 
@@ -111,6 +113,7 @@ pandas = "*"
 scipy = "*"
 openpyxl = "*"
 xlsxwriter = "*"
+h5py = "*"
 
 # -------------------
 # Networks, APIs, etc:
@@ -124,6 +127,7 @@ python-dotenv = "*"
 
 shapely = "*"
 tqdm = "4.43.0"
+psutil = "*"
 
 # ----------------------------------------------------------------------------
 
@@ -138,5 +142,3 @@ fi
 
 pipenv install
 pipenv shell
-
-pip install -e .
