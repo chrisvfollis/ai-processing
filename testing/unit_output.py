@@ -56,6 +56,10 @@ def detect_faces_in_video(
     cap = cv2.VideoCapture(video)
     resolution, fps, total_frames = utils.get_video_info(cap, release=False)
     
+    print(f'Resolution: {resolution}')
+    print(f'FPS: {fps}')
+    print(f'Total Frames: {total_frames}')
+    
     video_file = video.split('/')[-1]
     prefix = video_file.split('.')[0]
 
