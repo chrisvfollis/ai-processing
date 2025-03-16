@@ -55,7 +55,7 @@ def detect_faces_in_video(
 
     cap = cv2.VideoCapture(video)
     resolution, fps, total_frames = utils.get_video_info(cap, release=False)
-    
+
     print(f'Resolution: {resolution}')
     print(f'FPS: {fps}')
     print(f'Total Frames: {total_frames}')
@@ -136,23 +136,30 @@ if __name__ == '__main__':
     
     input_path = sys.argv[2]
     file_extension = input_path.split('.')[-1]
+    print(f'File extension: {file_extension}')
 
     if category == 'detect':
         if subcategory == 'people':
             if file_extension in ['.png', '.jpg', '.jpeg']:
+                print('Detecting people in image...')
                 detect_people_in_image()
             elif file_extension == '.mp4':
+                print('Detecting people in video...')
                 detect_people_in_video()
 
         elif subcategory == 'faces':
             if file_extension in ['.png', '.jpg', '.jpeg']:
+                print('Detecting faces in image...')
                 detect_faces_in_image(input_path)
             elif file_extension == '.mp4':
+                print('Detecting faces in video...')
                 focus = sys.argv[3]
                 detect_faces_in_video(input_path, focus=focus)
 
     elif category == 'recognize':
         if file_extension in ['.png', '.jpg', '.jpeg']:
+            print('Recognizing faces in image...')
             recognize_faces_in_image()
+            print('Recognizing faces in video...')
         elif file_extension == '.mp4':
             recognize_faces_in_video()
