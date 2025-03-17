@@ -5,6 +5,7 @@ import pickle
 from heapq import nlargest
 import time
 import gc
+import csv
 
 # 3rd-party dependencies
 import numpy as np
@@ -25,7 +26,8 @@ from utilities import utilities as utils
 class FaceIq:
     def __init__(self, recognition_model, detection_model, id_cutoff=0.8,
                  face_dir='../files/input/faces', db_path='../files/data.db',
-                 weights_path='../models/weights/centerface.pth'):
+                 weights_path='../models/weights/centerface.pth',
+                 save_data=False):
         self.recognition_model = recognition_model
         self.detection_model = detection_model
 
@@ -45,6 +47,15 @@ class FaceIq:
         self.face_detection_time = 0
         self.face_recognition_time = 0
         self.other_processing_time = 0
+
+        self.save_data = save_data
+
+        if self.save_data:
+            self.i = 0
+            self.face_detections = {}       # <-- self.face_detector.detect_faces() <-- self.detect_faces()
+            self.face_objs = {}             # <-- self.detect_faces() <-- self.extract_faces()
+            self.source_objs = {}           # <-- self.extract_faces() <-- self.find()
+            self.det_recognition_dfs = {}   # <-- self.find()
 
     def identify_faces(self, img, id_cutoff=None, regions=None):
         def _postprocess_output(all_face_dfs):
@@ -387,6 +398,8 @@ class FaceIq:
             expand_percentage=expand_percentage,
             anti_spoofing=anti_spoofing,
         )
+        if self.save_data:
+            self.source_objs[self.i] = source_objs
 
         if batched:
             start_recognition = time.perf_counter()
@@ -480,6 +493,9 @@ class FaceIq:
             end_other_processing = time.perf_counter()
             self.other_processing_time += (start_other_processing - end_other_processing)
 
+        if self.save_data:
+            self.det_recognition_dfs[self.i] = resp_obj
+
         return resp_obj
 
     def extract_faces(
@@ -516,6 +532,9 @@ class FaceIq:
                 expand_percentage=expand_percentage,
                 max_faces=max_faces,
             )
+
+        if self.save_data:
+            self.face_objs[self.i] = face_objs
 
         if len(face_objs) == 0 and enforce_detection is True:
             if img_name is not None:
@@ -636,10 +655,14 @@ class FaceIq:
 
         # find facial areas of given image
         start_detection = time.perf_counter()
+
         facial_areas = self.face_detector.detect_faces(img)
-        
+
         end_detection = time.perf_counter()
         self.face_detection_time += (end_detection - start_detection)
+
+        if self.save_data:
+            self.face_detections[self.i] = facial_areas
 
         start_other_processing = time.perf_counter()
         if max_faces is not None and max_faces < len(facial_areas):
@@ -815,7 +838,7 @@ class FaceIq:
         right_eye: Optional[Union[list, tuple]],
     ) -> Tuple[np.ndarray, float]:
         """
-        Align a given image horizantally with respect to their left and right eye locations
+        Align a given image horizontally with respect to their left and right eye locations
         Args:
             img (np.ndarray): pre-loaded image with detected face
             left_eye (list or tuple): coordinates of left eye with respect to the person itself
@@ -902,10 +925,32 @@ class FaceIq:
 
         return (x1, y1, x2, y2)
 
+    def save_runtime_data(self, save_path='../files/output/faceiq_data.csv'):
+        '''
+        Saves the lengths of stored data per frame to a CSV file.
+        Each row corresponds to a frame, with columns representing the
+        lengths of different stored datasets for that frame.
+        '''
+        if not self.save_data:
+            return
+        
+        with open(save_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["frame", "face_detections", "face_objs", "source_objs", "det_recognition_dfs"])
+            
+            for i in range(self.i):
+                writer.writerow([
+                    i,
+                    len(self.face_detections.get(i, [])),
+                    len(self.face_objs.get(i, [])),
+                    len(self.source_objs.get(i, [])),
+                    len(self.det_recognition_dfs.get(i, []))
+                ])
 
 
 class CenterFace:
-    def __init__(self, weights_path='../models/weights/centerface.pth', landmarks=True):
+    def __init__(self, weights_path='../models/weights/centerface.pth',
+                 landmarks=True, save_data=False):
         '''
         Adapted from https://github.com/Star-Clouds/CenterFace/ and modified
         for compatibility with DeepFace
@@ -921,6 +966,11 @@ class CenterFace:
         self.model.to(self.device)
 
         self.img_h_new, self.img_w_new, self.scale_h, self.scale_w = 0, 0, 0, 0
+
+        self.save_data = save_data
+        if self.save_data:
+            self.i = 0
+            self.face_detections = {}
 
     def detect_faces(
             self, img: np.ndarray, threshold=0.5,
@@ -984,6 +1034,8 @@ class CenterFace:
             )
             detected_faces.append(face_region)
 
+        if self.save_data:
+            self.face_detections[self.i] = detected_faces
         return detected_faces
 
     def inference_pytorch(self, img, threshold):
@@ -1145,3 +1197,21 @@ class CenterFace:
             cv2.imwrite(output_path, image)
 
         return image
+
+    def save_runtime_data(self, filename='../files/output/centerface_data.csv'):
+        '''
+        Saves the lengths of detected faces per frame to a CSV file.
+        Each row corresponds to a frame, with a column for the number of detections.
+        '''
+        if not self.save_data:
+            return
+        
+        with open(filename, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['frame', 'face_detections'])
+            
+            for i in range(self.i):
+                writer.writerow([
+                    i,
+                    len(self.face_detections.get(i, []))
+                ])

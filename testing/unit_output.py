@@ -47,7 +47,7 @@ def detect_faces_in_video(
         output_dir: str = '../files/output'
     ):
 
-    detector = CenterFace()
+    detector = CenterFace(save_data=True)
 
     if focus == 'local':
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -72,6 +72,7 @@ def detect_faces_in_video(
                           fourcc, fps, (1920, 1080))
     
     f_num = 0
+    detector.i = f_num
     while f_num < total_frames:
         ret, frame = cap.read()
         if not ret:
@@ -100,20 +101,24 @@ def detect_faces_in_video(
 
                     face_detections += region_face_detections
 
-            cv2.putText(
-                frame, f'{len(face_detections)} faces',
-                (int(resolution[0]/2), int(resolution[1]/2)),
-                cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
-            )
             frame = detector.visualize_detections(frame, face_detections)
+
+        cv2.putText(
+            frame, f'frame {f_num}',
+            (int(resolution[0]/2), int(resolution[1]/2)),
+            cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
+        )
 
         frame = cv2.resize(frame, (1920, 1080))
         out.write(frame)
+
         f_num += 1
+        detector.i = f_num
 
     out.release()
     cap.release()
 
+    detector.save_runtime_data()
 
 def recognize_faces_in_image():
     pass
@@ -124,7 +129,7 @@ def recognize_faces_in_video(
         output_dir: str = '../files/output'
     ):
 
-    face_iq = FaceIq('Facenet512', 'centerface_gpu')
+    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
 
     if focus == 'local':
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -148,9 +153,11 @@ def recognize_faces_in_video(
     id_total = 0
 
     f_num = -1
+    face_iq.i = f_num
 
     while f_num < total_frames:
         f_num += 1
+        face_iq.i = f_num
         ret, frame = cap.read()
         if not ret:
             break
@@ -176,20 +183,20 @@ def recognize_faces_in_video(
             end = time.perf_counter()
             id_total += (end - start)
 
-            cv2.putText(
-                frame, f'{len(all_face_dfs)} faces',
-                (int(resolution[0]/2), int(resolution[1]/2)),
-                cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
-            )
-
             frame = face_iq.visualize_identifications(frame, all_face_dfs)
 
+        cv2.putText(
+            frame, f'frame {f_num}',
+            (int(resolution[0]/2), int(resolution[1]/2)),
+            cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
+        )
         frame = cv2.resize(frame, (1920, 1080))
         out.write(frame)
     
     cap.release()
     out.release()
 
+    face_iq.save_runtime_data()
 
 if __name__ == '__main__':
     all_args = sys.argv
