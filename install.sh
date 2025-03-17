@@ -2,6 +2,13 @@
 
 set -e
 
+# Add shell scripts to path
+if ! grep -q 'export PATH="$PWD/scripts:$PATH"' ~/.bashrc; then
+    echo 'export PATH="$PWD/scripts:$PATH"' >> ~/.bashrc
+    echo 'export PATH="$PWD/scripts:$PATH"' >> ~/.zshrc
+    echo "Updated PATH to include project scripts."
+fi
+
 # Detect CUDA
 if command -v nvidia-smi &> /dev/null; then
     echo "CUDA detected! Writing Pipfile for CUDA..."
@@ -143,4 +150,7 @@ EOL
 fi
 
 pipenv install
-pipenv shell
+
+echo -e "\nIvakt Timemanager — Successfully installed dependencies"
+echo -e "Continue the installation by running the following command: \n"
+echo -e "    pipenv shell && source ~/.bashrc && pip install -e . \n"
