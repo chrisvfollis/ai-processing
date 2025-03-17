@@ -99,7 +99,11 @@ def detect_faces_in_video(
                     )
 
                     face_detections += region_face_detections
-    
+
+            cv2.putText(
+                frame, f'{len(face_detections)} faces', (resolution[0]/2, resolution[1]/2),
+                cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
+            )
             frame = detector.visualize_detections(frame, face_detections)
 
         frame = cv2.resize(frame, (1920, 1080))
@@ -157,8 +161,7 @@ def recognize_faces_in_video(
             
             if focus == 'local':
                 start = time.perf_counter()
-                detections = yolov4.detect(frame, 0, conf_thresh=0.65,
-                                           input_dims=(416, 416))
+                detections = yolov4.detect(frame, 0)
                 end = time.perf_counter()
                 detect_total += (end - start)
 
@@ -171,6 +174,11 @@ def recognize_faces_in_video(
             all_face_dfs = face_iq.identify_faces(frame, id_cutoff=0.999, regions=regions)
             end = time.perf_counter()
             id_total += (end - start)
+
+            cv2.putText(
+                frame, f'{len(all_face_dfs)} faces', (resolution[0]/2, resolution[1]/2),
+                cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
+            )
 
             frame = face_iq.visualize_identifications(frame, all_face_dfs)
 
