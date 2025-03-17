@@ -2,3 +2,5 @@ INSTANCE_ID=i-0b1a403d08a31f442
 REGION=us-west-1
 PEM_PATH=timemanager.pem
 REMOTE_USER=ubuntu
+
+# Put configs in internal API 
