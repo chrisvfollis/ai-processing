@@ -1,6 +1,5 @@
 # standard dependencies
 import os
-import traceback
 from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional, Sequence
 import pickle
 from heapq import nlargest
@@ -85,37 +84,36 @@ class FaceIq:
         start_id = time.perf_counter()
 
         if not regions:
-            try:
-                img_resized = cv2.resize(img, (1280, 720))
-                all_face_dfs = self.find(img_path=img_resized, **config)
-                del img_resized
-            except Exception as e:
-                print(f"DeepFace error: {e}")
-                
-                end_id = time.perf_counter()
-                self.identification_time += (end_id - start_id)
-                
-                return all_face_dfs
+            face_dfs = self.find(img_path=img, **config)
+            for df in face_dfs:
+                df = utils.reformat_face_df(df)
+
+                all_face_dfs.append(df)
+
         else:
             for region in regions:
-                x1, y1 = region[0], region[1]
-                x2, y2 = region[0] + region[2], region[1] + region[3]
-                crop = img[y1:y2, x1:x2].copy()
+                img_crop = utils.crop_region(img, region)
+                local_face_dfs = self.find(img_path=img_crop, **config)
 
-                try:
-                    local_face_dfs = self.find(img_path=crop, **config)
-                    del crop
-                    gc.collect()
-                    if local_face_dfs:
-                        for df in local_face_dfs:
-                            if not df.empty:
-                                df['source_x'] += x1
-                                df['source_y'] += y1
+                del img_crop
+                gc.collect()
 
-                                all_face_dfs.append(df)
-                except Exception as e:
-                    print(f"Error: {e}")
-                    print(traceback.format_exc())
+                for df in local_face_dfs:
+                    df = utils.reformat_face_df(df)
+                    if df.empty:
+                        continue
+    
+                    df[['x', 'y']] = df.apply(
+                        lambda row:
+
+                        utils.apply_offset(
+                            (row['x'], row['y']), region
+                        ),
+
+                        axis=1
+                    ).apply(pd.Series)
+
+                    all_face_dfs.append(df)
 
         end_id = time.perf_counter()
         self.identification_pipeline_time += (end_id - start_id)

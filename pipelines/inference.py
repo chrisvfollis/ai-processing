@@ -202,7 +202,7 @@ class InferencePipeline:
 
         io_utils.clear_memory()
 
-        self.face_detections = self.format_face_data(self.face_detections)
+        self.face_detections = self.consolidate_face_data(self.face_detections)
 
         self.save_runtime_data()
 
@@ -211,7 +211,7 @@ class InferencePipeline:
 
         return (self.object_detections, self.face_detections)
 
-    def format_face_data(self, face_data):
+    def consolidate_face_data(self, face_data):
         merged_dfs = []
         for frame, dfs in face_data.items():
             valid_dfs = [df for df in dfs if not df.empty]
@@ -223,17 +223,7 @@ class InferencePipeline:
         if not merged_dfs:
             return None
 
-        full_df = pd.concat(merged_dfs, ignore_index=True)
-
-        drop_columns = [
-            'target_x', 'target_y', 'target_w', 'target_h', 'threshold'
-        ]
-        full_df = full_df.drop([col for col in drop_columns if col in full_df.columns], axis=1)
-
-        full_df = full_df.rename(columns={'source_x': 'x', 'source_y': 'y',
-                                        'source_w': 'w', 'source_h': 'h'})
-
-        return full_df
+        return pd.concat(merged_dfs, ignore_index=True)
 
     def save_runtime_data(self, output_dir='../files/output/runtime_data'):
         commit_hash, commit_datetime = utils.get_git_commit_info()

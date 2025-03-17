@@ -10,10 +10,11 @@ import gc
 from datetime import datetime, timedelta
 import time
 from typing import Union
-from collections.abc import Sequence
+from collections.abc import Sequence, Iterable
 
 # 3rd-party dependencies
 import numpy as np
+import pandas as pd
 import cv2
 import torch
 from shapely.geometry import Polygon, box
@@ -698,22 +699,26 @@ def filter_sparse_rows(cost_matrix):
 
 
 def apply_offset(
-        coordinates: Union[Sequence[int], Sequence[Sequence]],
+        coordinates: Union[Iterable[int], Iterable[Iterable]],
         offset: Sequence[int]
     ):
     '''
     Recursively applies a given (x, y) offset to an arbitrarily nested
-    sequence of coordinates.
+    set of coordinates.
 
     Args:
-        coordinates (Sequence): Either a single coordinate sequence, or a
-        sequence of coordinate sequences with arbitrary depth.
+        coordinates (Iterable): Either an iterable for the coordinates of a
+        single point, or an iterable of such iterables (with as many layers as
+        needed).  
 
         offset (Sequence): Contains the x and y with which the coordinates
         are summed.
     '''
 
-    if isinstance(coordinates[0], Sequence):
+    if isinstance(coordinates, (np.ndarray, pd.Series)):
+        coordinates = coordinates.tolist() 
+
+    if isinstance(coordinates[0], (Iterable)):
         return [
             apply_offset(coord, offset) for coord in coordinates
         ]
@@ -724,3 +729,39 @@ def apply_offset(
         x1, y1 = int(x_ + x0), int(y_ + y0)
 
         return (x1, y1)
+
+
+def reformat_face_df(
+        face_df: pd.DataFrame,
+        drop: Sequence = [
+            'target_x', 'target_y',
+            'target_w', 'target_h',
+            'threshold'
+        ],
+        rename: dict = {
+            'source_x': 'x',
+            'source_y': 'y',
+            'source_w': 'w',
+            'source_h': 'h'
+        }
+    ):  
+        if drop:
+            valid_drop_cols = [c for c in drop if c in face_df.columns]
+            face_df = face_df.drop(valid_drop_cols, axis=1)
+
+        if rename:
+            valid_renames = {}
+            rename_cols = list(rename.keys())
+            for col in rename_cols:
+                if col in face_df.columns:
+                    del rename[col]
+
+            face_df = face_df.rename(columns=valid_renames)
+
+        return face_df
+
+
+def crop_region(img, region):
+    x1, y1 = region[0], region[1]
+    x2, y2 = region[0] + region[2], region[1] + region[3]
+    return img[y1:y2, x1:x2].copy()
