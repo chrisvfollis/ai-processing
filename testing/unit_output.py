@@ -101,7 +101,8 @@ def detect_faces_in_video(
                     face_detections += region_face_detections
 
             cv2.putText(
-                frame, f'{len(face_detections)} faces', (resolution[0]/2, resolution[1]/2),
+                frame, f'{len(face_detections)} faces',
+                (int(resolution[0]/2), int(resolution[1]/2)),
                 cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
             )
             frame = detector.visualize_detections(frame, face_detections)
@@ -176,7 +177,8 @@ def recognize_faces_in_video(
             id_total += (end - start)
 
             cv2.putText(
-                frame, f'{len(all_face_dfs)} faces', (resolution[0]/2, resolution[1]/2),
+                frame, f'{len(all_face_dfs)} faces',
+                (int(resolution[0]/2), int(resolution[1]/2)),
                 cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
             )
 
