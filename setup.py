@@ -52,7 +52,8 @@ setup(
         # Other Libraries:
         'shapely',
         'tqdm==4.43.0',
-        'psutil'
+        'psutil',
+        'jupyter'
     ],
     python_requires='>=3.10,<3.11',
 )

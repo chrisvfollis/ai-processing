@@ -52,6 +52,7 @@ class FaceIq:
 
         if self.save_data:
             self.i = 0
+            self.regions = {}
             self.face_detections = {}       # <-- self.face_detector.detect_faces() <-- self.detect_faces()
             self.face_objs = {}             # <-- self.detect_faces() <-- self.extract_faces()
             self.source_objs = {}           # <-- self.extract_faces() <-- self.find()
@@ -102,6 +103,9 @@ class FaceIq:
                 all_face_dfs.append(df)
 
         else:
+            if self.save_data:
+                self.regions.setdefault(self.i, []).extend(regions)
+
             for region in regions:
                 img_crop = utils.crop_region(img, region)
                 local_face_dfs = self.find(img_path=img_crop, **config)
@@ -939,6 +943,7 @@ class FaceIq:
             writer.writerow(["idx", "face_detections", "face_objs", "source_objs", "det_recognition_dfs"])
             
             all_idxs = sorted(set([
+                *self.regions.keys(),
                 *self.face_detections.keys(),
                 *self.face_objs.keys(),
                 *self.source_objs.keys(),
@@ -948,6 +953,7 @@ class FaceIq:
             for i in all_idxs:
                 writer.writerow([
                     i,
+                    len(self.regions.get(i, [])),
                     len(self.face_detections.get(i, [])),
                     len(self.face_objs.get(i, [])),
                     len(self.source_objs.get(i, [])),
@@ -1043,6 +1049,7 @@ class CenterFace:
 
         if self.save_data:
             self.face_detections.setdefault(self.i, []).extend(detected_faces)
+
         return detected_faces
 
     def inference_pytorch(self, img, threshold):
@@ -1213,11 +1220,17 @@ class CenterFace:
         if not self.save_data:
             return
         
+        columns = ['idx', 'face_detections']
+        if hasattr(self, 'regions'):
+            columns.append('regions')
+        
         with open(filename, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['idx', 'face_detections'])
+            writer.writerow(columns)
             
             for i, detections in self.face_detections.items():
-                writer.writerow([
-                    i, len(detections)
-                ])
+                row = [i, len(detections)]
+                if hasattr(self, 'regions'):
+                    row.append(len(self.regions.get(i, [])))
+
+                writer.writerow(row)

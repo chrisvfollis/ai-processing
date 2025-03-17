@@ -50,6 +50,8 @@ def detect_faces_in_video(
     detector = CenterFace(save_data=True)
 
     if focus == 'local':
+        detector.regions = {}
+
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         yolov4 = YOLOv4('../models/weights/YOLOv4.pth', device)
 
@@ -71,28 +73,36 @@ def detect_faces_in_video(
     out = cv2.VideoWriter(os.path.join(output_dir, filename),
                           fourcc, fps, (1920, 1080))
     
-    f_num = 0
+    f_num = -1
     detector.i = f_num
+
     while f_num < total_frames:
+        f_num += 1
+        detector.i = f_num
         ret, frame = cap.read()
         if not ret:
-            print('Nothing returned')
             break
 
         if (f_num % fps) == 0:
+            face_detections = []
+    
             if focus == 'global':
                 face_detections = detector.detect_faces(frame)
             
             elif focus == 'local':
-                face_detections = []
                 bboxes = yolov4.detect(frame, 0)
+
                 if not bboxes:
                     continue
+        
                 regions = utils.cluster_bboxes_into_regions(
                     bboxes, *resolution
                 )
 
                 for region in regions:
+                    if detector.save_data:
+                        detector.regions.set_default(f_num, []).append(region)
+
                     frame_crop = utils.crop_region(frame, region)
 
                     region_face_detections = detector.detect_faces(
@@ -140,17 +150,13 @@ def recognize_faces_in_video(
 
     video_file = video.split('/')[-1]
     prefix = video_file.split('.')[0]
-
     filename = io_utils.get_unique_filename(
         output_dir, f'{prefix}_face_identifications.mp4'
     )
-    
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(os.path.join(output_dir, filename),
-                          fourcc, fps, (1920, 1080))
+    output_path = os.path.join(output_dir, filename)
 
-    detect_total = 0
-    id_total = 0
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (1920, 1080))
 
     f_num = -1
     face_iq.i = f_num
@@ -162,26 +168,21 @@ def recognize_faces_in_video(
         if not ret:
             break
 
-        if (f_num % 500) == 0:
-            print(f_num)
-
         if (f_num % fps) == 0:
-            
-            if focus == 'local':
-                start = time.perf_counter()
-                detections = yolov4.detect(frame, 0)
-                end = time.perf_counter()
-                detect_total += (end - start)
-
-                person_boxes = [box for box in detections if (math.prod(box[2:4]) > 6400)]
-                regions = utils.cluster_bboxes_into_regions(person_boxes, *resolution)
-            else:
+            if focus == 'global':
                 regions = None
+    
+            elif focus == 'local':
+                bboxes = yolov4.detect(frame, 0)
 
-            start = time.perf_counter()
+                if not bboxes:
+                    continue
+    
+                regions = utils.cluster_bboxes_into_regions(
+                    bboxes, *resolution
+                )
+
             all_face_dfs = face_iq.identify_faces(frame, id_cutoff=0.999, regions=regions)
-            end = time.perf_counter()
-            id_total += (end - start)
 
             frame = face_iq.visualize_identifications(frame, all_face_dfs)
 
@@ -190,6 +191,7 @@ def recognize_faces_in_video(
             (int(resolution[0]/2), int(resolution[1]/2)),
             cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
         )
+
         frame = cv2.resize(frame, (1920, 1080))
         out.write(frame)
     
@@ -197,6 +199,7 @@ def recognize_faces_in_video(
     out.release()
 
     face_iq.save_runtime_data()
+
 
 if __name__ == '__main__':
     all_args = sys.argv
