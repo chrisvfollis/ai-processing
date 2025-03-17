@@ -754,7 +754,7 @@ def reformat_face_df(
             rename_cols = list(rename.keys())
             for col in rename_cols:
                 if col in face_df.columns:
-                    del rename[col]
+                    valid_renames[col] = rename[col]
 
             face_df = face_df.rename(columns=valid_renames)
 
