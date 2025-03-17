@@ -399,7 +399,7 @@ class FaceIq:
             anti_spoofing=anti_spoofing,
         )
         if self.save_data:
-            self.source_objs.setdefault(self.i, []) += source_objs
+            self.source_objs.setdefault(self.i, []).extend(source_objs)
 
         if batched:
             start_recognition = time.perf_counter()
@@ -494,7 +494,7 @@ class FaceIq:
             self.other_processing_time += (start_other_processing - end_other_processing)
 
         if self.save_data:
-            self.det_recognition_dfs.setdefault(self.i, []) += resp_obj
+            self.det_recognition_dfs.setdefault(self.i, []).extend(resp_obj)
 
         return resp_obj
 
@@ -534,7 +534,7 @@ class FaceIq:
             )
 
         if self.save_data:
-            self.face_objs.setdefault(self.i, []) += face_objs
+            self.face_objs.setdefault(self.i, []).extend(face_objs)
 
         if len(face_objs) == 0 and enforce_detection is True:
             if img_name is not None:
@@ -662,7 +662,7 @@ class FaceIq:
         self.face_detection_time += (end_detection - start_detection)
 
         if self.save_data:
-            self.face_detections.setdefault(self.i, []) += facial_areas
+            self.face_detections.setdefault(self.i, []).extend(facial_areas)
 
         start_other_processing = time.perf_counter()
         if max_faces is not None and max_faces < len(facial_areas):
@@ -1042,7 +1042,7 @@ class CenterFace:
             detected_faces.append(face_region)
 
         if self.save_data:
-            self.face_detections.setdefault(self.i, []) += detected_faces
+            self.face_detections.setdefault(self.i, []).extend(detected_faces)
         return detected_faces
 
     def inference_pytorch(self, img, threshold):
