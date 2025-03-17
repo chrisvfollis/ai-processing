@@ -363,6 +363,22 @@ def lookup_identities(image_paths, db_path='../files/data.db'):
     return [results_map.get(filename) for filename in filenames]
 
 
+def lookup_name(identity_uuid, db_path='../files/data.db'):
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    query = f'''
+        SELECT first_name, last_name FROM people
+        WHERE identity_uuid = ?;
+    '''
+    cursor.execute(query, (identity_uuid,))
+    results = cursor.fetchone()
+    conn.close()
+
+    return results
+
+
 def get_designation(identity, db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()

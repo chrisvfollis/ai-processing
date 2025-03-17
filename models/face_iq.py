@@ -122,6 +122,37 @@ class FaceIq:
 
         return results
 
+    def visualize_identifications(self, image, identifications, output_path: str = None):
+        image = image.copy()
+        color = (245, 104, 17)
+
+        for face_df in identifications:
+            if face_df.empty:
+                continue
+    
+            best_match = face_df.loc[face_df['distance'].idxmin()]
+
+            x, y, w, h = best_match[['x', 'y', 'w', 'h']]
+            x1, y1, x2, y2 = utils.xywh_to_xyxy([x, y, w, h])
+
+            cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+
+            cv2.putText(
+                image, f"distance: {best_match['distance']:.2f}", (x1, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2
+            )
+
+            first_name, _ = io_utils.lookup_name(best_match['identity'])
+            cv2.putText(
+                image, f"name: {first_name}", (x2 - 5, y2 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2
+            )
+
+        if output_path:
+            cv2.imwrite(output_path, image)
+
+        return image
+
     def find(
         self, 
         img_path: Union[str, np.ndarray],
@@ -872,6 +903,7 @@ class FaceIq:
         return (x1, y1, x2, y2)
 
 
+
 class CenterFace:
     def __init__(self, weights_path='../models/weights/centerface.pth', landmarks=True):
         '''
@@ -1084,20 +1116,11 @@ class CenterFace:
             yellow, white = (0, 255, 255), (255, 255, 255)
             return blue, green, red, yellow, white
 
-        def _xyxy_box(face):
-            x1 = face.x
-            y1 = face.y
-
-            x2 = face.x + face.w
-            y2 = face.y + face.h
-
-            return x1, y1, x2, y2
-
         image = image.copy()
         blue, green, red, yellow, white = _bgr_color_tuples()
 
         for face in face_detections:
-            x1, y1, x2, y2 = _xyxy_box(face)
+            x1, y1, x2, y2 = utils.xywh_to_xyxy([face.x, face.y, face.w, face.h])
             cv2.rectangle(image, (x1, y1), (x2, y2), green, 2)
 
             cv2.putText(

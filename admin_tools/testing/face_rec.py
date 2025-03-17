@@ -162,10 +162,10 @@ def cropped_detections(video, yolov4, face_iq):
                 for df in df_results:
                     best_row = df.loc[df['distance'].idxmin()]
                     try:
-                        source_x = int(best_row['source_x'])
-                        source_y = int(best_row['source_y'])
-                        source_w = int(best_row['source_w'])
-                        source_h = int(best_row['source_h'])
+                        source_x = int(best_row['x'])
+                        source_y = int(best_row['y'])
+                        source_w = int(best_row['w'])
+                        source_h = int(best_row['h'])
                     except (ValueError, TypeError):
                         print('Invalid coordinates')
                         continue

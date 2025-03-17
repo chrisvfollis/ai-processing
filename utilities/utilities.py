@@ -765,3 +765,12 @@ def crop_region(img, region):
     x1, y1 = region[0], region[1]
     x2, y2 = region[0] + region[2], region[1] + region[3]
     return img[y1:y2, x1:x2].copy()
+
+
+def xywh_to_xyxy(coordinates):
+    x1, y1, w, h = coordinates[:4]
+
+    x2 = x1 + w
+    y2 = y1 + h
+
+    return x1, y1, x2, y2
