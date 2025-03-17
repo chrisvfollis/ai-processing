@@ -120,7 +120,7 @@ def recognize_faces_in_video(
     ):
 
     face_iq = FaceIq('Facenet512', 'centerface_gpu')
-    
+
     if focus == 'local':
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         yolov4 = YOLOv4('../models/weights/YOLOv4.pth', device)
@@ -219,6 +219,7 @@ if __name__ == '__main__':
         if file_extension in ['png', 'jpg', 'jpeg']:
             print('Input: image')
             recognize_faces_in_image()
-            print('Input: video')
         elif file_extension == 'mp4':
-            recognize_faces_in_video()
+            print('Input: video')
+            focus = sys.argv[3]
+            recognize_faces_in_video(input_path, focus=focus)
