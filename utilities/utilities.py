@@ -9,7 +9,8 @@ import threading
 import gc
 from datetime import datetime, timedelta
 import time
-from typing import Union, Sequence
+from typing import Union
+from collections.abc import Sequence
 
 # 3rd-party dependencies
 import numpy as np
@@ -696,18 +697,30 @@ def filter_sparse_rows(cost_matrix):
     return np.array(filtered_matrix), keep
 
 
-def apply_offset(coordinates: Union[Sequence[int], Sequence[Sequence[int]]],
-                 offset: Sequence[int]):
-    
-    if isinstance(coordinates[0], int):
-        x = coordinates[0] + offset[0]
-        y = coordinates[1] + offset[1]
-        return (x, y)
-    else:
-        offset_coordinates = []
-        for xy in coordinates:
-            x = xy[0] + offset[0]
-            y = xy[1] + offset[1]
-            offset_coordinates.append((x, y))
-        return offset_coordinates
+def apply_offset(
+        coordinates: Union[Sequence[int], Sequence[Sequence]],
+        offset: Sequence[int]
+    ):
+    '''
+    Recursively applies a given (x, y) offset to an arbitrarily nested
+    sequence of coordinates.
 
+    Args:
+        coordinates (Sequence): Either a single coordinate sequence, or a
+        sequence of coordinate sequences with arbitrary depth.
+
+        offset (Sequence): Contains the x and y with which the coordinates
+        are summed.
+    '''
+
+    if isinstance(coordinates[0], Sequence):
+        return [
+            apply_offset(coord, offset) for coord in coordinates
+        ]
+    else:
+        x0, y0 = offset[:2]
+        x_, y_ = coordinates[:2]
+
+        x1, y1 = int(x_ + x0), int(y_ + y0)
+
+        return (x1, y1)
