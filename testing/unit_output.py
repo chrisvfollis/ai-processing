@@ -101,7 +101,7 @@ def detect_faces_in_video(
 
                 for region in regions:
                     if detector.save_data:
-                        detector.regions.set_default(f_num, []).append(region)
+                        detector.regions.setdefault(f_num, []).append(region)
 
                     frame_crop = utils.crop_region(frame, region)
 
