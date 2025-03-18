@@ -89,7 +89,7 @@ class FaceIq:
 
         config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
                   'detector_backend': self.detection_model, 'threshold': id_cutoff,
-                  'enforce_detection': False, 'silent': True, 'batched': False}
+                  'silent': True, 'batched': False}
 
         all_face_dfs = []
         
@@ -174,7 +174,6 @@ class FaceIq:
         db_path: str,
         model_name: str = "VGG-Face",
         distance_metric: str = "cosine",
-        enforce_detection: bool = True,
         detector_backend: str = "opencv",
         align: bool = True,
         expand_percentage: int = 0,
@@ -189,7 +188,6 @@ class FaceIq:
             employees: Set[str],
             model_name: str = "VGG-Face",
             detector_backend: str = "opencv",
-            enforce_detection: bool = True,
             align: bool = True,
             expand_percentage: int = 0,
             normalization: str = "base",
@@ -209,8 +207,6 @@ class FaceIq:
                     img_objs = self.extract_faces(
                         img_path=employee,
                         detector_backend=detector_backend,
-                        grayscale=False,
-                        enforce_detection=enforce_detection,
                         align=align,
                         expand_percentage=expand_percentage,
                         color_face='bgr'  # `represent` expects images in bgr format.
@@ -245,7 +241,6 @@ class FaceIq:
                         embedding_obj = representation.represent(
                             img_path=img_content,
                             model_name=model_name,
-                            enforce_detection=enforce_detection,
                             detector_backend="skip",
                             align=align,
                             normalization=normalization,
@@ -369,7 +364,6 @@ class FaceIq:
                 employees=new_images,
                 model_name=model_name,
                 detector_backend=detector_backend,
-                enforce_detection=enforce_detection,
                 align=align,
                 expand_percentage=expand_percentage,
                 normalization=normalization,
@@ -396,8 +390,6 @@ class FaceIq:
         source_objs = self.extract_faces(
             img_path=img_path,
             detector_backend=detector_backend,
-            grayscale=False,
-            enforce_detection=enforce_detection,
             align=align,
             expand_percentage=expand_percentage,
             anti_spoofing=anti_spoofing,
@@ -413,7 +405,6 @@ class FaceIq:
                 source_objs,
                 model_name,
                 distance_metric,
-                enforce_detection,
                 align,
                 threshold,
                 normalization,
@@ -440,7 +431,6 @@ class FaceIq:
             target_embedding_obj = representation.represent(
                 img_path=source_img,
                 model_name=model_name,
-                enforce_detection=enforce_detection,
                 detector_backend="skip",
                 align=align,
                 normalization=normalization,
@@ -506,10 +496,8 @@ class FaceIq:
         self,
         img_path: Union[str, np.ndarray, IO[bytes]],
         detector_backend: str = "opencv",
-        enforce_detection: bool = True,
         align: bool = True,
         expand_percentage: int = 0,
-        grayscale: bool = False,
         color_face: str = "rgb",
         normalize_face: bool = True,
         anti_spoofing: bool = False,
@@ -540,41 +528,18 @@ class FaceIq:
         if self.save_data:
             self.face_objs.setdefault(self.i, []).extend(face_objs)
 
-        if len(face_objs) == 0 and enforce_detection is True:
-            if img_name is not None:
-                raise ValueError(
-                    f"Face could not be detected in {img_name}."
-                    "Please confirm that the picture is a face photo "
-                    "or consider to set enforce_detection param to False."
-                )
-            else:
-                raise ValueError(
-                    "Face could not be detected. Please confirm that the picture is a face photo "
-                    "or consider to set enforce_detection param to False."
-                )
-
-        if len(face_objs) == 0 and enforce_detection is False:
-            face_objs = [DetectedFace(img=img, facial_area=base_region, confidence=0)]
-
         for face_obj in face_objs:
             current_img = face_obj.img
             current_region = face_obj.facial_area
 
-            if current_img.shape[0] == 0 or current_img.shape[1] == 0:
-                continue
-
-            if grayscale is True:
-                self.logger.warn("Parameter grayscale is deprecated. Use color_face instead.")
+            if color_face == "rgb":
+                cv2.cvtColor(current_img, cv2.COLOR_BGR2RGB)
+            elif color_face == "bgr":
+                pass  # image is in BGR
+            elif color_face == "gray":
                 current_img = cv2.cvtColor(current_img, cv2.COLOR_BGR2GRAY)
             else:
-                if color_face == "rgb":
-                    current_img = current_img[:, :, ::-1]
-                elif color_face == "bgr":
-                    pass  # image is in BGR
-                elif color_face == "gray":
-                    current_img = cv2.cvtColor(current_img, cv2.COLOR_BGR2GRAY)
-                else:
-                    raise ValueError(f"The color_face can be rgb, bgr or gray, but it is {color_face}.")
+                raise ValueError(f"The color_face can be rgb, bgr or gray, but it is {color_face}.")
 
             if normalize_face:
                 current_img = current_img / 255  # normalize input in [0, 1]
@@ -615,12 +580,6 @@ class FaceIq:
                 resp_obj["antispoof_score"] = antispoof_score
 
             resp_objs.append(resp_obj)
-
-        if len(resp_objs) == 0 and enforce_detection == True:
-            raise ValueError(
-                f"Exception while extracting faces from {img_name}."
-                "Consider to set enforce_detection arg to False."
-            )
 
         return resp_objs
 
