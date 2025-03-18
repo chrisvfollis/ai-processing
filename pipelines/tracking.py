@@ -888,7 +888,7 @@ class TrackingPipeline:
 
                 try:
                     detection = trk.object_detections[f]
-                except TypeError:
+                except KeyError:
                     print(trk.object_detections)
                     continue
                 try:
