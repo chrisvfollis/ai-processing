@@ -89,7 +89,7 @@ class FaceIq:
 
         config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
                   'detector_backend': self.detection_model, 'threshold': id_cutoff,
-                  'silent': True, 'batched': False}
+                  'batched': False}
 
         all_face_dfs = []
         
@@ -172,18 +172,17 @@ class FaceIq:
         self, 
         img_path: Union[str, np.ndarray],
         db_path: str,
-        model_name: str = "VGG-Face",
+        model_name: str = "Facenet512",
         distance_metric: str = "cosine",
-        detector_backend: str = "opencv",
+        detector_backend: str = "centerface_gpu",
         align: bool = True,
         expand_percentage: int = 0,
         threshold: Optional[float] = None,
         normalization: str = "base",
-        silent: bool = False,
         refresh_database: bool = True,
-        anti_spoofing: bool = False,
         batched: bool = False,
     ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
+        
         def __find_bulk_embeddings(
             employees: Set[str],
             model_name: str = "VGG-Face",
@@ -191,15 +190,10 @@ class FaceIq:
             align: bool = True,
             expand_percentage: int = 0,
             normalization: str = "base",
-            silent: bool = False,
         ) -> List[Dict["str", Any]]:
             
             representations = []
-            for employee in tqdm(
-                employees,
-                desc="Finding representations",
-                disable=silent,
-            ):
+            for employee in employees:
                 file_hash = image_utils.find_image_hash(employee)
 
                 start_detection = time.perf_counter()
@@ -367,7 +361,6 @@ class FaceIq:
                 align=align,
                 expand_percentage=expand_percentage,
                 normalization=normalization,
-                silent=silent,
             )  # add new images
             must_save_pickle = True
 
@@ -392,7 +385,6 @@ class FaceIq:
             detector_backend=detector_backend,
             align=align,
             expand_percentage=expand_percentage,
-            anti_spoofing=anti_spoofing,
         )
         if self.save_data:
             self.source_objs.setdefault(self.i, []).extend(source_objs)
@@ -408,7 +400,6 @@ class FaceIq:
                 align,
                 threshold,
                 normalization,
-                anti_spoofing,
             )
 
             end_recognition = time.perf_counter()
@@ -421,8 +412,6 @@ class FaceIq:
         resp_obj = []
 
         for source_obj in source_objs:
-            if anti_spoofing is True and source_obj.get("is_real", True) is False:
-                raise ValueError("Spoof detected in the given image.")
             source_img = source_obj["face"]
             source_region = source_obj["facial_area"]
 
@@ -478,7 +467,6 @@ class FaceIq:
             result_df["distance"] = distances
 
             result_df = result_df.drop(columns=["embedding"])
-            # pylint: disable=unsubscriptable-object
             result_df = result_df[result_df["distance"] <= target_threshold]
             result_df = result_df.sort_values(by=["distance"], ascending=True).reset_index(drop=True)
 
@@ -495,12 +483,11 @@ class FaceIq:
     def extract_faces(
         self,
         img_path: Union[str, np.ndarray, IO[bytes]],
-        detector_backend: str = "opencv",
+        detector_backend: str = "centerface_gpu",
         align: bool = True,
         expand_percentage: int = 0,
         color_face: str = "rgb",
         normalize_face: bool = True,
-        anti_spoofing: bool = False,
         max_faces: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
 
@@ -572,12 +559,6 @@ class FaceIq:
                 "facial_area": facial_area,
                 "confidence": round(float(current_region.confidence or 0), 2),
             }
-
-            if anti_spoofing is True:
-                antispoof_model = modeling.build_model(task="spoofing", model_name="Fasnet")
-                is_real, antispoof_score = antispoof_model.analyze(img=img, facial_area=(x, y, w, h))
-                resp_obj["is_real"] = is_real
-                resp_obj["antispoof_score"] = antispoof_score
 
             resp_objs.append(resp_obj)
 
@@ -899,7 +880,7 @@ class FaceIq:
         
         with open(save_path, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(["idx", "face_detections", "face_objs", "source_objs", "det_recognition_dfs"])
+            writer.writerow(["idx", "regions", "face_detections", "face_objs", "source_objs", "det_recognition_dfs"])
             
             all_idxs = sorted(set([
                 *self.regions.keys(),
@@ -1181,7 +1162,7 @@ class CenterFace:
         
         columns = ['idx', 'face_detections']
         if hasattr(self, 'regions'):
-            columns.append('regions')
+            columns.insert(1, 'regions')
         
         with open(filename, mode='w', newline='') as file:
             writer = csv.writer(file)
@@ -1190,6 +1171,6 @@ class CenterFace:
             for i, detections in self.face_detections.items():
                 row = [i, len(detections)]
                 if hasattr(self, 'regions'):
-                    row.append(len(self.regions.get(i, [])))
+                    row.insert(1, len(self.regions.get(i, [])))
 
                 writer.writerow(row)
