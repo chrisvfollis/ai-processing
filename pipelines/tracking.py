@@ -883,7 +883,8 @@ class TrackingPipeline:
                 frames = trk.span
 
             for f in frames:
-                if f < 0:   # Handle persisted tracks from prior runs
+                print(f'track image frame: {f}')
+                if int(f) < 0:   # Handle persisted tracks from prior runs
                     continue
 
                 try:
