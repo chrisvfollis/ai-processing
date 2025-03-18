@@ -889,11 +889,13 @@ class TrackingPipeline:
                 try:
                     detection = trk.object_detections[f]
                 except KeyError:
-                    print(trk.object_detections)
+                    print(f"Frame {f} not in track's object detection dictionary:")
+                    print(list(trk.object_detections.keys()))
                     continue
                 try:
                     x, y, w, h = map(int, detection[:4])
                 except TypeError:
+                    print('Invalid detection type:')
                     print(detection)
                     continue
                 cap.set(cv2.CAP_PROP_POS_FRAMES, f)
@@ -906,7 +908,7 @@ class TrackingPipeline:
 
             if images: 
                 trk.start_img = io_utils.save_event_image(images[0], self.credentials)
-                trk.end_img = io_utils.save_event_image(images[1], self.credentials)
+                trk.end_img = io_utils.save_event_image(images[-1], self.credentials)
 
         cap.release()
 
