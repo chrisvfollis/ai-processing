@@ -873,8 +873,8 @@ class TrackingPipeline:
             clear_frames = None
             if trk.face_detections:
                 clear_frames = [
-                    trk.face_detections[min(trk.face_detections.keys())],
-                    trk.face_detections[max(trk.face_detections.keys())]
+                    min(trk.face_detections.keys()),
+                    max(trk.face_detections.keys())
                 ]
 
             if clear_frames:
@@ -883,8 +883,7 @@ class TrackingPipeline:
                 frames = trk.span
 
             for f in frames:
-                print(f'track image frame: {f}')
-                if int(f) < 0:   # Handle persisted tracks from prior runs
+                if f < 0:   # Handle persisted tracks from prior runs
                     continue
 
                 try:
