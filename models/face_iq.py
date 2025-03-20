@@ -85,7 +85,7 @@ class FaceIq:
 
             return filtered_face_dfs
 
-        id_cutoff = id_cutoff if id_cutoff else self.id_cutoff
+        id_cutoff = id_cutoff or self.id_cutoff
 
         config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
                   'detector_backend': self.detection_model, 'threshold': id_cutoff,
@@ -902,8 +902,9 @@ class FaceIq:
 
 
 class CenterFace:
-    def __init__(self, weights_path='../models/weights/centerface.pth',
-                 landmarks=True, save_data=False):
+    def __init__(self, weights_path: str ='../models/weights/centerface.pth',
+                 landmarks: bool = True, save_data: bool = False,
+                 min_dims: Sequence = None):
         '''
         Adapted from https://github.com/Star-Clouds/CenterFace/ and modified
         for compatibility with DeepFace
@@ -924,12 +925,16 @@ class CenterFace:
         if self.save_data:
             self.i = 0
             self.face_detections = {}
+        
+        self.min_dims = min_dims
 
     def detect_faces(
             self, img: np.ndarray, threshold=0.5,
-            offset: Sequence = None
+            offset: Sequence = None, min_dims: Sequence = None
         ) -> List[FacialAreaRegion]:
-    
+
+        min_dims = min_dims or self.min_dims
+
         h, w = img.shape[:2]
         if (h == 0) or (w == 0):
             return []

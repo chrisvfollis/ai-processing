@@ -173,9 +173,9 @@ class YOLOv4:
             
             return final_output
         
-        nms_thresh = (nms_thresh if nms_thresh else self.nms_thresh)
-        conf_thresh = (conf_thresh if conf_thresh else self.conf_thresh)
-        input_dims = (input_dims if input_dims else self.input_dims)
+        nms_thresh = nms_thresh or self.nms_thresh
+        conf_thresh = conf_thresh or self.conf_thresh
+        input_dims = input_dims or self.input_dims
 
         img, original_dims = _preprocess_img(img, input_dims)
 

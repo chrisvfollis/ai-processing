@@ -73,7 +73,7 @@ class MoveNet:
 
             return final_output
         
-        conf_thresh = conf_thresh if conf_thresh else self.conf_thresh
+        conf_thresh = conf_thresh or self.conf_thresh
 
         img, mapping = _preprocess_img(img)
 

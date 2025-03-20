@@ -142,7 +142,7 @@ class OSNet:
         )
         self.hdf5_file = h5py.File(self.output_path, 'a')
 
-        self.buffer_limit = buffer_limit if buffer_limit else self.buffer_limit
+        self.buffer_limit = buffer_limit or self.buffer_limit
 
         self.embedding_buffer = deque(maxlen=None)
         self.frame_buffer = deque(maxlen=None)

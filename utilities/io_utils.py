@@ -400,14 +400,14 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
     cursor = conn.cursor()
    
     for trk_id, trk in target_trks.items():
-        identity = trk.identity if trk.identity is not None else str(uuid.uuid4())
+        identity = trk.identity or str(uuid.uuid4())
         
-        start_img = trk.start_img if trk.start_img is not None else ""
+        start_img = trk.start_img or ""
         start_frame = trk.span[0]
         start_time = utils.frame_timestamp(
             time_prefix, frame=start_frame, fps=fps
         )
-        end_img = trk.end_img if trk.end_img is not None else ""
+        end_img = trk.end_img or ""
         end_frame = trk.span[1]
         end_time = utils.frame_timestamp(
             time_prefix, frame=end_frame, fps=fps

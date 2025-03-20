@@ -43,7 +43,7 @@ def observability_thread(target, args=None):
 
     if target == 'elapsed_time':
         start_time, stop_event = time.time(), threading.Event()
-        frequency, timestamp = args if args else (300, False)
+        frequency, timestamp = args or (300, False)
     
         time_logger = threading.Thread(
             target=log_elapsed_time,
@@ -60,7 +60,7 @@ def observability_thread(target, args=None):
     
     elif target == 'low_memory':
         stop_event = threading.Event()
-        threshold, interval = args if args else (1000, 1)
+        threshold, interval = args or (1000, 1)
 
         low_memory_monitor = threading.Thread(
             target=log_low_memory_warnings,

@@ -1295,6 +1295,7 @@ class Track(KalmanFilter):
             
             def _normalized_area():
                 pass
+
             start_sp_analysis = time.perf_counter()
 
             euclidean_dists = _normalized_euclidean(
