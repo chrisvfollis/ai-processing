@@ -914,38 +914,185 @@ class FaceIq:
             
 
 class CenterFace:
-    def __init__(self, weights_path: str ='../models/weights/centerface.pth',
-                 landmarks: bool = True, save_data: bool = False,
-                 min_area: Union[Iterable[int], int] = (32, 32)):
-        '''
-        Inspired by https://github.com/Star-Clouds/CenterFace/ and modified
-        for compatibility with DeepFace
-        '''
-    
-        self.landmarks = landmarks
+    def __init__(
+            self,
+            device: torch.device = None,
+            weights_path: str ='../models/weights/centerface.pth',
+            conf_thresh: float = 0.55,
+            min_area: Union[Iterable[int], int] = (32, 32),
+            landmarks: bool = True,
+            save_data: bool = False
+        ):
+
+        '''Inspired by https://github.com/Star-Clouds/CenterFace/'''
+
+        self.device = device or torch.device(
+            'cuda:0' if torch.cuda.is_available() else 'cpu'
+        )
         
-        self.model = torch.load(weights_path, map_location='cuda' if
-                                torch.cuda.is_available() else 'cpu')
+        self.model = torch.load(weights_path, map_location=self.device)
+
         self.model.eval()
-
-        self.device =torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
+        
+        self.conf_thresh = conf_thresh
+        self.min_area = min_area
+        self.landmarks = landmarks
 
-        self.img_h_new, self.img_w_new, self.scale_h, self.scale_w = 0, 0, 0, 0
+        self.img_h_new, self.img_w_new = 0, 0
+        self.scale_h, self.scale_w = 0, 0
 
         self.save_data = save_data
         if self.save_data:
             self.i = 0
             self.face_detections = {}
-        
-        self.min_area = min_area
 
     def detect_faces(
-            self, img: np.ndarray, threshold=0.5, offset: Sequence = None,
+            self, img: np.ndarray, offset: Sequence = None,
+            conf_thresh: float = None,
             min_area: Union[Iterable[int], int] = None
         ) -> List[FacialAreaRegion]:
 
+        def _inference_pytorch(img, conf_thresh):
+            image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
+            blob = (
+                cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
+                .transpose(2, 0, 1)
+                .astype('float32')
+            )
+            tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
+
+            with torch.no_grad():
+                outputs = self.model(tensor)
+
+            heatmap, scale, offset, lms = outputs
+
+            return _postprocess(
+                heatmap.cpu().numpy(), lms.cpu().numpy(), offset.cpu().numpy(),
+                scale.cpu().numpy(), conf_thresh
+            )
+
+        def _postprocess(heatmap, lms, offset, scale, conf_thresh):
+            if self.landmarks:
+                dets, lms = _decode(heatmap, scale, offset, lms,
+                                    (self.img_h_new, self.img_w_new),
+                                    conf_thresh=conf_thresh)
+            else:
+                dets = _decode(heatmap, scale, offset, None,
+                               (self.img_h_new, self.img_w_new),
+                               conf_thresh=conf_thresh)
+
+            if len(dets) > 0:
+                dets[:, 0:4:2] /= self.scale_w
+                dets[:, 1:4:2] /= self.scale_h
+                if self.landmarks:
+                    lms[:, 0:10:2] /= self.scale_w
+                    lms[:, 1:10:2] /= self.scale_h
+            else:
+                dets = np.empty(shape=[0, 5], dtype=np.float32)
+                if self.landmarks:
+                    lms = np.empty(shape=[0, 10], dtype=np.float32)
+
+            return (dets, lms) if self.landmarks else dets
+
+        def _decode(heatmap, scale, offset, landmark, size, conf_thresh=0.1):
+            heatmap = np.squeeze(heatmap)
+            scale0, scale1 = scale[0, 0, :, :], scale[0, 1, :, :]
+            offset0, offset1 = offset[0, 0, :, :], offset[0, 1, :, :]
+            c0, c1 = np.where(heatmap > conf_thresh)
+            if self.landmarks:
+                boxes, lms = [], []
+            else:
+                boxes = []
+            if len(c0) > 0:
+                for i in range(len(c0)):
+                    s0 = np.exp(scale0[c0[i], c1[i]]) * 4
+                    s1 = np.exp(scale1[c0[i], c1[i]]) * 4
+
+                    o0 = offset0[c0[i], c1[i]]
+                    o1 = offset1[c0[i], c1[i]]
+                    
+                    s = heatmap[c0[i], c1[i]]
+
+                    x1 = min(max(0, (c1[i] + o1 + 0.5) * 4 - s1 / 2), size[1])
+                    y1 = min(max(0, (c0[i] + o0 + 0.5) * 4 - s0 / 2), size[0])
+
+                    boxes.append([
+                        x1, y1,
+                        min(x1 + s1, size[1]),
+                        min(y1 + s0, size[0]),
+                        s
+                    ])
+
+                    if self.landmarks:
+                        lm = []
+                        for j in range(5):
+                            lm.append(
+                                landmark[0, j * 2 + 1, c0[i], c1[i]] * s1 + x1
+                            )
+                            lm.append(
+                                landmark[0, j * 2, c0[i], c1[i]] * s0 + y1
+                            )
+                        lms.append(lm)
+
+                boxes = np.asarray(boxes, dtype=np.float32)
+                keep = _nms(boxes[:, :4], boxes[:, 4], 0.3)
+                boxes = boxes[keep, :]
+
+                if self.landmarks:
+                    lms = np.asarray(lms, dtype=np.float32)
+                    lms = lms[keep, :]
+
+            if self.landmarks:
+                return boxes, lms
+            else:
+                return boxes
+
+        def _nms(boxes, scores, nms_thresh):
+            x1 = boxes[:, 0]
+            y1 = boxes[:, 1]
+            x2 = boxes[:, 2]
+            y2 = boxes[:, 3]
+            areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+            order = np.argsort(scores)[::-1]
+            num_detections = boxes.shape[0]
+            suppressed = np.zeros((num_detections,), dtype=bool)
+
+            keep = []
+            for _i in range(num_detections):
+                i = order[_i]
+                if suppressed[i]:
+                    continue
+                keep.append(i)
+
+                ix1 = x1[i]
+                iy1 = y1[i]
+                ix2 = x2[i]
+                iy2 = y2[i]
+                iarea = areas[i]
+
+                for _j in range(_i + 1, num_detections):
+                    j = order[_j]
+                    if suppressed[j]:
+                        continue
+
+                    xx1 = max(ix1, x1[j])
+                    yy1 = max(iy1, y1[j])
+                    xx2 = min(ix2, x2[j])
+                    yy2 = min(iy2, y2[j])
+                    w = max(0, xx2 - xx1 + 1)
+                    h = max(0, yy2 - yy1 + 1)
+
+                    inter = w * h
+                    ovr = inter / (iarea + areas[j] - inter)
+                    if ovr >= nms_thresh:
+                        suppressed[j] = True
+
+            return keep
+
+        conf_thresh = conf_thresh or self.conf_thresh
         min_area = min_area or self.min_area
+
         if isinstance(min_area, Iterable):
             min_area = math.prod(min_area)
 
@@ -963,7 +1110,7 @@ class CenterFace:
         self.scale_h = h / self.img_h_new
         self.scale_w = w / self.img_w_new
 
-        detections = self.inference_pytorch(img, threshold)
+        detections = _inference_pytorch(img, conf_thresh)
 
         if self.landmarks:
             all_dets, all_lms = detections
@@ -1010,120 +1157,6 @@ class CenterFace:
             self.face_detections.setdefault(self.i, []).extend(detected_faces)
 
         return detected_faces
-
-    def inference_pytorch(self, img, threshold):
-        image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
-        blob = (
-            cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
-            .transpose(2, 0, 1)
-            .astype('float32')
-        )
-        tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
-
-        with torch.no_grad():
-            outputs = self.model(tensor)
-
-        heatmap, scale, offset, lms = outputs
-
-        return self.postprocess(
-            heatmap.cpu().numpy(), lms.cpu().numpy(), offset.cpu().numpy(),
-            scale.cpu().numpy(), threshold
-        )
-
-    def postprocess(self, heatmap, lms, offset, scale, threshold):
-        if self.landmarks:
-            dets, lms = self.decode(heatmap, scale, offset, lms, (self.img_h_new, self.img_w_new), threshold=threshold)
-        else:
-            dets = self.decode(heatmap, scale, offset, None, (self.img_h_new, self.img_w_new), threshold=threshold)
-
-        if len(dets) > 0:
-            dets[:, 0:4:2] /= self.scale_w
-            dets[:, 1:4:2] /= self.scale_h
-            if self.landmarks:
-                lms[:, 0:10:2] /= self.scale_w
-                lms[:, 1:10:2] /= self.scale_h
-        else:
-            dets = np.empty(shape=[0, 5], dtype=np.float32)
-            if self.landmarks:
-                lms = np.empty(shape=[0, 10], dtype=np.float32)
-
-        return (dets, lms) if self.landmarks else dets
-
-    def decode(self, heatmap, scale, offset, landmark, size, threshold=0.1):
-        heatmap = np.squeeze(heatmap)
-        scale0, scale1 = scale[0, 0, :, :], scale[0, 1, :, :]
-        offset0, offset1 = offset[0, 0, :, :], offset[0, 1, :, :]
-        c0, c1 = np.where(heatmap > threshold)
-        if self.landmarks:
-            boxes, lms = [], []
-        else:
-            boxes = []
-        if len(c0) > 0:
-            for i in range(len(c0)):
-                s0, s1 = np.exp(scale0[c0[i], c1[i]]) * 4, np.exp(scale1[c0[i], c1[i]]) * 4
-                o0, o1 = offset0[c0[i], c1[i]], offset1[c0[i], c1[i]]
-                s = heatmap[c0[i], c1[i]]
-                x1, y1 = max(0, (c1[i] + o1 + 0.5) * 4 - s1 / 2), max(0, (c0[i] + o0 + 0.5) * 4 - s0 / 2)
-                x1, y1 = min(x1, size[1]), min(y1, size[0])
-                boxes.append([x1, y1, min(x1 + s1, size[1]), min(y1 + s0, size[0]), s])
-                if self.landmarks:
-                    lm = []
-                    for j in range(5):
-                        lm.append(landmark[0, j * 2 + 1, c0[i], c1[i]] * s1 + x1)
-                        lm.append(landmark[0, j * 2, c0[i], c1[i]] * s0 + y1)
-                    lms.append(lm)
-            boxes = np.asarray(boxes, dtype=np.float32)
-            keep = self.nms(boxes[:, :4], boxes[:, 4], 0.3)
-            boxes = boxes[keep, :]
-            if self.landmarks:
-                lms = np.asarray(lms, dtype=np.float32)
-                lms = lms[keep, :]
-        if self.landmarks:
-            return boxes, lms
-        else:
-            return boxes
-
-    def nms(self, boxes, scores, nms_thresh):
-        x1 = boxes[:, 0]
-        y1 = boxes[:, 1]
-        x2 = boxes[:, 2]
-        y2 = boxes[:, 3]
-        areas = (x2 - x1 + 1) * (y2 - y1 + 1)
-        order = np.argsort(scores)[::-1]
-        num_detections = boxes.shape[0]
-        suppressed = np.zeros((num_detections,), dtype=bool)
-
-        keep = []
-        for _i in range(num_detections):
-            i = order[_i]
-            if suppressed[i]:
-                continue
-            keep.append(i)
-
-            ix1 = x1[i]
-            iy1 = y1[i]
-            ix2 = x2[i]
-            iy2 = y2[i]
-            iarea = areas[i]
-
-            for _j in range(_i + 1, num_detections):
-                j = order[_j]
-                if suppressed[j]:
-                    continue
-
-                xx1 = max(ix1, x1[j])
-                yy1 = max(iy1, y1[j])
-                xx2 = min(ix2, x2[j])
-                yy2 = min(iy2, y2[j])
-                w = max(0, xx2 - xx1 + 1)
-                h = max(0, yy2 - yy1 + 1)
-
-                inter = w * h
-                ovr = inter / (iarea + areas[j] - inter)
-                if ovr >= nms_thresh:
-                    suppressed[j] = True
-
-        return keep
 
     def visualize_detections(
             self, image: np.ndarray, face_detections: List[FacialAreaRegion],
