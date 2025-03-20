@@ -870,36 +870,40 @@ class FaceIq:
 
         return (x1, y1, x2, y2)
 
-    def save_runtime_data(self, save_path='../files/output/faceiq_data.csv'):
-        '''
-        Saves the lengths of stored data per frame to a CSV file.
-        Each row corresponds to a frame, with columns representing the
-        lengths of different stored datasets for that frame.
-        '''
+    def save_runtime_data(self, filename='../files/output/faceiq_data.xlsx'):
         if not self.save_data:
             return
         
-        with open(save_path, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(["idx", "regions", "face_detections", "face_objs", "source_objs", "det_recognition_dfs"])
-            
-            all_idxs = sorted(set([
-                *self.regions.keys(),
-                *self.face_detections.keys(),
-                *self.face_objs.keys(),
-                *self.source_objs.keys(),
-                *self.det_recognition_dfs.keys()
-            ]))
-    
-            for i in all_idxs:
-                writer.writerow([
-                    i,
-                    len(self.regions.get(i, [])),
-                    len(self.face_detections.get(i, [])),
-                    len(self.face_objs.get(i, [])),
-                    len(self.source_objs.get(i, [])),
-                    len(self.det_recognition_dfs.get(i, []))
-                ])
+        all_idxs = sorted(set([
+            *self.regions.keys(),
+            *self.face_detections.keys(),
+            *self.face_objs.keys(),
+            *self.source_objs.keys(),
+            *self.det_recognition_dfs.keys()
+        ]))
+
+        artifact_data = {
+            'idx': all_idxs,
+            'regions': [len(self.regions.get(i, [])) for i in all_idxs],
+            'face_detections': [len(self.face_detections.get(i, [])) for i in all_idxs],
+            'face_objs': [len(self.face_objs.get(i, [])) for i in all_idxs],
+            'source_objs': [len(self.source_objs.get(i, [])) for i in all_idxs],
+            'det_recognition_dfs': [len(self.det_recognition_dfs.get(i, [])) for i in all_idxs]
+        }
+        
+        artifact_df = pd.DataFrame(artifact_data)
+
+        detection_data = []
+        for frame_idx, detections in self.face_detections.items():
+            for det in detections:  # Assuming `det` has `.w` and `.h` attributes
+                area = math.prod((det.w, det.h))
+                detection_data.append({'idx': frame_idx, 'w': det.w, 'h': det.h, 'a': area})
+
+        size_df = pd.DataFrame(detection_data)
+
+        with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
+            artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)
+            size_df.to_excel(writer, sheet_name='Detection Sizes', index=False)
 
 
 class CenterFace:
@@ -917,7 +921,7 @@ class CenterFace:
                                 torch.cuda.is_available() else 'cpu')
         self.model.eval()
 
-        self.device =torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device =torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model.to(self.device)
 
         self.img_h_new, self.img_w_new, self.scale_h, self.scale_w = 0, 0, 0, 0
@@ -1003,7 +1007,7 @@ class CenterFace:
         blob = (
             cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
             .transpose(2, 0, 1)
-            .astype("float32")
+            .astype('float32')
         )
         tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
 
