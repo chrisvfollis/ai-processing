@@ -21,7 +21,7 @@ scratch.py
 
 **/__pycache__/
 **/__pypackages__/
-# **/.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 
 *.egg-info/
 
