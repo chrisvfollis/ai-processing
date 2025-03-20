@@ -6,6 +6,7 @@ from heapq import nlargest
 import time
 import gc
 import csv
+import math
 
 # 3rd-party dependencies
 import numpy as np
@@ -1157,25 +1158,33 @@ class CenterFace:
 
         return image
 
-    def save_runtime_data(self, filename='../files/output/centerface_data.csv'):
-        '''
-        Saves the lengths of detected faces per frame to a CSV file.
-        Each row corresponds to a frame, with a column for the number of detections.
-        '''
+    def save_runtime_data(self, filename='../files/output/centerface_data.xlsx'):
         if not self.save_data:
             return
         
-        columns = ['idx', 'face_detections']
+        data = {'idx': [], 'face_detections': []}
         if hasattr(self, 'regions'):
-            columns.insert(1, 'regions')
-        
-        with open(filename, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(columns)
-            
-            for i, detections in self.face_detections.items():
-                row = [i, len(detections)]
-                if hasattr(self, 'regions'):
-                    row.insert(1, len(self.regions.get(i, [])))
+            data['regions'] = []
 
-                writer.writerow(row)
+        for i, detections in self.face_detections.items():
+            data['idx'].append(i)
+            data['face_detections'].append(len(detections))
+
+            if hasattr(self, 'regions'):
+                data['regions'].append(len(self.regions.get(i, [])))
+        
+        artifact_df = pd.DataFrame(data)
+
+        detection_data = []
+        for frame_idx, detections in self.face_detections.items():
+            for det in detections:
+                area = math.prod((det.w, det.h))
+                detection_data.append(
+                    {'idx': frame_idx, 'w': det.w, 'h': det.h, 'a': area}
+                )
+
+        size_df = pd.DataFrame(detection_data)
+
+        with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
+            artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)
+            size_df.to_excel(writer, sheet_name='Detection Sizes', index=False)
