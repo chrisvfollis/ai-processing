@@ -1,11 +1,11 @@
 # standard dependencies
 import os
 from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional, Sequence
+from collections.abc import Iterable
 import pickle
 from heapq import nlargest
 import time
 import gc
-import csv
 import math
 
 # 3rd-party dependencies
@@ -17,7 +17,6 @@ from deepface.commons import image_utils
 from deepface.modules import modeling, representation, verification, recognition
 from deepface.commons.logger import Logger
 from deepface.models.Detector import Detector, DetectedFace, FacialAreaRegion
-from tqdm import tqdm
 
 # internal dependencies
 from utilities import io_utils
@@ -909,7 +908,7 @@ class FaceIq:
 class CenterFace:
     def __init__(self, weights_path: str ='../models/weights/centerface.pth',
                  landmarks: bool = True, save_data: bool = False,
-                 min_dims: Sequence = None):
+                 min_area: Union[Iterable[int], int] = (32, 32)):
         '''
         Adapted from https://github.com/Star-Clouds/CenterFace/ and modified
         for compatibility with DeepFace
@@ -931,25 +930,27 @@ class CenterFace:
             self.i = 0
             self.face_detections = {}
         
-        self.min_dims = min_dims
+        self.min_area = min_area
 
     def detect_faces(
-            self, img: np.ndarray, threshold=0.5,
-            offset: Sequence = None, min_dims: Sequence = None
+            self, img: np.ndarray, threshold=0.5, offset: Sequence = None,
+            min_area: Union[Iterable[int], int] = None
         ) -> List[FacialAreaRegion]:
 
-        min_dims = min_dims or self.min_dims
+        min_area = min_area or self.min_area
+        if isinstance(min_area, Iterable):
+            min_area = math.prod(min_area)
 
         h, w = img.shape[:2]
-        if (h == 0) or (w == 0):
+        if math.prod((h, w)) < min_area:
             return []
 
         if (h >= 32) and (w >= 32):
             self.img_h_new = (h // 32) * 32
             self.img_w_new = (w // 32) * 32
         else:
-            self.img_h_new = h + 1 if ((h % 2) != 0) else h
-            self.img_w_new = w + 1 if ((w % 2) != 0) else w
+            self.img_w_new = w + (w % 2)
+            self.img_h_new = h + (h % 2)
 
         self.scale_h = h / self.img_h_new
         self.scale_w = w / self.img_w_new
