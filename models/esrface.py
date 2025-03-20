@@ -14,143 +14,21 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 logger = logging.getLogger('base')
 
 
-class SRGANModel(BaseModel):
+class EsrFace(BaseModel):
     def __init__(self, opt, is_train):
-        super(SRGANModel, self).__init__(opt, is_train)
-        train_opt = opt
+        '''Inference-only face ESRGAN class.'''
+        super(EsrFace, self).__init__(opt, is_train)
+
         self.rank = 0
 
         # define networks and load pretrained models
-        self.netG = self.define_G(opt).to(self.device)
+        opt_net = opt
+        self.netG = RRDBNet(in_nc=opt_net.G_in_nc, out_nc=opt_net.out_nc,
+                           nf=opt_net.G_nf, nb=opt_net.nb).to(self.device)
         self.netG = DataParallel(self.netG)
-        if self.is_train:
-            self.netD = self.define_D(opt).to(self.device)
-            self.netD = DataParallel(self.netD)
-
-            self.netG.train()
-            self.netD.train()
-
-        # define losses, optimizer and scheduler
-        if self.is_train:
-            # G pixel loss
-            if train_opt.pixel_weight > 0:
-                l_pix_type = train_opt.pixel_criterion
-                if l_pix_type == 'l1':
-                    self.cri_pix = nn.L1Loss().to(self.device)
-                elif l_pix_type == 'l2':
-                    self.cri_pix = nn.MSELoss().to(self.device)
-                else:
-                    raise NotImplementedError('Loss type [{:s}] not recognized.'.format(l_pix_type))
-                self.l_pix_w = train_opt.pixel_weight
-            else:
-                logger.info('Remove pixel loss.')
-                self.cri_pix = None
-
-            # G feature loss
-            if train_opt.feature_weight > 0:
-                l_fea_type = train_opt.feature_criterion
-                if l_fea_type == 'l1':
-                    self.cri_fea = nn.L1Loss().to(self.device)
-                elif l_fea_type == 'l2':
-                    self.cri_fea = nn.MSELoss().to(self.device)
-                else:
-                    raise NotImplementedError('Loss type [{:s}] not recognized.'.format(l_fea_type))
-                self.l_fea_w = train_opt.feature_weight
-            else:
-                logger.info('Remove feature loss.')
-                self.cri_fea = None
-            if self.cri_fea:  # load VGG perceptual loss
-                self.netF = self.define_F(opt, use_bn=False).to(self.device)
-                self.netF = DataParallel(self.netF)
-
-            # GD gan loss
-            self.cri_gan = GANLoss(train_opt.gan_type, 1.0, 0.0).to(self.device)
-            self.l_gan_w = train_opt.gan_weight
-            # D_update_ratio and D_init_iters
-            self.D_update_ratio = train_opt.D_update_ratio if train_opt.D_update_ratio else 1
-            self.D_init_iters = train_opt.D_init_iters if train_opt.D_init_iters else 0
-
-            # optimizers
-            # G
-            wd_G = train_opt.weight_decay_G if train_opt.weight_decay_G else 0
-            optim_params = []
-            for k, v in self.netG.named_parameters():  # can optimize for a part of the model
-                if v.requires_grad:
-                    optim_params.append(v)
-                else:
-                    if self.rank <= 0:
-                        logger.warning('Params [{:s}] will not optimize.'.format(k))
-            self.optimizer_G = torch.optim.Adam(optim_params, lr=train_opt.lr_G,
-                                                weight_decay=wd_G,
-                                                betas=(train_opt.beta1_G, train_opt.beta2_G))
-            self.optimizers.append(self.optimizer_G)
-            # D
-            wd_D = train_opt.weight_decay_D if train_opt.weight_decay_D else 0
-            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=train_opt.lr_D,
-                                                weight_decay=wd_D,
-                                                betas=(train_opt.beta1_D, train_opt.beta2_D))
-            self.optimizers.append(self.optimizer_D)
-
-            # schedulers
-            if train_opt.lr_scheme == 'MultiStepLR':
-                for optimizer in self.optimizers:
-                    self.schedulers.append(
-                        MultiStepLR_Restart(optimizer, train_opt.lr_steps,
-                                            restarts=None, weights=None,
-                                            gamma=train_opt.lr_gamma,
-                                            clear_state=False))
-            elif train_opt.lr_scheme == 'CosineAnnealingLR_Restart':
-                for optimizer in self.optimizers:
-                    self.schedulers.append(
-                        CosineAnnealingLR_Restart(
-                            optimizer, train_opt.T_period, eta_min=train_opt.eta_min,
-                            restarts=train_opt.restarts, weights=train_opt.restart_weights))
-            else:
-                raise NotImplementedError('MultiStepLR learning rate scheme is enough.')
-
-            self.log_dict = OrderedDict()
 
         self.print_network()  # print network
         # self.load()  # load G and D if needed
-
-    def define_G(self, opt):
-        '''Define generator network'''
-
-        opt_net = opt
-        which_model = opt_net.which_model_G
-
-        if which_model == 'RRDBNet':
-            netG = RRDBNet(in_nc=opt_net.G_in_nc, out_nc=opt_net.out_nc,
-                           nf=opt_net.G_nf, nb=opt_net.nb)
-        else:
-            raise NotImplementedError('Generator model [{:s}] not recognized'.format(which_model))
-        return netG
-
-    def define_D(self, opt):
-        '''Define discriminator network'''
-
-        opt_net = opt
-        which_model = opt_net.which_model_D
-
-        if which_model == 'discriminator_vgg_128':
-            netD = Discriminator_VGG_128(in_nc=opt_net.D_in_nc, nf=opt_net.D_nf)
-        else:
-            raise NotImplementedError('Discriminator model [{:s}] not recognized'.format(which_model))
-        return netD
-
-    def define_F(self, opt, use_bn=False):
-        '''Define perceptual loss network'''
-
-        gpu_ids = opt.gpu_ids
-        device = torch.device('cuda' if gpu_ids else 'cpu')
-        # PyTorch pretrained VGG19-54, before ReLU.
-        if use_bn:
-            feature_layer = 49
-        else:
-            feature_layer = 34
-        netF = VGGFeatureExtractor(feature_layer=feature_layer, use_bn=use_bn, use_input_norm=True, device=device)
-        netF.eval()  # No need to train
-        return netF
 
     def feed_data(self, data, need_GT=True):
         self.var_L = data['LQ'].to(self.device)  # LQ
@@ -1113,7 +991,7 @@ def get_FaceSR_opt():
     return args
 
 
-sr_model = SRGANModel(get_FaceSR_opt(), is_train=False)
+sr_model = EsrFace(get_FaceSR_opt(), is_train=False)
 sr_model.load()
 
 def sr_forward(img, padding=0.5, moving=0.1):
