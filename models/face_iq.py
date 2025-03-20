@@ -873,6 +873,22 @@ class FaceIq:
         if not self.save_data:
             return
         
+        detection_data = []
+        for i, detections in self.face_detections.items():
+            for det in detections:
+                area = math.prod((det.w, det.h))
+                detection_data.append({
+                    'idx': i,
+                    'a': area,
+                    'c': det.confidence,
+                    'x': det.x,
+                    'y': det.y,
+                    'w': det.w,
+                    'h': det.h,
+                })
+
+        detections_df = pd.DataFrame(detection_data)
+        
         all_idxs = sorted(set([
             *self.regions.keys(),
             *self.face_detections.keys(),
@@ -892,25 +908,17 @@ class FaceIq:
         
         artifact_df = pd.DataFrame(artifact_data)
 
-        detection_data = []
-        for frame_idx, detections in self.face_detections.items():
-            for det in detections:  # Assuming `det` has `.w` and `.h` attributes
-                area = math.prod((det.w, det.h))
-                detection_data.append({'idx': frame_idx, 'w': det.w, 'h': det.h, 'a': area})
-
-        size_df = pd.DataFrame(detection_data)
-
         with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
+            detections_df.to_excel(writer, sheet_name='Detections', index=False)
             artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)
-            size_df.to_excel(writer, sheet_name='Detection Sizes', index=False)
-
+            
 
 class CenterFace:
     def __init__(self, weights_path: str ='../models/weights/centerface.pth',
                  landmarks: bool = True, save_data: bool = False,
                  min_area: Union[Iterable[int], int] = (32, 32)):
         '''
-        Adapted from https://github.com/Star-Clouds/CenterFace/ and modified
+        Inspired by https://github.com/Star-Clouds/CenterFace/ and modified
         for compatibility with DeepFace
         '''
     
@@ -1167,6 +1175,22 @@ class CenterFace:
         if not self.save_data:
             return
         
+        detection_data = []
+        for i, detections in self.face_detections.items():
+            for det in detections:
+                area = math.prod((det.w, det.h))
+                detection_data.append({
+                    'idx': i,
+                    'a': area,
+                    'c': det.confidence,
+                    'x': det.x,
+                    'y': det.y,
+                    'w': det.w,
+                    'h': det.h,
+                })
+
+        detections_df = pd.DataFrame(detection_data)
+        
         data = {'idx': [], 'face_detections': []}
         if hasattr(self, 'regions'):
             data['regions'] = []
@@ -1180,16 +1204,7 @@ class CenterFace:
         
         artifact_df = pd.DataFrame(data)
 
-        detection_data = []
-        for frame_idx, detections in self.face_detections.items():
-            for det in detections:
-                area = math.prod((det.w, det.h))
-                detection_data.append(
-                    {'idx': frame_idx, 'w': det.w, 'h': det.h, 'a': area}
-                )
-
-        size_df = pd.DataFrame(detection_data)
 
         with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
-            artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)
-            size_df.to_excel(writer, sheet_name='Detection Sizes', index=False)
+            detections_df.to_excel(writer, sheet_name='Detections', index=False)
+            artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)   
