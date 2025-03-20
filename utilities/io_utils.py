@@ -402,27 +402,40 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
     for trk_id, trk in target_trks.items():
         identity = trk.identity or str(uuid.uuid4())
         
-        start_img = trk.start_img or ""
         start_frame = trk.span[0]
-        start_time = utils.frame_timestamp(
-            time_prefix, frame=start_frame, fps=fps
-        )
-        end_img = trk.end_img or ""
-        end_frame = trk.span[1]
-        end_time = utils.frame_timestamp(
-            time_prefix, frame=end_frame, fps=fps
+        end_frame = trk.span[-1]
+
+        start_img = trk.start_img or ''
+        end_img = trk.end_img or ''
+
+        start_time = utils.frame_timestamp(time_prefix, start_frame, fps)
+        end_time = utils.frame_timestamp(time_prefix, end_frame, fps)
+
+        query = '''
+            INSERT INTO track_info (
+                time_prefix, camera,
+                track_id, identity,
+
+                start_frame, end_frame,
+                start_img, end_img,
+                start_time, end_time
+            )
+            VALUES (
+                ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?
+            )
+        '''
+
+        values = (
+            time_prefix, camera,
+            trk_id, identity,
+
+            start_frame, end_frame,
+            start_img, end_img,
+            start_time, end_time,
         )
 
-        cursor.execute('''
-            INSERT INTO track_info (
-                track_id, camera, time_prefix, identity,
-                start_img, start_frame, start_time,
-                end_img, end_frame, end_time
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (trk_id, camera, time_prefix, identity,
-              start_img, start_frame, start_time,
-              end_img, end_frame, end_time))
+        cursor.execute(query, values)
 
     conn.commit()
     conn.close()
