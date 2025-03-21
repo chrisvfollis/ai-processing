@@ -223,7 +223,7 @@ def test_enhanced_face_detections(
     ):
 
     face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
-    clearface = ClearFace('../models/weights/clearface/90000_G.pth')
+    clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')
 
     if focus == 'local':
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
