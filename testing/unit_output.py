@@ -14,16 +14,17 @@ import torch
 
 # internal dependencies
 from models.face_iq import FaceIq, CenterFace
+from models.clearface import ClearFace
 from models.yolov4 import YOLOv4
 from utilities import utilities as utils
 from utilities import io_utils
 
 
+# ----------------------------------------------------------------------------
+# Image Processing:
+
+
 def detect_people_in_image():
-    pass
-
-
-def detect_people_in_video():
     pass
 
 
@@ -40,6 +41,18 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
     
     face_detections = detector.detect_faces(image)
     detector.visualize_detections(image, face_detections, output_path=output_path)
+
+
+def recognize_faces_in_image():
+    pass
+
+
+# ----------------------------------------------------------------------------
+# Video Processing:
+
+
+def detect_people_in_video():
+    pass
 
 
 def detect_faces_in_video(
@@ -133,9 +146,6 @@ def detect_faces_in_video(
 
     detector.save_runtime_data()
 
-def recognize_faces_in_image():
-    pass
-
 
 def recognize_faces_in_video(
         video: str, focus: str = 'global',
@@ -206,6 +216,73 @@ def recognize_faces_in_video(
 
     face_iq.save_runtime_data()
 
+
+def test_enhanced_face_detections(
+        video: str, focus: str = 'global',
+        output_dir: str = '../files/output'
+    ):
+
+    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
+    clearface = ClearFace('../models/weights/clearface/90000_G.pth')
+
+    if focus == 'local':
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        yolov4 = YOLOv4('../models/weights/YOLOv4.pth', device)
+
+    cap = cv2.VideoCapture(video)
+    resolution, fps, total_frames = utils.get_video_info(cap, release=False)
+
+    f_num = -1
+    face_iq.i = f_num
+
+    while f_num < total_frames:
+        f_num += 1
+        face_iq.i = f_num
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if f_num % 500 == 0:
+            print(f_num)
+
+        if (f_num % fps) == 0:
+            if focus == 'global':
+                face_objects = face_iq.extract_faces(frame)
+                i_f = 0
+                for face_object in face_objects:
+
+                    enhanced_face = clearface.forward(face_object['face'])
+
+                    cv2.imwrite(
+                        f'../files/output/{face_iq.i}_{i_f}_enhanced_detection.png',
+                        enhanced_face
+                    )
+    
+            elif focus == 'local':
+                bboxes = yolov4.detect(frame, 0)
+
+                if not bboxes:
+                    continue
+    
+                regions = utils.cluster_bboxes_into_regions(
+                    bboxes, *resolution
+                )
+
+                for region in regions:
+                    img_crop = utils.crop_region(frame, region)
+                    local_face_objects = face_iq.extract_faces(img_crop)
+
+                    for face_object in local_face_objects:
+                        enhanced_face = clearface.forward(face_object['face'])
+                    
+                        cv2.imwrite(
+                            f'../files/output/{face_iq.i}_{i_f}_enhanced_detection.png',
+                            enhanced_face
+                        )
+    
+    cap.release()
+
+    face_iq.save_runtime_data()
 
 if __name__ == '__main__':
     all_args = sys.argv

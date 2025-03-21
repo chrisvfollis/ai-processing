@@ -52,6 +52,7 @@ class FaceIq:
 
         if self.save_data:
             self.i = 0
+            self.i_f = 0
             self.regions = {}
             self.face_detections = {}       # <-- self.face_detector.detect_faces() <-- self.detect_faces()
             self.face_objs = {}             # <-- self.detect_faces() <-- self.extract_faces()
@@ -136,37 +137,6 @@ class FaceIq:
         results = _postprocess_output(all_face_dfs)
 
         return results
-
-    def visualize_identifications(self, image, identifications, output_path: str = None):
-        image = image.copy()
-        color = (245, 104, 17)
-
-        for face_df in identifications:
-            if face_df.empty:
-                continue
-    
-            best_match = face_df.loc[face_df['distance'].idxmin()]
-
-            x, y, w, h = best_match[['x', 'y', 'w', 'h']]
-            x1, y1, x2, y2 = utils.xywh_to_xyxy([x, y, w, h])
-
-            cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-
-            cv2.putText(
-                image, f"distance: {best_match['distance']:.2f}", (x1, y1 - 5),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2
-            )
-
-            first_name, _ = io_utils.lookup_name(best_match['identity'])
-            cv2.putText(
-                image, f"name: {first_name}", (x2 - 5, y2 - 5),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2
-            )
-
-        if output_path:
-            cv2.imwrite(output_path, image)
-
-        return image
 
     def find(
         self, 
@@ -614,8 +584,13 @@ class FaceIq:
                 max_faces, facial_areas, key=lambda facial_area: facial_area.w * facial_area.h
             )
 
-        results = [
-            self.extract_face(
+        if self.save_data:
+            self.i_f = 0
+
+        results = []
+        for facial_area in facial_areas:
+
+            face = self.extract_face(
                 facial_area=facial_area,
                 img=img,
                 align=align,
@@ -623,8 +598,10 @@ class FaceIq:
                 width_border=width_border,
                 height_border=height_border,
             )
-            for facial_area in facial_areas
-        ]
+            results.append(face)
+
+            if self.save_data:
+                self.i_f += 1
 
         end_other_processing = time.perf_counter()
         self.other_processing_time += (start_other_processing - end_other_processing)
@@ -640,6 +617,7 @@ class FaceIq:
         width_border: int,
         height_border: int,
     ) -> DetectedFace:
+        
         x = facial_area.x
         y = facial_area.y
         w = facial_area.w
@@ -664,6 +642,12 @@ class FaceIq:
 
         # extract detected face unaligned
         detected_face = img[int(y) : int(y + h), int(x) : int(x + w)]
+
+        if self.save_data:
+            cv2.imwrite(
+                f'../files/output/{self.i}_{self.i_f}_unaligned_detection.png',
+                detected_face
+            )
         # align original image, then find projection of detected face area after alignment
         if align is True:  # and left_eye is not None and right_eye is not None:
             # we were aligning the original image before, but this comes with an extra cost
@@ -688,6 +672,12 @@ class FaceIq:
             detected_face = aligned_sub_img[
                 int(rotated_y1) : int(rotated_y2), int(rotated_x1) : int(rotated_x2)
             ]
+
+            if self.save_data:
+                cv2.imwrite(
+                    f'../files/output/{self.i}_{self.i_f}_aligned_detection.png',
+                    detected_face
+                )
 
             # do not spend memory for these temporary variables anymore
             del aligned_sub_img, sub_img
@@ -911,7 +901,38 @@ class FaceIq:
         with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
             detections_df.to_excel(writer, sheet_name='Detections', index=False)
             artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)
-            
+
+    def visualize_identifications(self, image, identifications, output_path: str = None):
+        image = image.copy()
+        color = (245, 104, 17)
+
+        for face_df in identifications:
+            if face_df.empty:
+                continue
+    
+            best_match = face_df.loc[face_df['distance'].idxmin()]
+
+            x, y, w, h = best_match[['x', 'y', 'w', 'h']]
+            x1, y1, x2, y2 = utils.xywh_to_xyxy([x, y, w, h])
+
+            cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+
+            cv2.putText(
+                image, f"distance: {best_match['distance']:.2f}", (x1, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2
+            )
+
+            first_name, _ = io_utils.lookup_name(best_match['identity'])
+            cv2.putText(
+                image, f"name: {first_name}", (x2 - 5, y2 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2
+            )
+
+        if output_path:
+            cv2.imwrite(output_path, image)
+
+        return image
+ 
 
 class CenterFace:
     def __init__(
