@@ -247,11 +247,11 @@ def test_enhanced_face_detections(
 
         if (f_num % fps) == 0:
             if focus == 'global':
-                face_objects = face_iq.extract_faces(frame)
+                face_objects = face_iq.extract_faces(frame, normalize_face=False)
                 i_f = 0
                 for face_object in face_objects:
 
-                    enhanced_face = clearface.forward(face_object['face'])
+                    enhanced_face = clearface.forward(face_object['face'], is_rgb=True)
 
                     cv2.imwrite(
                         f'../files/output/{face_iq.i}_{i_f}_enhanced_detection.png',

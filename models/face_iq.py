@@ -490,7 +490,7 @@ class FaceIq:
             current_region = face_obj.facial_area
 
             if color_face == "rgb":
-                cv2.cvtColor(current_img, cv2.COLOR_BGR2RGB)
+                current_img = cv2.cvtColor(current_img, cv2.COLOR_BGR2RGB)
             elif color_face == "bgr":
                 pass  # image is in BGR
             elif color_face == "gray":
@@ -932,7 +932,7 @@ class FaceIq:
             cv2.imwrite(output_path, image)
 
         return image
- 
+
 
 class CenterFace:
     def __init__(

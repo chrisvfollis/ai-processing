@@ -63,11 +63,13 @@ class ClearFace:
 
         self.netG.load_state_dict(load_net_clean, strict=True)
 
-    def forward(self, img):
+    def forward(self, img, is_rgb=False):
         if len(img.shape) != 3:
             return None
         
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if not is_rgb:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            
         img_tensor = torch.unsqueeze(self.fwd_transform(img), 0).to(self.device)
         
         self.netG.eval()
