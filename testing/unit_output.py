@@ -257,6 +257,7 @@ def test_enhanced_face_detections(
                         f'../files/output/{face_iq.i}_{i_f}_enhanced_detection.png',
                         enhanced_face
                     )
+                    i_f += 1
     
             elif focus == 'local':
                 bboxes = yolov4.detect(frame, 0)
@@ -267,7 +268,7 @@ def test_enhanced_face_detections(
                 regions = utils.cluster_bboxes_into_regions(
                     bboxes, *resolution
                 )
-
+                i_f = 0
                 for region in regions:
                     img_crop = utils.crop_region(frame, region)
                     local_face_objects = face_iq.extract_faces(img_crop, normalize_face=False)
@@ -279,6 +280,7 @@ def test_enhanced_face_detections(
                             f'../files/output/{face_iq.i}_{i_f}_enhanced_detection.png',
                             enhanced_face
                         )
+                        i_f += 1
     
     cap.release()
 
