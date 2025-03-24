@@ -43,8 +43,24 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
     detector.visualize_detections(image, face_detections, output_path=output_path)
 
 
-def recognize_faces_in_image():
+def recognize_faces_in_image(image: Union[str, np.ndarray]):
     pass
+
+
+def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
+    clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')
+
+    if isinstance(image, str):
+        image_name = image.split('/')[-1]
+        image = cv2.imread(image)
+
+    if not image_name:
+        image_name = str(uuid.uuid4())
+    output_path = os.path.join('../files/output', image_name)
+
+    enhanced_face = clearface.forward(image)
+
+    cv2.imwrite(output_path, enhanced_face)
 
 
 # ----------------------------------------------------------------------------
@@ -286,6 +302,7 @@ def test_enhanced_face_detections(
 
     face_iq.save_runtime_data()
 
+
 if __name__ == '__main__':
     all_args = sys.argv
 
@@ -328,3 +345,10 @@ if __name__ == '__main__':
             print('Input: video')
             focus = sys.argv[3]
             recognize_faces_in_video(input_path, focus=focus)
+    
+    elif category == 'enhance':
+        if file_extension in ['png', 'jpg', 'jpeg']:
+            enhance_face(input_path)
+        elif file_extension == 'mp4':
+            focus = sys.argv[3]
+            test_enhanced_face_detections(input_path, focus=focus)
