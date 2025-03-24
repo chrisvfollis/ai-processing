@@ -270,10 +270,10 @@ def test_enhanced_face_detections(
 
                 for region in regions:
                     img_crop = utils.crop_region(frame, region)
-                    local_face_objects = face_iq.extract_faces(img_crop)
+                    local_face_objects = face_iq.extract_faces(img_crop, normalize_face=False)
 
                     for face_object in local_face_objects:
-                        enhanced_face = clearface.forward(face_object['face'])
+                        enhanced_face = clearface.forward(face_object['face'], is_rgb=True)
                     
                         cv2.imwrite(
                             f'../files/output/{face_iq.i}_{i_f}_enhanced_detection.png',
