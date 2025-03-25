@@ -43,9 +43,52 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
     detector.visualize_detections(image, face_detections, output_path=output_path)
 
 
-def recognize_faces_in_image(image: Union[str, np.ndarray]):
-    pass
+def recognize_faces_in_image(image: Union[str, np.ndarray],
+                             image_name: str = None, focus='global'):
+    
+    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
 
+    if focus == 'local':
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        yolov4 = YOLOv4('../models/weights/YOLOv4.pth', device)
+    
+    if isinstance(image, str):
+        image_name = image.split('/')[-1]
+        image = cv2.imread(image)
+    
+    if not image_name:
+        image_name = str(uuid.uuid4())
+    output_path = os.path.join('../files/output', image_name)
+
+    resolution = image.shape[:2][::-1]
+
+    if focus == 'global':
+        regions = None
+
+    elif focus == 'local':
+        bboxes = yolov4.detect(image, 0)
+
+        if not bboxes:
+            return
+
+        regions = utils.cluster_bboxes_into_regions(
+            bboxes, *resolution
+        )
+
+    face_dfs = face_iq.identify_faces(image, id_cutoff=0.999, regions=regions)
+
+    for face_df in face_dfs:
+        if face_df.empty:
+            continue
+
+        best_match = face_df.loc[face_df['distance'].idxmin()]
+
+        first_name, _ = io_utils.lookup_name(best_match['identity'])
+        distance = best_match['distance']
+
+        print(f'Name: {first_name} | Distance: {distance}')
+
+    face_iq.visualize_identifications(image, [face_df], output_path=output_path)
 
 def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
     clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')
@@ -58,7 +101,7 @@ def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
         image_name = str(uuid.uuid4())
     output_path = os.path.join('../files/output', image_name)
 
-    enhanced_face = clearface.forward(image)
+    enhanced_face = clearface.forward(image, is_rgb=True)
 
     cv2.imwrite(output_path, enhanced_face)
 
