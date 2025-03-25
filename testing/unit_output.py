@@ -276,7 +276,7 @@ def recognize_faces_in_video(
 
         if (f_num % fps) == 0:
             if focus == 'global':
-                regions = None
+                regions = []
     
             elif focus == 'local':
                 bboxes = yolov4.detect(frame, 0)
@@ -292,11 +292,10 @@ def recognize_faces_in_video(
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
                 
             all_face_dfs = face_iq.identify_faces(frame, id_cutoff=0.999, regions=regions)
+            heatmaps = face_iq.face_detector.heatmaps
 
             frame = face_iq.visualize_identifications(frame, all_face_dfs)
-
-            last_heatmap = face_iq.face_detector.last_heatmap
-            frame = face_iq.face_detector.visualize_heatmap(frame, last_heatmap)
+            frame = face_iq.face_detector.visualize_heatmaps(frame, heatmaps, regions)
 
         cv2.putText(
             frame, f'frame {f_num}',

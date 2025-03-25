@@ -1041,10 +1041,11 @@ class CenterFace:
         self.conf_thresh = conf_thresh
         self.min_area = min_area
         self.landmarks = landmarks
-        self.last_heatmap = np.array([[]])
 
         self.img_h_new, self.img_w_new = 0, 0
         self.scale_h, self.scale_w = 0, 0
+
+        self.heatmaps = []
 
         self.save_data = save_data
         if self.save_data:
@@ -1070,7 +1071,7 @@ class CenterFace:
                 outputs = self.model(tensor)
 
             heatmap, scale, offset, lms = [x.cpu().numpy() for x in outputs]
-            self.last_heatmap = heatmap
+            self.heatmaps.append(heatmap)
 
             return _postprocess(heatmap, lms, offset,scale, conf_thresh)
 
@@ -1306,30 +1307,46 @@ class CenterFace:
 
         return image
 
-    def visualize_heatmap(self, image: np.ndarray, heatmap: np.ndarray, alpha: float = 0.5) -> np.ndarray:
+    def visualize_heatmaps(
+            self, image: np.ndarray, heatmaps: list[np.ndarray],
+            regions: Sequence = None, alpha: float = 0.4
+        ) -> np.ndarray:
         '''
         Overlay the CenterFace heatmap on the original image.
 
         Args:
             image (np.ndarray): Original BGR image.
-            heatmap (np.ndarray, optional): Heatmap from the last forward pass.
+            heatmaps (np.ndarray, optional): Heatmap from the last forward pass.
+            regions (tuple or list, optional): (x, y, w, h) region in original
+                image where the heatmap was generated.
             alpha (float): Blending factor.
 
         Returns:
-            np.ndarray: Image with heatmap overlay.
+            np.ndarray: Image with heatmap overlays.
         '''
+        for i, heatmap in enumerate(heatmaps):
+            heatmap = np.squeeze(heatmap[0, 0])  # shape: (H, W)
 
-        heatmap = np.squeeze(heatmap[0, 0])  # shape: (H, W)
+            heatmap_norm = cv2.normalize(heatmap, None, 0, 255, cv2.NORM_MINMAX)
+            heatmap_uint8 = heatmap_norm.astype(np.uint8)
 
-        heatmap_norm = cv2.normalize(heatmap, None, 0, 255, cv2.NORM_MINMAX)
-        heatmap_uint8 = heatmap_norm.astype(np.uint8)
+            if not regions:
+                x = 0
+                y = 0
+                w = image.shape[1]
+                h = image.shape[0]
+            else:
+                x, y, w, h = regions[i]
 
-        heatmap_resized = cv2.resize(heatmap_uint8, (image.shape[1], image.shape[0]))
-        heatmap_colored = cv2.applyColorMap(heatmap_resized, cv2.COLORMAP_JET)
+            heatmap_resized = cv2.resize(heatmap_uint8, (w, h))
+            heatmap_colored = cv2.applyColorMap(heatmap_resized, cv2.COLORMAP_JET)
 
-        overlayed = cv2.addWeighted(image, 1 - alpha, heatmap_colored, alpha, 0)
+            roi = image[y:y + h, x:x + w]
+            blended = cv2.addWeighted(roi, 1 - alpha, heatmap_colored, alpha, 0)
 
-        return overlayed
+            image[y:y+h, x:x+w] = blended
+
+        return image
 
     def save_runtime_data(self, filename='../files/output/centerface_data.xlsx'):
         if not self.save_data:
