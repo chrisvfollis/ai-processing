@@ -66,19 +66,18 @@ def recognize_faces_in_image(image: Union[str, np.ndarray],
     if focus == 'face':
         face_df = face_iq.recognize(image, id_cutoff=0.999)
         if not face_df.empty:
-            for identity, distance in (
-                face_df[['identity', 'distance']].itertuples(
+            for name, distance in (
+                face_df[['name', 'distance']].itertuples(
                     index=False, name=None
                 )
             ):
 
-                first_name, _ = io_utils.lookup_name(identity)
-                print(f'Name: {first_name} | Distance: {distance}')
+                print(f'Name: {name} | Distance: {distance}')
 
             face_iq.visualize_identifications(
                 image, [face_df], output_path=output_path
             )
-            
+
         return
 
     elif focus == 'global':

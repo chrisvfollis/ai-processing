@@ -191,6 +191,11 @@ class FaceIq:
                     src_embedding, target_embedding, 'cosine'
                 )
             )
+        
+        df['x'] = [0] * len(distances)
+        df['y'] = [0] * len(distances)
+        df['w'] = [img.shape[1]] * len(distances)
+        df['h'] = [img.shape[0]] * len(distances)
 
         df['distance'] = distances
         target_threshold = id_cutoff or verification.find_threshold(
