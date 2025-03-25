@@ -77,16 +77,17 @@ def recognize_faces_in_image(image: Union[str, np.ndarray],
 
     face_dfs = face_iq.identify_faces(image, id_cutoff=0.999, regions=regions)
 
-    for face_df in face_dfs:
+    for i, face_df in enumerate(face_dfs):
         if face_df.empty:
             continue
 
-        best_match = face_df.loc[face_df['distance'].idxmin()]
+        for identity, distance in (
+            face_df[['identity', 'distance']].itertuples(index=False, name=None)
+        ):
 
-        first_name, _ = io_utils.lookup_name(best_match['identity'])
-        distance = best_match['distance']
+            first_name, _ = io_utils.lookup_name(identity)
 
-        print(f'Name: {first_name} | Distance: {distance}')
+            print(f'Detection: {i} | Name: {first_name} | Distance: {distance}')
 
     face_iq.visualize_identifications(image, [face_df], output_path=output_path)
 
