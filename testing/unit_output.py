@@ -40,6 +40,7 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
     output_path = os.path.join('../files/output', image_name)
     
     face_detections = detector.detect_faces(image)
+    print(f'{len(face_detections)} faces detected')
     detector.visualize_detections(image, face_detections, output_path=output_path)
 
 
@@ -77,6 +78,7 @@ def recognize_faces_in_image(image: Union[str, np.ndarray],
 
     face_dfs = face_iq.identify_faces(image, id_cutoff=0.999, regions=regions)
 
+    print(f'{len(face_dfs)} faces found...')
     for i, face_df in enumerate(face_dfs):
         if face_df.empty:
             continue
