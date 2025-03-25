@@ -89,7 +89,7 @@ def recognize_faces_in_image(image: Union[str, np.ndarray],
 
             print(f'Detection: {i} | Name: {first_name} | Distance: {distance}')
 
-    face_iq.visualize_identifications(image, [face_df], output_path=output_path)
+    face_iq.visualize_identifications(image, face_dfs, output_path=output_path)
 
 def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
     clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')

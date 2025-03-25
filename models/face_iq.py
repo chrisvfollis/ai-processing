@@ -90,7 +90,7 @@ class FaceIq:
 
         config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
                   'detector_backend': self.detection_model, 'threshold': id_cutoff,
-                  'batched': False}
+                  'batched': False, 'align': False}
 
         all_face_dfs = []
         
