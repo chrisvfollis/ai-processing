@@ -1107,7 +1107,7 @@ class CenterFace:
 
                 return h, w
             
-            def _get_centroid(i, offset0, offset1, c0, c1):
+            def _get_xyxy(i, offset0, offset1, c0, c1, h, w):
                 y_idx = c0[i]   # indices of grid cell
                 x_idx = c1[i]
                 
@@ -1123,14 +1123,19 @@ class CenterFace:
                 x_cntr *= 4    # multiply by 4 to account for downsampling (stride)
                 y_cntr *= 4
 
-                return y_cntr, x_cntr
-                
+                x1 = max(0, (x_cntr - w / 2))
+                y1 = max(0, (y_cntr - h / 2))
+                x2 = min(size[1], (x1 + w))
+                y2 = min(size[0], (y1 + h))
+
+                return x1, y1, x2, y2
+
             heatmap = np.squeeze(heatmap)
 
             scale0 = scale[0, 0, :, :]  # log(height) predictions
             scale1 =  scale[0, 1, :, :] # log(width) predictions
 
-            offset0 = offset[0, 0, :, :]
+            offset0 = offset[0, 0, :, :]    # detection offset within grid cell
             offset1 = offset[0, 1, :, :]
 
             if self.landmarks:
@@ -1145,14 +1150,10 @@ class CenterFace:
                     s = heatmap[c0[i], c1[i]]
 
                     h, w = _translate_dims(i, scale0, scale1, c0, c1)
-                    y_cntr, x_cntr = _get_centroid(i, offset0, offset1, c0, c1)
 
-                    x1 = max(0, (x_cntr - w / 2))
-                    y1 = max(0, (y_cntr - h / 2))
-
-                    x2 = x1 + w
-                    y2 = y1 + h
-
+                    x1, y1, x2, y2 = _get_xyxy(
+                        i, offset0, offset1, c0, c1, h, w
+                    )
                     boxes.append([x1, y1, x2, y2, s])
 
                     if self.landmarks:
@@ -1167,7 +1168,8 @@ class CenterFace:
                         lms.append(lm)
 
                 boxes = np.asarray(boxes, dtype=np.float32)
-                keep = _nms(boxes[:, :4], boxes[:, 4], 0.3)
+                # keep = _nms(boxes[:, :4], boxes[:, 4], 0.3)
+                keep = _nms(boxes[:, :4], boxes[:, 4], 0.9)
                 boxes = boxes[keep, :]
 
                 if self.landmarks:
