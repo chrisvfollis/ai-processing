@@ -1000,7 +1000,7 @@ class FaceIq:
             cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
 
             cv2.putText(
-                image, f'distance: {best_match['distance']:.2f}', (x1, y1 - 5),
+                image, f'distance: {best_match["distance"]:.2f}', (x1, y1 - 5),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2
             )
 
