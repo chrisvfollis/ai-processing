@@ -539,8 +539,7 @@ class FaceIq:
         align: bool = True,
         expand_percentage: int = 0,
         color_face: str = 'rgb',
-        normalize_face: bool = True,
-        max_faces: Optional[int] = None,
+        normalize_face: bool = True
     ) -> List[Dict[str, Any]]:
 
         resp_objs = []
@@ -560,8 +559,7 @@ class FaceIq:
             face_objs = self.detect_faces(
                 img=img,
                 align=align,
-                expand_percentage=expand_percentage,
-                max_faces=max_faces,
+                expand_percentage=expand_percentage
             )
 
         if self.save_data:
@@ -620,19 +618,10 @@ class FaceIq:
         self,
         img: np.ndarray,
         align: bool = True,
-        expand_percentage: int = 0,
-        max_faces: Optional[int] = None,
+        expand_percentage: int = 0
     ) -> List[DetectedFace]:
 
         height, width, _ = img.shape
-
-        # validate expand percentage score
-        if expand_percentage < 0:
-            self.logger.warn(
-                f'Expand percentage cannot be negative but you set it to {expand_percentage}.'
-                'Overwritten it to 0.'
-            )
-            expand_percentage = 0
 
         # If faces are close to the upper boundary, alignment move them outside
         # Add a black border around an image to avoid this.
@@ -661,10 +650,6 @@ class FaceIq:
             self.face_detections.setdefault(self.i, []).extend(facial_areas)
 
         start_other_processing = time.perf_counter()
-        if max_faces is not None and max_faces < len(facial_areas):
-            facial_areas = nlargest(
-                max_faces, facial_areas, key=lambda facial_area: facial_area.w * facial_area.h
-            )
 
         if self.save_data:
             self.i_f = 0
@@ -1053,7 +1038,9 @@ class CenterFace:
             self.face_detections = {}
 
     def detect_faces(
-            self, img: np.ndarray, offset: Sequence = None,
+            self,
+            img: np.ndarray,
+            region: Sequence = None,
             conf_thresh: float = None,
             min_area: Union[Iterable[int], int] = None
         ) -> List[FacialAreaRegion]:
@@ -1070,10 +1057,12 @@ class CenterFace:
             with torch.no_grad():
                 outputs = self.model(tensor)
 
-            heatmap, scale, offset, lms = [x.cpu().numpy() for x in outputs]
+            heatmap, scale, offset, lms = [
+                output.cpu().numpy() for output in outputs
+            ]
             self.heatmaps.append(heatmap)
 
-            return _postprocess(heatmap, lms, offset,scale, conf_thresh)
+            return _postprocess(heatmap, lms, offset, scale, conf_thresh)
 
         def _postprocess(heatmap, lms, offset, scale, conf_thresh):
             if self.landmarks:
@@ -1100,13 +1089,20 @@ class CenterFace:
 
         def _decode(heatmap, scale, offset, landmark, size, conf_thresh=0.1):
             heatmap = np.squeeze(heatmap)
-            scale0, scale1 = scale[0, 0, :, :], scale[0, 1, :, :]
-            offset0, offset1 = offset[0, 0, :, :], offset[0, 1, :, :]
-            c0, c1 = np.where(heatmap > conf_thresh)
+
+            scale0 = scale[0, 0, :, :]
+            scale1 =  scale[0, 1, :, :]
+
+            offset0 = offset[0, 0, :, :]
+            offset1 = offset[0, 1, :, :]
+
             if self.landmarks:
                 boxes, lms = [], []
             else:
                 boxes = []
+            
+            c0, c1 = np.where(heatmap > conf_thresh)
+
             if len(c0) > 0:
                 for i in range(len(c0)):
                     s0 = np.exp(scale0[c0[i], c1[i]]) * 4
@@ -1120,12 +1116,18 @@ class CenterFace:
                     x1 = min(max(0, (c1[i] + o1 + 0.5) * 4 - s1 / 2), size[1])
                     y1 = min(max(0, (c0[i] + o0 + 0.5) * 4 - s0 / 2), size[0])
 
-                    boxes.append([
-                        x1, y1,
-                        min(x1 + s1, size[1]),
-                        min(y1 + s0, size[0]),
-                        s
-                    ])
+                    x2 = min(x1 + s1, size[1])
+                    y2 = min(y1 + s0, size[0])
+
+                    if (x2 < x1) or (y2 < y1):
+                        print(
+                            'Inverted box: ' +
+                            f'x1={x1}, x2={x2}, ' +
+                            f's1={s1}, o1={o1}, ' + 
+                            f'c1={c1[i]}'
+                        )
+
+                    boxes.append([x1, y1, x2, y2, s])
 
                     if self.landmarks:
                         lm = []
@@ -1223,20 +1225,22 @@ class CenterFace:
 
         detected_faces = []
         for i, box in enumerate(all_dets):
+
             x1, y1, x2, y2 = map(int, box[:4])
-            if offset:
-                x1, y1 = utils.apply_offset((x1, y1), offset)
-                x2, y2 = utils.apply_offset((x2, y2), offset)
-            
-            score = float(box[4])
+
             w, h = (x2 - x1), (y2 - y1)
+            score = float(box[4])
+
+            if region:
+                x1, y1 = utils.apply_offset((x1, y1), region)
+                x2, y2 = utils.apply_offset((x2, y2), region)
             
             if all_lms is not None:
                 lms = [
                     tuple(map(int, all_lms[i][j:j+2])) for j in range(0, 9, 2)
                 ]
-                if offset:
-                    lms = utils.apply_offset(lms, offset)
+                if region:
+                    lms = utils.apply_offset(lms, region)
 
                 left_eye, right_eye, nose, mouth_right, mouth_left = lms
             else:
