@@ -381,12 +381,13 @@ if __name__ == '__main__':
                 detect_faces_in_video(input_path, focus=focus)
 
     elif category == 'recognize':
+        focus = sys.argv[3]
         if file_extension in ['png', 'jpg', 'jpeg']:
             print('Input: image')
-            recognize_faces_in_image()
+            recognize_faces_in_image(input_path, focus=focus)
         elif file_extension == 'mp4':
             print('Input: video')
-            focus = sys.argv[3]
+            
             recognize_faces_in_video(input_path, focus=focus)
     
     elif category == 'enhance':
