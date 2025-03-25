@@ -110,6 +110,7 @@ def recognize_faces_in_image(image: Union[str, np.ndarray],
 
     face_iq.visualize_identifications(image, face_dfs, output_path=output_path)
 
+
 def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
     clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')
 
@@ -135,35 +136,36 @@ def detect_people_in_video():
 
 
 def detect_faces_in_video(
-        video: str, focus: str = 'global',
+        video_file: str,
+        focus: str = 'global',
+        input_dir: str = '../files/input',
         output_dir: str = '../files/output'
     ):
 
     detector = CenterFace(save_data=True)
 
     if focus == 'local':
-        detector.regions = {}
-
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         yolov4 = YOLOv4('../models/weights/YOLOv4.pth', device)
 
-    cap = cv2.VideoCapture(video)
+        detector.regions = {}
+
+    video_path = os.path.join(input_dir, video_file)
+
+    output_filename = io_utils.get_unique_filename(
+        output_dir, f'{video_file.split('.')[0]}_face_detections.mp4'
+    )
+    output_path = os.path.join(output_dir, output_filename)
+
+    cap = cv2.VideoCapture(video_path)
     resolution, fps, total_frames = utils.get_video_info(cap, release=False)
 
     print(f'Resolution: {resolution}')
     print(f'FPS: {fps}')
     print(f'Total Frames: {total_frames}')
     
-    video_file = video.split('/')[-1]
-    prefix = video_file.split('.')[0]
-
-    filename = io_utils.get_unique_filename(
-        output_dir, f'{prefix}_face_detections.mp4'
-    )
-    
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(os.path.join(output_dir, filename),
-                          fourcc, fps, (1920, 1080))
+    out = cv2.VideoWriter(output_path, fourcc, fps, (1920, 1080))
     
     f_num = -1
     detector.i = f_num
@@ -227,7 +229,9 @@ def detect_faces_in_video(
 
 
 def recognize_faces_in_video(
-        video: str, focus: str = 'global',
+        video_file: str,
+        focus: str = 'global',
+        input_dir: str = '../files/input',
         output_dir: str = '../files/output'
     ):
 
@@ -237,16 +241,20 @@ def recognize_faces_in_video(
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         yolov4 = YOLOv4('../models/weights/YOLOv4.pth', device)
 
-    cap = cv2.VideoCapture(video)
+    video_path = os.path.join(input_dir, video_file)
+
+    output_filename = io_utils.get_unique_filename(
+        output_dir, f'{video_file.split('.')[0]}_face_detections.mp4'
+    )
+    output_path = os.path.join(output_dir, output_filename)
+
+    cap = cv2.VideoCapture(video_path)
     resolution, fps, total_frames = utils.get_video_info(cap, release=False)
 
-    video_file = video.split('/')[-1]
-    prefix = video_file.split('.')[0]
-    filename = io_utils.get_unique_filename(
-        output_dir, f'{prefix}_face_identifications.mp4'
-    )
-    output_path = os.path.join(output_dir, filename)
-
+    print(f'Resolution: {resolution}')
+    print(f'FPS: {fps}')
+    print(f'Total Frames: {total_frames}')
+    
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (1920, 1080))
 

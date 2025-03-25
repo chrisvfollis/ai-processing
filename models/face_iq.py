@@ -59,7 +59,7 @@ class FaceIq:
             self.source_objs = {}           # <-- self.extract_faces() <-- self.find()
             self.det_recognition_dfs = {}   # <-- self.find()
 
-    def identify_faces(self, img, id_cutoff=None, regions=None):
+    def identify_faces(self, img, id_cutoff=None, regions=None, config=None):
         def _postprocess_output(all_face_dfs):
             start_other_processing = time.perf_counter()
     
@@ -88,9 +88,14 @@ class FaceIq:
 
         id_cutoff = id_cutoff or self.id_cutoff
 
-        config = {'db_path': self.face_dir, 'model_name': self.recognition_model,
-                  'detector_backend': self.detection_model, 'threshold': id_cutoff,
-                  'batched': False, 'align': False}
+        config = config or {
+            'db_path': self.face_dir,
+            'model_name': self.recognition_model,
+            'detector_backend': self.detection_model,
+            'threshold': id_cutoff,
+            'batched': False,
+            'align': False
+        }
 
         all_face_dfs = []
         
