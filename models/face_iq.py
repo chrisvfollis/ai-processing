@@ -138,6 +138,63 @@ class FaceIq:
 
         return results
 
+    def recognize(self, img: np.ndarray, id_cutoff: Optional[float] = None) -> pd.DataFrame:
+        '''
+        Only does recognition — should be used on cropped face detection images. 
+        '''
+
+        if not os.path.isdir(self.face_dir):
+            raise ValueError(f'Face DB path {self.face_dir} does not exist')
+
+        file_name = '_'.join([
+            'ds', 'model', self.recognition_model,
+            'detector', self.detection_model,
+            'aligned',
+            'normalization', 'base',
+            'expand', '0'
+        ]).replace('-', '').lower() + '.pkl'
+
+        datastore_path = os.path.join(self.face_dir, file_name)
+        if not os.path.exists(datastore_path):
+            raise FileNotFoundError(f'Embedding cache {datastore_path} not found')
+
+        with open(datastore_path, 'rb') as f:
+            representations = pickle.load(f)
+
+        df = pd.DataFrame(representations)
+        if df.empty:
+            return pd.DataFrame()
+
+        start = time.perf_counter()
+        embedding_obj = representation.represent(
+            img_path=img,
+            model_name=self.recognition_model,
+            detector_backend='skip',
+            align=True,
+            normalization='base',
+        )
+        self.face_recognition_time += (time.perf_counter() - start)
+
+        target_embedding = embedding_obj[0]['embedding']
+
+        distances = []
+        for _, row in df.iterrows():
+            src_embedding = row['embedding']
+            if src_embedding is None:
+                distances.append(float('inf'))
+                continue
+
+            distances.append(verification.find_distance(src_embedding, target_embedding, 'cosine'))
+
+        df['distance'] = distances
+        target_threshold = id_cutoff or verification.find_threshold(self.recognition_model, 'cosine')
+        df['threshold'] = target_threshold
+
+        df = df[df['distance'] <= target_threshold]
+        df = df.sort_values(by='distance', ascending=True).reset_index(drop=True)
+
+        return df
+
     def find(
         self, 
         img_path: Union[str, np.ndarray],

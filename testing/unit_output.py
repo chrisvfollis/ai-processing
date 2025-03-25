@@ -63,7 +63,16 @@ def recognize_faces_in_image(image: Union[str, np.ndarray],
 
     resolution = image.shape[:2][::-1]
 
-    if focus == 'global':
+    if focus == 'face':
+        face_df = face_iq.recognize(image, id_cutoff=0.999)
+        if not face_df.empty:
+            best_match = face_df.iloc[0]
+            first_name, _ = io_utils.lookup_name(best_match['identity'])
+            print(f'Name: {first_name} | Distance: {best_match["distance"]:.4f}')
+            face_iq.visualize_identifications(image, [face_df], output_path=output_path)
+        return
+
+    elif focus == 'global':
         regions = None
 
     elif focus == 'local':
