@@ -1088,10 +1088,47 @@ class CenterFace:
             return (dets, lms) if self.landmarks else dets
 
         def _decode(heatmap, scale, offset, landmark, size, conf_thresh=0.1):
+            def _translate_dims(i, scale0, scale1, c0, c1):
+                '''
+                Converts downsampled log-space model output to normal pixel
+                dimensions.
+                '''
+                y_idx = c0[i]   # indices of grid cell
+                x_idx = c1[i]
+
+                log_h = scale0[y_idx, x_idx]    # predicted face height
+                log_w = scale1[y_idx, x_idx]    # predicted face width
+
+                h = np.exp(log_h)   # exponentiate to reverse the logarithm
+                w = np.exp(log_w)
+
+                h *= 4  # multiply by 4 to account for downsampling (stride)
+                w *= 4 
+
+                return h, w
+            
+            def _get_centroid(i, offset0, offset1, c0, c1):
+                y_idx = c0[i]   # indices of grid cell
+                x_idx = c1[i]
+                
+                o0 = offset0[y_idx, x_idx]  # predicted sub-cell offsets
+                o1 = offset1[y_idx, x_idx]
+
+                x_cntr = x_idx + 0.5    # center position in cell
+                y_cntr = y_idx + 0.5
+
+                x_cntr += o1    # apply predicted offsets
+                y_cntr += o0
+
+                x_cntr *= 4    # multiply by 4 to account for downsampling (stride)
+                y_cntr *= 4
+
+                return y_cntr, x_cntr
+                
             heatmap = np.squeeze(heatmap)
 
-            scale0 = scale[0, 0, :, :]
-            scale1 =  scale[0, 1, :, :]
+            scale0 = scale[0, 0, :, :]  # log(height) predictions
+            scale1 =  scale[0, 1, :, :] # log(width) predictions
 
             offset0 = offset[0, 0, :, :]
             offset1 = offset[0, 1, :, :]
@@ -1101,31 +1138,20 @@ class CenterFace:
             else:
                 boxes = []
             
-            c0, c1 = np.where(heatmap > conf_thresh)
-
+            c0, c1 = np.where(heatmap > conf_thresh)    # (y, x) indices of
+                                                        # detected grid cells
             if len(c0) > 0:
                 for i in range(len(c0)):
-                    s0 = np.exp(scale0[c0[i], c1[i]]) * 4
-                    s1 = np.exp(scale1[c0[i], c1[i]]) * 4
-
-                    o0 = offset0[c0[i], c1[i]]
-                    o1 = offset1[c0[i], c1[i]]
-                    
                     s = heatmap[c0[i], c1[i]]
 
-                    x1 = min(max(0, (c1[i] + o1 + 0.5) * 4 - s1 / 2), size[1])
-                    y1 = min(max(0, (c0[i] + o0 + 0.5) * 4 - s0 / 2), size[0])
+                    h, w = _translate_dims(i, scale0, scale1, c0, c1)
+                    y_cntr, x_cntr = _get_centroid(i, offset0, offset1, c0, c1)
 
-                    x2 = min(x1 + s1, size[1])
-                    y2 = min(y1 + s0, size[0])
+                    x1 = max(0, (x_cntr - w / 2))
+                    y1 = max(0, (y_cntr - h / 2))
 
-                    if (x2 < x1) or (y2 < y1):
-                        print(
-                            'Inverted box: ' +
-                            f'x1={x1}, x2={x2}, ' +
-                            f's1={s1}, o1={o1}, ' + 
-                            f'c1={c1[i]}'
-                        )
+                    x2 = x1 + w
+                    y2 = y1 + h
 
                     boxes.append([x1, y1, x2, y2, s])
 
@@ -1133,10 +1159,10 @@ class CenterFace:
                         lm = []
                         for j in range(5):
                             lm.append(
-                                landmark[0, j * 2 + 1, c0[i], c1[i]] * s1 + x1
+                                landmark[0, j * 2 + 1, c0[i], c1[i]] * w + x1
                             )
                             lm.append(
-                                landmark[0, j * 2, c0[i], c1[i]] * s0 + y1
+                                landmark[0, j * 2, c0[i], c1[i]] * h + y1
                             )
                         lms.append(lm)
 
