@@ -35,7 +35,7 @@ class FaceIq:
             self.face_detector = CenterFace(weights_path=weights_path)
         else:
             self.face_detector: Detector = modeling.build_model(
-                task="face_detector", model_name=detection_model
+                task='face_detector', model_name=detection_model
             )
 
         self.id_cutoff = id_cutoff
@@ -224,25 +224,25 @@ class FaceIq:
         self, 
         img_path: Union[str, np.ndarray],
         db_path: str,
-        model_name: str = "Facenet512",
-        distance_metric: str = "cosine",
-        detector_backend: str = "centerface_gpu",
+        model_name: str = 'Facenet512',
+        distance_metric: str = 'cosine',
+        detector_backend: str = 'centerface_gpu',
         align: bool = True,
         expand_percentage: int = 0,
         threshold: Optional[float] = None,
-        normalization: str = "base",
+        normalization: str = 'base',
         refresh_database: bool = True,
         batched: bool = False,
     ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
         
         def __find_bulk_embeddings(
             employees: Set[str],
-            model_name: str = "VGG-Face",
-            detector_backend: str = "opencv",
+            model_name: str = 'VGG-Face',
+            detector_backend: str = 'opencv',
             align: bool = True,
             expand_percentage: int = 0,
-            normalization: str = "base",
-        ) -> List[Dict["str", Any]]:
+            normalization: str = 'base',
+        ) -> List[Dict['str', Any]]:
             
             representations = []
             for employee in employees:
@@ -259,7 +259,7 @@ class FaceIq:
                     )
 
                 except ValueError as err:
-                    self.logger.error(f"Exception while extracting faces from {employee}: {str(err)}")
+                    self.logger.error(f'Exception while extracting faces from {employee}: {str(err)}')
                     img_objs = []
 
                 end_detection = time.perf_counter()
@@ -268,26 +268,26 @@ class FaceIq:
                 if len(img_objs) == 0:
                     representations.append(
                         {
-                            "identity": employee,
-                            "hash": file_hash,
-                            "embedding": None,
-                            "target_x": 0,
-                            "target_y": 0,
-                            "target_w": 0,
-                            "target_h": 0,
+                            'identity': employee,
+                            'hash': file_hash,
+                            'embedding': None,
+                            'target_x': 0,
+                            'target_y': 0,
+                            'target_w': 0,
+                            'target_h': 0,
                         }
                     )
                 else:
                     for img_obj in img_objs:
-                        img_content = img_obj["face"]
-                        img_region = img_obj["facial_area"]
+                        img_content = img_obj['face']
+                        img_region = img_obj['facial_area']
 
                         start_recognition = time.perf_counter()
 
                         embedding_obj = representation.represent(
                             img_path=img_content,
                             model_name=model_name,
-                            detector_backend="skip",
+                            detector_backend='skip',
                             align=align,
                             normalization=normalization,
                         )
@@ -295,16 +295,16 @@ class FaceIq:
                         end_recognition = time.perf_counter()
                         self.face_recognition_time += (end_recognition - start_recognition)
 
-                        img_representation = embedding_obj[0]["embedding"]
+                        img_representation = embedding_obj[0]['embedding']
                         representations.append(
                             {
-                                "identity": employee,
-                                "hash": file_hash,
-                                "embedding": img_representation,
-                                "target_x": img_region["x"],
-                                "target_y": img_region["y"],
-                                "target_w": img_region["w"],
-                                "target_h": img_region["h"],
+                                'identity': employee,
+                                'hash': file_hash,
+                                'embedding': img_representation,
+                                'target_x': img_region['x'],
+                                'target_y': img_region['y'],
+                                'target_w': img_region['w'],
+                                'target_h': img_region['h'],
                             }
                         )
 
@@ -314,42 +314,42 @@ class FaceIq:
         self.logger = Logger()
 
         if not os.path.isdir(db_path):
-            raise ValueError(f"Passed path {db_path} does not exist!")
+            raise ValueError(f'Passed path {db_path} does not exist!')
 
         img, _ = image_utils.load_image(img_path)
         if img is None:
-            raise ValueError(f"Passed image path {img_path} does not exist!")
+            raise ValueError(f'Passed image path {img_path} does not exist!')
 
         file_parts = [
-            "ds", "model", model_name,
-            "detector", detector_backend,
-            "aligned" if align else "unaligned",
-            "normalization", normalization,
-            "expand", str(expand_percentage),
+            'ds', 'model', model_name,
+            'detector', detector_backend,
+            'aligned' if align else 'unaligned',
+            'normalization', normalization,
+            'expand', str(expand_percentage),
         ]
 
-        file_name = "_".join(file_parts) + ".pkl"
-        file_name = file_name.replace("-", "").lower()
+        file_name = '_'.join(file_parts) + '.pkl'
+        file_name = file_name.replace('-', '').lower()
 
         datastore_path = os.path.join(db_path, file_name)
         representations = []
 
         # required columns for representations
         df_cols = {
-            "identity",
-            "hash",
-            "embedding",
-            "target_x",
-            "target_y",
-            "target_w",
-            "target_h",
+            'identity',
+            'hash',
+            'embedding',
+            'target_x',
+            'target_y',
+            'target_w',
+            'target_h',
         }
 
         if not os.path.exists(datastore_path):
-            with open(datastore_path, "wb") as f:
+            with open(datastore_path, 'wb') as f:
                 pickle.dump([], f, pickle.HIGHEST_PROTOCOL)
 
-        with open(datastore_path, "rb") as f:
+        with open(datastore_path, 'rb') as f:
             representations = pickle.load(f)
 
         # check each item of representations list has required keys
@@ -357,17 +357,17 @@ class FaceIq:
             missing_keys = df_cols - set(current_representation.keys())
             if len(missing_keys) > 0:
                 raise ValueError(
-                    f"{i}-th item does not have some required keys - {missing_keys}."
-                    f"Consider to delete {datastore_path}"
+                    f'{i}-th item does not have some required keys - {missing_keys}.'
+                    f'Consider to delete {datastore_path}'
                 )
 
         # Get the list of images on storage
         storage_images = set(image_utils.yield_images(path=db_path))
 
         if len(storage_images) == 0 and refresh_database is True:
-            raise ValueError(f"No item found in {db_path}")
+            raise ValueError(f'No item found in {db_path}')
         if len(representations) == 0 and refresh_database is False:
-            raise ValueError(f"Nothing is found in {datastore_path}")
+            raise ValueError(f'Nothing is found in {datastore_path}')
 
         must_save_pickle = False
         new_images, old_images, replaced_images = set(), set(), set()
@@ -376,7 +376,7 @@ class FaceIq:
         if refresh_database:
             # embedded images
             pickled_images = {
-                representation["identity"] for representation in representations
+                representation['identity'] for representation in representations
             }
 
             new_images = storage_images - pickled_images  # images added to storage
@@ -384,10 +384,10 @@ class FaceIq:
 
             # detect replaced images
             for current_representation in representations:
-                identity = current_representation["identity"]
+                identity = current_representation['identity']
                 if identity in old_images:
                     continue
-                alpha_hash = current_representation["hash"]
+                alpha_hash = current_representation['hash']
                 beta_hash = image_utils.find_image_hash(identity)
                 if alpha_hash != beta_hash:
                     replaced_images.add(identity)
@@ -398,7 +398,7 @@ class FaceIq:
 
         # remove old images first
         if len(old_images) > 0:
-            representations = [rep for rep in representations if rep["identity"] not in old_images]
+            representations = [rep for rep in representations if rep['identity'] not in old_images]
             must_save_pickle = True
 
         end_other_processing = time.perf_counter()
@@ -418,7 +418,7 @@ class FaceIq:
 
         start_other_processing = time.perf_counter()
         if must_save_pickle:
-            with open(datastore_path, "wb") as f:
+            with open(datastore_path, 'wb') as f:
                 pickle.dump(representations, f, pickle.HIGHEST_PROTOCOL)
 
         end_other_processing = time.perf_counter()
@@ -464,15 +464,15 @@ class FaceIq:
         resp_obj = []
 
         for source_obj in source_objs:
-            source_img = source_obj["face"]
-            source_region = source_obj["facial_area"]
+            source_img = source_obj['face']
+            source_region = source_obj['facial_area']
 
             start_recognition = time.perf_counter()
 
             target_embedding_obj = representation.represent(
                 img_path=source_img,
                 model_name=model_name,
-                detector_backend="skip",
+                detector_backend='skip',
                 align=align,
                 normalization=normalization,
             )
@@ -482,28 +482,28 @@ class FaceIq:
 
             start_other_processing = time.perf_counter()
 
-            target_representation = target_embedding_obj[0]["embedding"]
+            target_representation = target_embedding_obj[0]['embedding']
 
             result_df = df.copy()  # df will be filtered in each img
-            result_df["source_x"] = source_region["x"]
-            result_df["source_y"] = source_region["y"]
-            result_df["source_w"] = source_region["w"]
-            result_df["source_h"] = source_region["h"]
+            result_df['source_x'] = source_region['x']
+            result_df['source_y'] = source_region['y']
+            result_df['source_w'] = source_region['w']
+            result_df['source_h'] = source_region['h']
 
             distances = []
             for _, instance in df.iterrows():
-                source_representation = instance["embedding"]
+                source_representation = instance['embedding']
                 if source_representation is None:
-                    distances.append(float("inf"))  # no representation for this image
+                    distances.append(float('inf'))  # no representation for this image
                     continue
 
                 target_dims = len(list(target_representation))
                 source_dims = len(list(source_representation))
                 if target_dims != source_dims:
                     raise ValueError(
-                        "Source and target embeddings must have same dimensions but "
-                        + f"{target_dims}:{source_dims}. Model structure may change"
-                        + " after pickle created. Delete the {file_name} and re-run."
+                        'Source and target embeddings must have same dimensions but '
+                        + f'{target_dims}:{source_dims}. Model structure may change'
+                        + ' after pickle created. Delete the {file_name} and re-run.'
                     )
 
                 distance = verification.find_distance(
@@ -515,12 +515,12 @@ class FaceIq:
                 # ---------------------------
             target_threshold = threshold or verification.find_threshold(model_name, distance_metric)
 
-            result_df["threshold"] = target_threshold
-            result_df["distance"] = distances
+            result_df['threshold'] = target_threshold
+            result_df['distance'] = distances
 
-            result_df = result_df.drop(columns=["embedding"])
-            result_df = result_df[result_df["distance"] <= target_threshold]
-            result_df = result_df.sort_values(by=["distance"], ascending=True).reset_index(drop=True)
+            result_df = result_df.drop(columns=['embedding'])
+            result_df = result_df[result_df['distance'] <= target_threshold]
+            result_df = result_df.sort_values(by=['distance'], ascending=True).reset_index(drop=True)
 
             resp_obj.append(result_df)
 
@@ -535,10 +535,10 @@ class FaceIq:
     def extract_faces(
         self,
         img_path: Union[str, np.ndarray, IO[bytes]],
-        detector_backend: str = "centerface_gpu",
+        detector_backend: str = 'centerface_gpu',
         align: bool = True,
         expand_percentage: int = 0,
-        color_face: str = "rgb",
+        color_face: str = 'rgb',
         normalize_face: bool = True,
         max_faces: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
@@ -548,13 +548,13 @@ class FaceIq:
         img, img_name = image_utils.load_image(img_path)
 
         if img is None:
-            raise ValueError(f"Exception while loading {img_name}")
+            raise ValueError(f'Exception while loading {img_name}')
 
         height, width, _ = img.shape
 
         base_region = FacialAreaRegion(x=0, y=0, w=width, h=height, confidence=0)
 
-        if detector_backend == "skip":
+        if detector_backend == 'skip':
             face_objs = [DetectedFace(img=img, facial_area=base_region, confidence=0)]
         else:
             face_objs = self.detect_faces(
@@ -571,14 +571,14 @@ class FaceIq:
             current_img = face_obj.img
             current_region = face_obj.facial_area
 
-            if color_face == "rgb":
+            if color_face == 'rgb':
                 current_img = cv2.cvtColor(current_img, cv2.COLOR_BGR2RGB)
-            elif color_face == "bgr":
+            elif color_face == 'bgr':
                 pass  # image is in BGR
-            elif color_face == "gray":
+            elif color_face == 'gray':
                 current_img = cv2.cvtColor(current_img, cv2.COLOR_BGR2GRAY)
             else:
-                raise ValueError(f"The color_face can be rgb, bgr or gray, but it is {color_face}.")
+                raise ValueError(f'The color_face can be rgb, bgr or gray, but it is {color_face}.')
 
             if normalize_face:
                 current_img = current_img / 255  # normalize input in [0, 1]
@@ -590,26 +590,26 @@ class FaceIq:
             h = min(height - y - 1, int(current_region.h))
 
             facial_area = {
-                "x": x,
-                "y": y,
-                "w": w,
-                "h": h,
-                "left_eye": current_region.left_eye,
-                "right_eye": current_region.right_eye,
+                'x': x,
+                'y': y,
+                'w': w,
+                'h': h,
+                'left_eye': current_region.left_eye,
+                'right_eye': current_region.right_eye,
             }
 
             # optional nose, mouth_left and mouth_right fields are coming just for retinaface
             if current_region.nose is not None:
-                facial_area["nose"] = current_region.nose
+                facial_area['nose'] = current_region.nose
             if current_region.mouth_left is not None:
-                facial_area["mouth_left"] = current_region.mouth_left
+                facial_area['mouth_left'] = current_region.mouth_left
             if current_region.mouth_right is not None:
-                facial_area["mouth_right"] = current_region.mouth_right
+                facial_area['mouth_right'] = current_region.mouth_right
 
             resp_obj = {
-                "face": current_img,
-                "facial_area": facial_area,
-                "confidence": round(float(current_region.confidence or 0), 2),
+                'face': current_img,
+                'facial_area': facial_area,
+                'confidence': round(float(current_region.confidence or 0), 2),
             }
 
             resp_objs.append(resp_obj)
@@ -629,8 +629,8 @@ class FaceIq:
         # validate expand percentage score
         if expand_percentage < 0:
             self.logger.warn(
-                f"Expand percentage cannot be negative but you set it to {expand_percentage}."
-                "Overwritten it to 0."
+                f'Expand percentage cannot be negative but you set it to {expand_percentage}.'
+                'Overwritten it to 0.'
             )
             expand_percentage = 0
 
@@ -799,7 +799,7 @@ class FaceIq:
     def extract_sub_image(
         self, img: np.ndarray, facial_area: Tuple[int, int, int, int]
     ) -> Tuple[np.ndarray, int, int]:
-        """
+        '''
         Get the sub image with given facial area while expanding the facial region
             to ensure alignment does not shift the face outside the image.
 
@@ -814,7 +814,7 @@ class FaceIq:
             - extracted_face (np.ndarray): expanded facial image
             - relative_x (int): adjusted x-coordinates relative to the expanded region
             - relative_y (int): adjusted y-coordinates relative to the expanded region
-        """
+        '''
         x, y, w, h = facial_area
         relative_x = int(0.5 * w)
         relative_y = int(0.5 * h)
@@ -853,7 +853,7 @@ class FaceIq:
         left_eye: Optional[Union[list, tuple]],
         right_eye: Optional[Union[list, tuple]],
     ) -> Tuple[np.ndarray, float]:
-        """
+        '''
         Align a given image horizontally with respect to their left and right eye locations
         Args:
             img (np.ndarray): pre-loaded image with detected face
@@ -861,7 +861,7 @@ class FaceIq:
             right_eye(list or tuple): coordinates of right eye with respect to the person itself
         Returns:
             img (np.ndarray): aligned facial image
-        """
+        '''
         # if eye could not be detected for the given image, return image itself
         if left_eye is None or right_eye is None:
             return img, 0
@@ -884,7 +884,7 @@ class FaceIq:
     def project_facial_area(
         self, facial_area: Tuple[int, int, int, int], angle: float, size: Tuple[int, int]
     ) -> Tuple[int, int, int, int]:
-        """
+        '''
         Update pre-calculated facial area coordinates after image itself
             rotated with respect to the eyes.
         Inspried from the work of @UmutDeniz26 - github.com/serengil/retinaface/pull/80
@@ -899,7 +899,7 @@ class FaceIq:
         Returns:
             rotated_coordinates (tuple of int): Representing the new coordinates
                 (x1, y1, x2, y2) or (x1, y1, x1+w1, y1+h1) of the rotated facial area.
-        """
+        '''
 
         # Normalize the witdh of the angle so we don't have to
         # worry about rotations greater than 360 degrees.
@@ -1000,13 +1000,13 @@ class FaceIq:
             cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
 
             cv2.putText(
-                image, f"distance: {best_match['distance']:.2f}", (x1, y1 - 5),
+                image, f'distance: {best_match['distance']:.2f}', (x1, y1 - 5),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2
             )
 
             first_name, _ = io_utils.lookup_name(best_match['identity'])
             cv2.putText(
-                image, f"name: {first_name}", (x2 - 5, y2 - 5),
+                image, f'name: {first_name}', (x2 - 5, y2 - 5),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2
             )
 
@@ -1041,6 +1041,7 @@ class CenterFace:
         self.conf_thresh = conf_thresh
         self.min_area = min_area
         self.landmarks = landmarks
+        self.last_heatmap = np.array([[]])
 
         self.img_h_new, self.img_w_new = 0, 0
         self.scale_h, self.scale_w = 0, 0
@@ -1068,12 +1069,10 @@ class CenterFace:
             with torch.no_grad():
                 outputs = self.model(tensor)
 
-            heatmap, scale, offset, lms = outputs
+            heatmap, scale, offset, lms = [x.cpu().numpy() for x in outputs]
+            self.last_heatmap = heatmap
 
-            return _postprocess(
-                heatmap.cpu().numpy(), lms.cpu().numpy(), offset.cpu().numpy(),
-                scale.cpu().numpy(), conf_thresh
-            )
+            return _postprocess(heatmap, lms, offset,scale, conf_thresh)
 
         def _postprocess(heatmap, lms, offset, scale, conf_thresh):
             if self.landmarks:
@@ -1306,6 +1305,31 @@ class CenterFace:
             cv2.imwrite(output_path, image)
 
         return image
+
+    def visualize_heatmap(self, image: np.ndarray, heatmap: np.ndarray, alpha: float = 0.5) -> np.ndarray:
+        '''
+        Overlay the CenterFace heatmap on the original image.
+
+        Args:
+            image (np.ndarray): Original BGR image.
+            heatmap (np.ndarray, optional): Heatmap from the last forward pass.
+            alpha (float): Blending factor.
+
+        Returns:
+            np.ndarray: Image with heatmap overlay.
+        '''
+
+        heatmap = np.squeeze(heatmap[0, 0])  # shape: (H, W)
+
+        heatmap_norm = cv2.normalize(heatmap, None, 0, 255, cv2.NORM_MINMAX)
+        heatmap_uint8 = heatmap_norm.astype(np.uint8)
+
+        heatmap_resized = cv2.resize(heatmap_uint8, (image.shape[1], image.shape[0]))
+        heatmap_colored = cv2.applyColorMap(heatmap_resized, cv2.COLORMAP_JET)
+
+        overlayed = cv2.addWeighted(image, 1 - alpha, heatmap_colored, alpha, 0)
+
+        return overlayed
 
     def save_runtime_data(self, filename='../files/output/centerface_data.xlsx'):
         if not self.save_data:

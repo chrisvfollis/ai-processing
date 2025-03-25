@@ -295,6 +295,9 @@ def recognize_faces_in_video(
 
             frame = face_iq.visualize_identifications(frame, all_face_dfs)
 
+            last_heatmap = face_iq.face_detector.last_heatmap
+            frame = face_iq.face_detector.visualize_heatmap(frame, last_heatmap)
+
         cv2.putText(
             frame, f'frame {f_num}',
             (int(resolution[0]/2), int(resolution[1]/2)),
