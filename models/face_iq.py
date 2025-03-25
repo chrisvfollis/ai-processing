@@ -138,7 +138,9 @@ class FaceIq:
 
         return results
 
-    def recognize(self, img: np.ndarray, id_cutoff: Optional[float] = None) -> pd.DataFrame:
+    def recognize(
+            self, img: np.ndarray, id_cutoff: Optional[float] = None
+        ) -> pd.DataFrame:
         '''
         Only does recognition — should be used on cropped face detection images. 
         '''
@@ -184,15 +186,28 @@ class FaceIq:
                 distances.append(float('inf'))
                 continue
 
-            distances.append(verification.find_distance(src_embedding, target_embedding, 'cosine'))
+            distances.append(
+                verification.find_distance(
+                    src_embedding, target_embedding, 'cosine'
+                )
+            )
 
         df['distance'] = distances
-        target_threshold = id_cutoff or verification.find_threshold(self.recognition_model, 'cosine')
+        target_threshold = id_cutoff or verification.find_threshold(
+            self.recognition_model, 'cosine'
+        )
         df['threshold'] = target_threshold
 
         df = df[df['distance'] <= target_threshold]
         df = df.sort_values(by='distance', ascending=True).reset_index(drop=True)
+        
+        df = utils.reformat_face_df(df)
 
+        results = io_utils.lookup_identities(df['identity'], db_path=self.db_path)
+        df[['identity', 'name', 'designation']] = pd.DataFrame(
+            [(result[1], f'{result[3]}_{result[4]}', result[5])
+            for result in results]
+        )
         return df
 
     def find(
