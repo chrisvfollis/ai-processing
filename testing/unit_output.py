@@ -197,6 +197,9 @@ def detect_faces_in_video(
                 )
 
                 for region in regions:
+                    x1, y1, x2, y2 = utils.xywh_to_xyxy(region)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
+
                     if detector.save_data:
                         detector.regions.setdefault(f_num, []).append(region)
 
@@ -244,7 +247,7 @@ def recognize_faces_in_video(
     video_path = os.path.join(input_dir, video_file)
 
     output_filename = io_utils.get_unique_filename(
-        output_dir, f'{video_file.split(".")[0]}_face_detections.mp4'
+        output_dir, f'{video_file.split(".")[0]}_face_identifications.mp4'
     )
     output_path = os.path.join(output_dir, output_filename)
 
@@ -284,7 +287,10 @@ def recognize_faces_in_video(
                 regions = utils.cluster_bboxes_into_regions(
                     bboxes, *resolution
                 )
-
+                for region in regions:
+                    x1, y1, x2, y2 = utils.xywh_to_xyxy(region)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
+                
             all_face_dfs = face_iq.identify_faces(frame, id_cutoff=0.999, regions=regions)
 
             frame = face_iq.visualize_identifications(frame, all_face_dfs)
