@@ -1108,7 +1108,7 @@ class CenterFace:
                 return h, w
             
             def _get_xyxy(i, offset0, offset1, c0, c1, h, w):
-                y_idx = c0[i]   # indices of grid cell
+                y_idx = c0[i]   # grid cell indices
                 x_idx = c1[i]
                 
                 o0 = offset0[y_idx, x_idx]  # predicted sub-cell offsets
@@ -1135,20 +1135,19 @@ class CenterFace:
             scale0 = scale[0, 0, :, :]  # log(height) predictions
             scale1 =  scale[0, 1, :, :] # log(width) predictions
 
-            offset0 = offset[0, 0, :, :]    # detection offset within grid cell
+            offset0 = offset[0, 0, :, :]    # detection offset within 4x4 grid cell
             offset1 = offset[0, 1, :, :]
-
+            
+            c0, c1 = np.where(heatmap > conf_thresh)    # (y, x) indices of
+                                                        # detected grid cells
             if self.landmarks:
                 boxes, lms = [], []
             else:
                 boxes = []
-            
-            c0, c1 = np.where(heatmap > conf_thresh)    # (y, x) indices of
-                                                        # detected grid cells
+
             if len(c0) > 0:
                 for i in range(len(c0)):
                     s = heatmap[c0[i], c1[i]]
-
                     h, w = _translate_dims(i, scale0, scale1, c0, c1)
 
                     x1, y1, x2, y2 = _get_xyxy(
@@ -1168,8 +1167,7 @@ class CenterFace:
                         lms.append(lm)
 
                 boxes = np.asarray(boxes, dtype=np.float32)
-                # keep = _nms(boxes[:, :4], boxes[:, 4], 0.3)
-                keep = _nms(boxes[:, :4], boxes[:, 4], 0.9)
+                keep = _nms(boxes[:, :4], boxes[:, 4], 0.3)
                 boxes = boxes[keep, :]
 
                 if self.landmarks:
