@@ -373,7 +373,7 @@ def lookup_name(identity_uuid, db_path='../files/data.db'):
         WHERE identity_uuid = ?;
     '''
     cursor.execute(query, (identity_uuid,))
-    results = cursor.fetchone()
+    results = cursor.fetchone() or [identity_uuid, identity_uuid]
     conn.close()
 
     return results
