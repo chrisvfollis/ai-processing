@@ -1021,7 +1021,7 @@ class CenterFace:
             self,
             device: torch.device = None,
             weights_path: str ='../models/weights/centerface.pth',
-            conf_thresh: float = 0.55,
+            conf_thresh: float = 0.65,
             min_area: Union[Iterable[int], int] = (32, 32),
             landmarks: bool = True,
             save_data: bool = False
@@ -1309,7 +1309,7 @@ class CenterFace:
 
     def visualize_heatmaps(
             self, image: np.ndarray, heatmaps: list[np.ndarray],
-            regions: Sequence = None, alpha: float = 0.4
+            regions: Sequence = None, alpha: float = 0.35
         ) -> np.ndarray:
         '''
         Overlay the CenterFace heatmap on the original image.
