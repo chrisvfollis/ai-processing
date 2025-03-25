@@ -153,7 +153,7 @@ def detect_faces_in_video(
     video_path = os.path.join(input_dir, video_file)
 
     output_filename = io_utils.get_unique_filename(
-        output_dir, f'{video_file.split('.')[0]}_face_detections.mp4'
+        output_dir, f'{video_file.split(".")[0]}_face_detections.mp4'
     )
     output_path = os.path.join(output_dir, output_filename)
 
@@ -244,7 +244,7 @@ def recognize_faces_in_video(
     video_path = os.path.join(input_dir, video_file)
 
     output_filename = io_utils.get_unique_filename(
-        output_dir, f'{video_file.split('.')[0]}_face_detections.mp4'
+        output_dir, f'{video_file.split(".")[0]}_face_detections.mp4'
     )
     output_path = os.path.join(output_dir, output_filename)
 
