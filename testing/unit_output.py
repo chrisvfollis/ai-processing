@@ -5,7 +5,6 @@ from typing import Union
 import uuid
 import time
 import math
-from collections import deque
 
 # 3rd-party dependencies
 import numpy as np
@@ -13,7 +12,8 @@ import cv2
 import torch
 
 # internal dependencies
-from models.face_iq import FaceIq, CenterFace
+from models.face_iq import FaceIq
+from models.centerface import CenterFace
 from models.clearface import ClearFace
 from models.yolov4 import YOLOv4
 from utilities import utilities as utils
@@ -197,7 +197,7 @@ def detect_faces_in_video(
                 )
 
                 for region in regions:
-                    x1, y1, x2, y2 = utils.xywh_to_xyxy(region)
+                    x1, y1, x2, y2 = utils.xywh_xyxy(region)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
 
                     if detector.save_data:
@@ -288,7 +288,7 @@ def recognize_faces_in_video(
                     bboxes, *resolution
                 )
                 for region in regions:
-                    x1, y1, x2, y2 = utils.xywh_to_xyxy(region)
+                    x1, y1, x2, y2 = utils.xywh_xyxy(region)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
                 
             all_face_dfs = face_iq.identify_faces(frame, id_cutoff=0.999, regions=regions)

@@ -770,10 +770,19 @@ def crop_region(img, region):
     return img[y1:y2, x1:x2].copy()
 
 
-def xywh_to_xyxy(coordinates):
-    x1, y1, w, h = coordinates[:4]
+def xywh_xyxy(coordinates, out='xyxy'):
+    if out == 'xyxy':
+        x1, y1, w, h = coordinates[:4]
 
-    x2 = x1 + w
-    y2 = y1 + h
+        x2 = x1 + w
+        y2 = y1 + h
 
-    return x1, y1, x2, y2
+        return x1, y1, x2, y2
+    
+    elif out == 'xywh':
+        x1, y1, x2, y2 = coordinates[:4]
+
+        w = x2 - x1
+        h = y2 -y1
+
+        return x1, y1, w, h
