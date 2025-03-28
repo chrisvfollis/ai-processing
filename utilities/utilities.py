@@ -23,6 +23,26 @@ from shapely.geometry import Polygon, box
 pass
 
 
+def press_stopwatch(instance, target_attr: str):
+    accrued_time = getattr(instance, target_attr, 0)
+    start_attr = f'start_{target_attr}'
+
+    if not hasattr(instance, start_attr):
+        start = time.perf_counter() # create start reference
+        setattr(instance, start_attr, start)
+        return True
+    
+    else:
+        start = getattr(instance, start_attr)   # retrieve start reference
+        stop = time.perf_counter()
+
+        accrued_time += (stop - start)
+        setattr(instance, target_attr, accrued_time)    # update total
+
+        delattr(instance, start_attr)   # delete start reference
+        return False
+
+
 def observability_thread(target, args=None):
     """
     Initializes a thread for monitoring & logging some aspect of a process.

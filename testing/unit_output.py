@@ -71,13 +71,11 @@ def recognize_faces_in_image(image: Union[str, np.ndarray],
                     index=False, name=None
                 )
             ):
-
                 print(f'Name: {name} | Distance: {distance}')
 
             face_iq.visualize_identifications(
                 image, [face_df], output_path=output_path
             )
-
         return
 
     elif focus == 'global':
@@ -320,7 +318,6 @@ def test_enhanced_face_detections(
     ):
 
     face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
-    clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')
 
     if focus == 'local':
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -344,17 +341,9 @@ def test_enhanced_face_detections(
 
         if (f_num % fps) == 0:
             if focus == 'global':
-                face_objects = face_iq.extract_faces(frame, normalize_face=False)
-                i_f = 0
-                for face_object in face_objects:
-
-                    enhanced_face = clearface.forward(face_object['face'], is_rgb=True)
-
-                    cv2.imwrite(
-                        f'../files/output/{face_iq.i}_{i_f}_enhanced_detection.png',
-                        enhanced_face
-                    )
-                    i_f += 1
+                face_objects = face_iq.detection_pipeline(
+                    frame, enhance=True, normalize_face=False
+                )
     
             elif focus == 'local':
                 bboxes = yolov4.detect(frame, 0)
@@ -365,19 +354,9 @@ def test_enhanced_face_detections(
                 regions = utils.cluster_bboxes_into_regions(
                     bboxes, *resolution
                 )
-                i_f = 0
                 for region in regions:
                     img_crop = utils.crop_region(frame, region)
-                    local_face_objects = face_iq.extract_faces(img_crop, normalize_face=False)
-
-                    for face_object in local_face_objects:
-                        enhanced_face = clearface.forward(face_object['face'], is_rgb=True)
-                    
-                        cv2.imwrite(
-                            f'../files/output/{face_iq.i}_{i_f}_enhanced_detection.png',
-                            enhanced_face
-                        )
-                        i_f += 1
+                    local_face_objects = face_iq.detection_pipeline(img_crop, normalize_face=False)
     
     cap.release()
 
