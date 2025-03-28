@@ -20,7 +20,7 @@ class CenterFace:
             device: torch.device = None,
             weights_path: str ='../models/weights/centerface.pth',
             conf_thresh: float = 0.65,
-            min_area: Union[Iterable[int], int] = (32, 32),
+            min_area: Union[Iterable[int], int] = (40, 40),
             ignore_landmarks: bool = False,
             save_data: bool = False
         ):
@@ -59,7 +59,7 @@ class CenterFace:
             min_area: Union[Iterable[int], int] = None
         ) -> List[FacialAreaRegion]:
 
-        def _inference_pytorch(img, conf_thresh):
+        def _inference_pytorch(img, conf_thresh, min_area):
             image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
             blob = (
                 cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
@@ -76,17 +76,17 @@ class CenterFace:
             ]
             self.heatmaps.append(heatmap)
 
-            return _postprocess(heatmap, lms, offset, scale, conf_thresh)
+            return _postprocess(heatmap, lms, offset, scale, conf_thresh, min_area)
 
-        def _postprocess(heatmap, lms, offset, scale, conf_thresh):
+        def _postprocess(heatmap, lms, offset, scale, conf_thresh, min_area):
             if not self.ignore_landmarks:
                 dets, lms = _decode(heatmap, scale, offset, lms,
                                     (self.img_h_new, self.img_w_new),
-                                    conf_thresh=conf_thresh)
+                                    conf_thresh, min_area)
             else:
                 dets = _decode(heatmap, scale, offset, None,
                                (self.img_h_new, self.img_w_new),
-                               conf_thresh=conf_thresh)
+                               conf_thresh, min_area)
 
             if len(dets) > 0:
                 dets[:, 0:4:2] /= self.scale_w
@@ -101,7 +101,7 @@ class CenterFace:
 
             return dets if self.ignore_landmarks else (dets, lms)
 
-        def _decode(heatmap, scale, offset, landmark, size, conf_thresh=0.1):
+        def _decode(heatmap, scale, offset, landmark, size, conf_thresh, min_area):
             def _translate_dims(i, scale0, scale1, y_idx, x_idx):
                 '''
                 Converts downsampled log-space model output to normal pixel
@@ -158,6 +158,9 @@ class CenterFace:
                     y_idx, x_idx = c0[i], c1[i]   # grid cell indices
 
                     h, w = _translate_dims(i, scale0, scale1, y_idx, x_idx)
+                    if math.prod((h, w)) < min_area:
+                        continue    # filter (skip) small detection
+
                     x1, y1, x2, y2 = _get_xyxy(
                         i, offset0, offset1, y_idx, x_idx, h, w
                     )
