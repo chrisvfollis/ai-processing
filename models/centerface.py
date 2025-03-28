@@ -250,15 +250,11 @@ class CenterFace:
         if math.prod((h, w)) < min_area:
             return []
 
-        if (h >= 32) and (w >= 32):
-            self.img_h_new = (h // 32) * 32
-            self.img_w_new = (w // 32) * 32
-        else:
-            self.img_w_new = w + (w % 2)
-            self.img_h_new = h + (h % 2)
+        self.img_h_new = int(np.ceil(h / 32) * 32)
+        self.img_w_new = int(np.ceil(w / 32) * 32)
 
-        self.scale_h = h / self.img_h_new
-        self.scale_w = w / self.img_w_new
+        self.scale_h = self.img_h_new / h
+        self.scale_w = self.img_w_new / w
 
         detections = _inference_pytorch(img, conf_thresh, min_area)
 
