@@ -1232,7 +1232,7 @@ class Track(KalmanFilter):
             del self.embedding_cache_tensor
         
         press_stopwatch(self, 'tensor_conversion')
-        self.embedding_cache_tensor, _ = torch.stack(list(self.embedding_cache))
+        self.embedding_cache_tensor = torch.stack(list(self.embedding_cache))
         press_stopwatch(self, 'tensor_conversion')
 
     def add_detection(self, new_detection, frame_number):
