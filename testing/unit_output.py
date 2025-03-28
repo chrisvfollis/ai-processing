@@ -314,6 +314,7 @@ def recognize_faces_in_video(
 
 def test_enhanced_face_detections(
         video: str, focus: str = 'global',
+        input_dir: str = '../files/input',
         output_dir: str = '../files/output'
     ):
 
@@ -342,7 +343,7 @@ def test_enhanced_face_detections(
         if (f_num % fps) == 0:
             if focus == 'global':
                 face_objects = face_iq.detection_pipeline(
-                    frame, enhance=True, normalize_face=False
+                    frame, align=False, enhance=True, normalize_face=False
                 )
     
             elif focus == 'local':

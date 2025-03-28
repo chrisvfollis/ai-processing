@@ -401,12 +401,15 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
    
     for trk_id, trk in target_trks.items():
         identity = trk.identity or str(uuid.uuid4())
-        
-        start_frame = trk.span[0]
-        end_frame = trk.span[-1]
 
         start_img = trk.start_img or ''
         end_img = trk.end_img or ''
+
+        if not start_img and not end_img:
+            continue    # skip tracks with no images
+        
+        start_frame = trk.span[0]
+        end_frame = trk.span[-1]
 
         start_time = utils.frame_timestamp(time_prefix, start_frame, fps)
         end_time = utils.frame_timestamp(time_prefix, end_frame, fps)

@@ -319,11 +319,9 @@ class FaceIq:
     
                     df[['x', 'y']] = df.apply(
                         lambda row:
-
                         utils.apply_offset(
                             (row['x'], row['y']), region
                         ),
-
                         axis=1
                     ).apply(pd.Series)
 
@@ -348,7 +346,7 @@ class FaceIq:
         file_name = '_'.join([
             'ds', 'model', self.rec_model_name,
             'detector', self.det_model_name,
-            'aligned',
+            'unaligned',
             'normalization', 'base',
             'expand', '0'
         ]).replace('-', '').lower() + '.pkl'
