@@ -1031,7 +1031,7 @@ class TrackingPipeline:
     
         stats_data = {
             'module': [
-                *['tracks'] * 5
+                *['tracks'] * 7
             ],
             'metric': [
                 'total',
