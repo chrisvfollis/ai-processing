@@ -102,7 +102,7 @@ class FaceIq:
                         detector_backend=detector_backend,
                         align=align,
                         expand_percentage=expand_percentage,
-                        enhance=False,
+                        enhance=True,
                         color_face='bgr'    # `represent` expects images in bgr format
                     )
                 except ValueError as err:
@@ -404,10 +404,7 @@ class FaceIq:
         df = utils.reformat_face_df(df)
 
         results = io_utils.lookup_identities(df['identity'], db_path=self.db_path)
-        if len(results) != len(df):
-            print(df)
-            print(results)
-            raise ValueError('Columns must be same length as key')
+        print(df)
         df[['identity', 'name', 'designation']] = pd.DataFrame(
             [(result[1], f'{result[3]}_{result[4]}', result[5])
             for result in results]
