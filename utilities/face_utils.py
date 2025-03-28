@@ -92,7 +92,7 @@ def format_response(
         normalize_face: bool = False
     ):
 
-    facial_area, face_img = face_obj.facial_area, face_obj.face_img
+    facial_area, face_img = face_obj.facial_area, face_obj.img
 
     face_img = convert_color(face_img, color_face)
     if normalize_face:
