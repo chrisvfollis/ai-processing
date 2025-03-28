@@ -51,9 +51,12 @@ class TrackingPipeline:
 
         self.min_lifespan = self.fps * 15
         self.max_absence = self.fps * 3
-    
+
+        self.persisted = 0
         self.lifespan_filtered = 0
         self.size_filtered = 0
+        self.no_images = 0
+
 
         self.detection_data = detection_data
         self.face_data = face_data
@@ -149,6 +152,8 @@ class TrackingPipeline:
 
         prior_pipeline.active_trks = _reset_trk_ids(prior_pipeline)
         prior_pipeline.inactive_trks = {}
+
+        self.persisted = len(prior_pipeline.active_trks.keys())
 
         prior_pipeline.run(prior_pipeline=True)
 
@@ -907,6 +912,8 @@ class TrackingPipeline:
             if images: 
                 trk.start_img = io_utils.save_event_image(images[0], self.credentials)
                 trk.end_img = io_utils.save_event_image(images[-1], self.credentials)
+            else:
+                self.no_images += 1
 
         cap.release()
 
@@ -1031,14 +1038,18 @@ class TrackingPipeline:
                 'identified',
                 'ignored',
                 'lifespan_filtered',
-                'size_filtered'
+                'size_filtered',
+                'persisted',
+                'no_images'
             ],
             'value': [
                 len(all_tracks),
                 len(identified_tracks),
                 len(ignored_tracks),
                 self.lifespan_filtered,
-                self.size_filtered
+                self.size_filtered,
+                self.persisted,
+                self.no_images
             ]
         }
         stats_df = pd.DataFrame(stats_data)
