@@ -84,6 +84,51 @@ def adjust_and_extract(
     return detection, face_img
 
 
+def format_response(
+        face_obj,
+        color_face = None,
+        width = None,
+        height = None,
+        normalize_face: bool = False
+    ):
+
+    facial_area, face_img = face_obj.facial_area, face_obj.face_img
+
+    face_img = convert_color(face_img, color_face)
+    if normalize_face:
+        face_img = face_img / 255  # normalize input in [0, 1]
+
+    # cast to int for flask, and do final checks for borders
+    x = max(0, int(facial_area.x))
+    y = max(0, int(facial_area.y))
+    w = min(width - x - 1, int(facial_area.w))
+    h = min(height - y - 1, int(facial_area.h))
+
+    facial_area_dict = {
+        'x': x,
+        'y': y,
+        'w': w,
+        'h': h,
+        'left_eye': facial_area.left_eye,
+        'right_eye': facial_area.right_eye,
+    }
+
+    if facial_area.nose is not None:
+        facial_area_dict['nose'] = facial_area.nose
+    if facial_area.mouth_left is not None:
+        facial_area_dict['mouth_left'] = facial_area.mouth_left
+    if facial_area.mouth_right is not None:
+        facial_area_dict['mouth_right'] = facial_area.mouth_right
+
+    resp_obj = {
+        'face_img': face_img,
+        'facial_area': facial_area_dict,
+        'confidence': round(float(facial_area.confidence or 0), 2),
+    }
+
+    return resp_obj
+
+
 def reframe_points(detection: FacialAreaRegion, width_border, height_border):
     def _subtract_borders(xy_coordinate, border_w, border_h):
         x, y = xy_coordinate
@@ -257,3 +302,16 @@ def project_facial_area(
     y2 = int(min(y2, height))
 
     return (x1, y1, x2, y2)
+
+
+def convert_color(face_img, color_face):
+    if color_face == 'rgb':
+        face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+    elif color_face == 'bgr':
+        pass  # image is in BGR
+    elif color_face == 'gray':
+        face_img = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+    else:
+        raise ValueError(f'The color_face can be rgb, bgr or gray, but it is {color_face}.')
+    
+    return face_img

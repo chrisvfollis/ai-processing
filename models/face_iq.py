@@ -10,31 +10,42 @@ import math
 import numpy as np
 import pandas as pd
 import cv2
+import torch
 from deepface.commons import image_utils
 from deepface.modules import modeling, representation, verification, recognition
 from deepface.models.Detector import Detector, DetectedFace, FacialAreaRegion
 
 # internal dependencies
 from models.centerface import CenterFace
-from utilities.face_utils import adjust_and_extract
+from models.clearface import ClearFace
+from utilities import face_utils
 from utilities import io_utils
 from utilities import utilities as utils
 
 
 class FaceIq:
-    def __init__(self, recognition_model, detection_model, id_cutoff=0.8,
-                 face_dir='../files/input/faces', db_path='../files/data.db',
-                 weights_path='../models/weights/centerface.pth',
-                 save_data=False):
-        self.recognition_model = recognition_model
-        self.detection_model = detection_model
+    def __init__(
+            self,
+            recognition_model,
+            detection_model,
+            id_cutoff=0.8,
+            device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'),
+            face_dir='../files/input/faces',
+            db_path='../files/data.db',
+            detector_weights='../models/weights/centerface.pth',
+            enhancer_weights='../models/weights/clearface/90000_G.pth',
+            save_data=False
+        ):
 
-        if detection_model == 'centerface_gpu':
-            self.face_detector = CenterFace(weights_path=weights_path)
-        else:
-            self.face_detector: Detector = modeling.build_model(
-                task='face_detector', model_name=detection_model
-            )
+        self.rec_model_name = recognition_model
+        self.det_model_name = detection_model
+
+        self.face_detector = CenterFace(
+            device=device, weights_path=detector_weights
+        )
+        self.face_enhancer = ClearFace(
+            device=device, weights_path=enhancer_weights
+        )
 
         self.id_cutoff = id_cutoff
 
@@ -52,10 +63,10 @@ class FaceIq:
             self.i = 0
             self.i_f = 0
             self.regions = {}
-            self.face_detections = {}       # <-- self.face_detector.detect_faces() <-- self.detect_faces()
-            self.face_objs = {}             # <-- self.detect_faces() <-- self.extract_faces()
-            self.source_objs = {}           # <-- self.extract_faces() <-- self.find()
-            self.det_recognition_dfs = {}   # <-- self.find()
+            self.face_detections = {}
+            self.face_objs = {}
+            self.source_objs = {}
+            self.det_recognition_dfs = {}
 
     def prepare_data(
         self,
@@ -65,7 +76,8 @@ class FaceIq:
         detector_backend,
         align,
         expand_percentage,
-        normalization
+        normalization,
+        refresh_database
     ):
         def __find_bulk_embeddings(
             employees: Set[str],
@@ -81,12 +93,13 @@ class FaceIq:
                 file_hash = image_utils.find_image_hash(employee)
 
                 try:
-                    img_objs = self.extract_faces(
+                    img_objs = self.detection_pipeline(
                         img_path=employee,
                         detector_backend=detector_backend,
                         align=align,
                         expand_percentage=expand_percentage,
-                        color_face='bgr'  # `represent` expects images in bgr format.
+                        enhance=False,
+                        color_face='bgr'    # `represent` expects images in bgr format
                     )
                 except ValueError as err:
                     print(f'Exception while extracting faces from {employee}: {str(err)}')
@@ -267,8 +280,8 @@ class FaceIq:
 
         config = config or {
             'db_path': self.face_dir,
-            'model_name': self.recognition_model,
-            'detector_backend': self.detection_model,
+            'model_name': self.rec_model_name,
+            'detector_backend': self.det_model_name,
             'threshold': id_cutoff,
             'batched': False,
             'align': False
@@ -331,8 +344,8 @@ class FaceIq:
             raise ValueError(f'Face DB path {self.face_dir} does not exist')
 
         file_name = '_'.join([
-            'ds', 'model', self.recognition_model,
-            'detector', self.detection_model,
+            'ds', 'model', self.rec_model_name,
+            'detector', self.det_model_name,
             'aligned',
             'normalization', 'base',
             'expand', '0'
@@ -352,7 +365,7 @@ class FaceIq:
         start = time.perf_counter()
         embedding_obj = representation.represent(
             img_path=img,
-            model_name=self.recognition_model,
+            model_name=self.rec_model_name,
             detector_backend='skip',
             align=True,
             normalization='base',
@@ -381,7 +394,7 @@ class FaceIq:
 
         df['distance'] = distances
         target_threshold = id_cutoff or verification.find_threshold(
-            self.recognition_model, 'cosine'
+            self.rec_model_name, 'cosine'
         )
         df['threshold'] = target_threshold
 
@@ -412,7 +425,6 @@ class FaceIq:
         batched: bool = False,
     ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
 
-
         representations = self.prepare_data(
             img_path,
             db_path,
@@ -420,17 +432,19 @@ class FaceIq:
             detector_backend,
             align,
             expand_percentage,
-            normalization
+            normalization,
+            refresh_database
         )
 
         if len(representations) == 0:
             return []
         
-        source_objs = self.extract_faces(
+        source_objs = self.detection_pipeline(
             img_path=img_path,
             detector_backend=detector_backend,
             align=align,
-            expand_percentage=expand_percentage,
+            enhance=True
+            expand_percentage=expand_percentage
         )
         if self.save_data:
             self.source_objs.setdefault(self.i, []).extend(source_objs)
@@ -525,12 +539,13 @@ class FaceIq:
 
         return resp_obj
 
-    def extract_faces(
+    def detection_pipeline(
         self,
         img_path: Union[str, np.ndarray, IO[bytes]],
         detector_backend: str = 'centerface_gpu',
         align: bool = True,
         expand_percentage: int = 0,
+        enhance: bool = True,
         color_face: str = 'rgb',
         normalize_face: bool = True
     ) -> List[Dict[str, Any]]:
@@ -544,6 +559,13 @@ class FaceIq:
 
         height, width, _ = img.shape
 
+        args_ = {
+            'color_face': color_face,
+            'width': width,
+            'height': height,
+            'normalize_face': normalize_face
+        }
+
         base_region = FacialAreaRegion(x=0, y=0, w=width, h=height, confidence=0)
 
         if detector_backend == 'skip':
@@ -552,55 +574,15 @@ class FaceIq:
             face_objs = self.detect_faces(
                 img=img,
                 align=align,
-                expand_percentage=expand_percentage
+                expand_percentage=expand_percentage,
+                enhance=enhance
             )
 
         if self.save_data:
             self.face_objs.setdefault(self.i, []).extend(face_objs)
 
         for face_obj in face_objs:
-            current_img = face_obj.img
-            current_region = face_obj.facial_area
-
-            if color_face == 'rgb':
-                current_img = cv2.cvtColor(current_img, cv2.COLOR_BGR2RGB)
-            elif color_face == 'bgr':
-                pass  # image is in BGR
-            elif color_face == 'gray':
-                current_img = cv2.cvtColor(current_img, cv2.COLOR_BGR2GRAY)
-            else:
-                raise ValueError(f'The color_face can be rgb, bgr or gray, but it is {color_face}.')
-
-            if normalize_face:
-                current_img = current_img / 255  # normalize input in [0, 1]
-
-            # cast to int for flask, and do final checks for borders
-            x = max(0, int(current_region.x))
-            y = max(0, int(current_region.y))
-            w = min(width - x - 1, int(current_region.w))
-            h = min(height - y - 1, int(current_region.h))
-
-            facial_area = {
-                'x': x,
-                'y': y,
-                'w': w,
-                'h': h,
-                'left_eye': current_region.left_eye,
-                'right_eye': current_region.right_eye,
-            }
-
-            if current_region.nose is not None:
-                facial_area['nose'] = current_region.nose
-            if current_region.mouth_left is not None:
-                facial_area['mouth_left'] = current_region.mouth_left
-            if current_region.mouth_right is not None:
-                facial_area['mouth_right'] = current_region.mouth_right
-
-            resp_obj = {
-                'face': current_img,
-                'facial_area': facial_area,
-                'confidence': round(float(current_region.confidence or 0), 2),
-            }
+            resp_obj = face_utils.format_response(face_obj, **args_)
 
             resp_objs.append(resp_obj)
 
@@ -610,7 +592,8 @@ class FaceIq:
         self,
         img: np.ndarray,
         align: bool = True,
-        expand_percentage: int = 0
+        expand_percentage: int = 0,
+        enhance: bool = True
     ) -> List[DetectedFace]:
 
         height, width, _ = img.shape
@@ -651,7 +634,12 @@ class FaceIq:
             
         results = []
         for facial_area in facial_areas:
-            facial_area, face_img = adjust_and_extract(facial_area, img, **args_)
+            facial_area, face_img = face_utils.adjust_and_extract(
+                facial_area, img, **args_
+            )
+
+            if enhance:
+                face_img = self.enhance_face(face_img, is_rgb=True)
 
             face_obj = DetectedFace(
                 img=face_img,
@@ -669,6 +657,28 @@ class FaceIq:
         self.other_processing_time += (start_other_processing - end_other_processing)
 
         return results
+
+    def enhance_face(
+        self,
+        img: np.ndarray,
+        is_rgb=True,
+        output_path=None
+    ):
+        # Start timing
+
+        enhanced_face = self.face_enhancer.forward(img, is_rgb=is_rgb)
+
+        # End timing
+        
+        if self.save_data or output_path:
+            if not output_path:
+                output_dir = '../files/output'
+                filename = f'{self.i}_{self.i_f}_enhanced_detection.png'
+                output_path = os.path.join(output_dir, filename)
+                
+            cv2.imwrite(output_path, enhanced_face)
+
+        return enhanced_face
 
     def save_runtime_data(self, filename='../files/output/faceiq_data.xlsx'):
         if not self.save_data:
