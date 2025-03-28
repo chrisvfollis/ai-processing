@@ -10,7 +10,7 @@ from torch import nn
 import torch.nn.functional as F
 
 # internal dependencies
-pass
+from utilities.utilities import press_stopwatch
 
 
 class YOLOv4:
@@ -43,7 +43,7 @@ class YOLOv4:
         
             Examples of valid dimensions include 320, 416, 512, 608, etc
             '''
-            start_preprocess = time.perf_counter()
+            press_stopwatch(self, 'preprocess_time')
 
             self.input_dims = input_dims
             original_dims = img.shape[:2][::-1]
@@ -58,8 +58,7 @@ class YOLOv4:
             if self.device.type == 'cuda':
                 img_tensor = img_tensor.cuda()
             
-            end_preprocess = time.perf_counter()
-            self.preprocess_time += (end_preprocess - start_preprocess)
+            press_stopwatch(self, 'preprocess_time')
     
             return img_tensor, original_dims
         
@@ -153,7 +152,7 @@ class YOLOv4:
 
                 return [x1, y1, w, h]
             
-            start_postprocess = time.perf_counter()
+            press_stopwatch(self, 'postprocess_time')
 
             filtered_output = _filter_output(
                 output, nms_thresh, conf_thresh, class_id
@@ -168,8 +167,7 @@ class YOLOv4:
                 )
                 final_output.append([x, y, w, h, conf])
 
-            end_postprocess = time.perf_counter()
-            self.postprocess_time += (end_postprocess - start_postprocess)
+            press_stopwatch(self, 'postprocess_time')
             
             return final_output
         
@@ -179,12 +177,10 @@ class YOLOv4:
 
         img, original_dims = _preprocess_img(img, input_dims)
 
-        start_detect = time.perf_counter()
+        press_stopwatch(self, 'detection_time')
         with torch.no_grad():
             raw_output = self.model(img)
-        end_detect = time.perf_counter()
-
-        self.detection_time += (end_detect - start_detect)
+        press_stopwatch(self, 'detection_time')
         
         results = _postprocess_output(
             raw_output, nms_thresh, conf_thresh, class_id, original_dims

@@ -18,6 +18,7 @@ import torch.nn.functional as F
 # internal dependencies
 from utilities import io_utils
 from utilities import utilities as utils
+from utilities.utilities import press_stopwatch
 
 
 class TrackingPipeline:
@@ -82,16 +83,16 @@ class TrackingPipeline:
         self.primary_run_time = 0
         self.persist_time = 0
 
-        self.creation_time = 0
-        self.prediction_time = 0
-        self.measurement_matching_time = 0
-        self.identity_matching_time = 0
-        self.spatial_analysis_time = 0
-        self.feature_analysis_time = 0
+        self.trk_creation = 0
+        self.prediction = 0
+        self.match_measurements = 0
+        self.match_identities = 0
+        self.spatial_analysis = 0
+        self.feature_analysis = 0
         
-        self.tensor_conversion_time = 0
-        self.pkl_io_time = 0
-        self.embedding_read_time = 0
+        self.pkl_io = 0
+        self.read_embeddings = 0
+        self.tensor_conversion = 0
 
         self.continuous_mode = continuous_mode
         self.prior_pkl = ''
@@ -123,7 +124,7 @@ class TrackingPipeline:
                 self.trk_id += 1
             return active_trks
             
-        start_persist = time.perf_counter()
+        press_stopwatch(self, 'persist_time')
 
         output_dir = '../files/output'
         files = [f for f in os.listdir(output_dir)
@@ -135,12 +136,10 @@ class TrackingPipeline:
         self.prior_pkl = sorted(files)[-1]
         pkl_path = os.path.join(output_dir, self.prior_pkl)
 
-        start_pkl_load = time.perf_counter()
+        press_stopwatch(self, 'pkl_io')
         with open(pkl_path, 'rb') as f:
             prior_pipeline = pickle.load(f)
-        
-        end_pkl_load = time.perf_counter()
-        self.pkl_io_time += (end_pkl_load - start_pkl_load)
+        press_stopwatch(self, 'pkl_io')
         
         interim = (
             (self.start_time - prior_pipeline.end_time)
@@ -165,8 +164,7 @@ class TrackingPipeline:
             
             self.inactive_trks[trk_id] = trk
 
-        end_persist = time.perf_counter()
-        self.persist_time += (end_persist - start_persist)
+        press_stopwatch(self, 'persist_time')
 
     def run(self, prior_pipeline=False):
         def _get_measurements():
@@ -176,12 +174,11 @@ class TrackingPipeline:
             detections = np.array(detections)
             conf_mask = detections[:, 4] > self.conf_thresh
 
-            start_read = time.perf_counter()
+            press_stopwatch(self, 'read_embeddings')
             embeddings = io_utils.read_embeddings(
                 self.embedding_path, self.f_num, self.device
             )
-            end_read = time.perf_counter()
-            self.embedding_read_time += (end_read - start_read)
+            press_stopwatch(self, 'read_embeddings')
 
             if not (conf_mask.shape[0] == embeddings.shape[0]):
                 print(f'detections shape: {detections.shape}')
@@ -192,18 +189,20 @@ class TrackingPipeline:
 
             detections = detections[conf_mask].tolist()
 
+            press_stopwatch(self, 'tensor_conversion')
             conf_mask = torch.from_numpy(conf_mask).to(self.device)
             embeddings = embeddings[conf_mask]
+            press_stopwatch(self, 'tensor_conversion')
 
             return detections, embeddings
 
         def _create_new_tracks():
-            start_creation = time.perf_counter()
-
             try:
                 detections, embeddings = self.unmatched
             except ValueError:
                 return None
+            
+            press_stopwatch(self, 'trk_creation')
 
             for i, detection in enumerate(detections):
                 box = detection[:4]
@@ -214,7 +213,6 @@ class TrackingPipeline:
                     measurement, self.m_noise, self.p_noise,
                     self.initial_uncertainty, dt=self.dt
                 )
-
                 new_track = Track(box, embeddings[i], self.f_num, *kf_args)
     
                 self.active_trks[self.trk_id] = new_track
@@ -223,11 +221,10 @@ class TrackingPipeline:
 
             self.unmatched = []
 
-            end_creation = time.perf_counter()
-            self.creation_time += (end_creation - start_creation)
+            press_stopwatch(self, 'trk_creation')
 
         def _predict_or_cache():
-            start_prediction = time.perf_counter()
+            press_stopwatch(self, 'prediction')
 
             cached = []
             for trk_id, trk in self.active_trks.items():
@@ -243,22 +240,19 @@ class TrackingPipeline:
                     cached.append(trk_id)
             for trk_id in cached:
                 del self.active_trks[trk_id]
-            
-            end_prediction = time.perf_counter()
-            self.prediction_time += (end_prediction - start_prediction)
+                
+            press_stopwatch(self, 'prediction')
 
         def _match_and_update(detections, embeddings):
             def _construct_cost_matrix(new_detections, new_embeddings):
                 active_tracks = sorted(self.active_trks.keys())
                 cost_list = []
 
-                start_convert = time.perf_counter()
+                press_stopwatch(self, 'tensor_conversion')
                 new_detections = torch.tensor(
                     new_detections, dtype=torch.float32, device=self.device
                 )
-
-                end_convert = time.perf_counter()
-                self.tensor_conversion_time += (end_convert - start_convert)
+                press_stopwatch(self, 'tensor_conversion')
 
                 video_info = [self.f_num, self.fps, self.frame_diag]
 
@@ -270,14 +264,13 @@ class TrackingPipeline:
                     )
                     cost_list.append(cost_vector)
                 
-                start_convert = time.perf_counter()
+                press_stopwatch(self, 'tensor_conversion')
                 tensorized_costs = torch.stack(cost_list)
                 cost_matrix = tensorized_costs.cpu().numpy()
+                press_stopwatch(self, 'tensor_conversion')
+
                 del tensorized_costs
-
-                end_convert = time.perf_counter()
-                self.tensor_conversion_time += (end_convert - start_convert)
-
+                
                 return cost_matrix
 
             def _assign_matches(cost_matrix):
@@ -323,7 +316,7 @@ class TrackingPipeline:
 
                 return assignments_dict
             
-            start_match = time.perf_counter()
+            press_stopwatch(self, 'match_measurements')
 
             trk_ids = sorted(self.active_trks.keys())
 
@@ -347,17 +340,14 @@ class TrackingPipeline:
                 trk.add_detection(box, self.f_num)
                 trk.add_embedding(embeddings[measurement_index])
     
-
             unmatched_detections = [detections[j] for j in range(len(detections))
                                     if j not in matched]
             unmatched_embeddings = [embeddings[j] for j in range(len(embeddings))
                                     if j not in matched]
 
-            
             self.unmatched = [unmatched_detections, unmatched_embeddings]
             
-            end_match = time.perf_counter()
-            self.measurement_matching_time += (end_match - start_match)
+            press_stopwatch(self, 'match_measurements')
 
         def _associate_faces(cutoff=0.9):
             def _overlap_costs(face_boxes, person_boxes):
@@ -372,11 +362,11 @@ class TrackingPipeline:
                         cost_matrix[i][j] = cost
 
                 return np.array(cost_matrix)
-            
-            start_associate = time.perf_counter()
 
             if (self.face_data is None) or (self.face_data.empty):
                 return None
+            
+            press_stopwatch(self, 'match_identities')
     
             face_boxes = []
             person_boxes = []
@@ -398,6 +388,7 @@ class TrackingPipeline:
                 person_boxes.append(box)
             
             if (face_df.empty) or (not person_boxes):
+                press_stopwatch(self, 'match_identities')
                 return False
 
             cost_matrix = _overlap_costs(face_boxes, person_boxes)
@@ -416,18 +407,15 @@ class TrackingPipeline:
                     (face_df['w'] == face_box[2]) &
                     (face_df['h'] == face_box[3])
                 ]
-
                 self.active_trks[trk_id].add_face_detection(f_matches, self.f_num)
-            
-            end_associate = time.perf_counter()
-            self.identity_matching_time = (end_associate - start_associate)
+            press_stopwatch(self, 'match_identities')
         
         tracemalloc.start()
+        press_stopwatch(self, 'primary_run_time')
 
         if not prior_pipeline:
             print(f"Running tracking pipeline for {self.video_file}...")
-            start_run = time.perf_counter()
-
+        
         memory_snapshot = utils.memory_usage('allocation_lines')
         threshold = memory_snapshot * 1.5
 
@@ -470,8 +458,7 @@ class TrackingPipeline:
             if self.continuous_mode == True:
                 self.save_pipeline_state()
             
-            end_run = time.perf_counter()
-            self.primary_run_time += (end_run - start_run)
+            press_stopwatch(self, 'primary_run_time')
             self.save_runtime_data()
 
         tracemalloc.stop()
@@ -664,8 +651,6 @@ class TrackingPipeline:
                         unique_orders.add(cleaned_track_order)
 
                     group_orders.extend(list(unique_orders))
-
-
                 all_orders.append(group_orders)
 
             return all_orders
@@ -683,7 +668,7 @@ class TrackingPipeline:
                         continue
             return matrix
         
-        start_assign = time.perf_counter()
+        press_stopwatch(self, 'match_identities')
 
         target_trks = getattr(self, target)
         cost_data = {}
@@ -778,9 +763,7 @@ class TrackingPipeline:
             
             all_optimal_assignments.update(optimal_assignments)
         
-        end_assign = time.perf_counter()
-        self.identity_matching_time = (end_assign - start_assign)
-
+        press_stopwatch(self, 'match_identities')
         return all_optimal_assignments
 
     def filter_tracks(self, target):
@@ -935,7 +918,7 @@ class TrackingPipeline:
 
         save_path = os.path.join(output_dir, f'{file_prefix}.pkl')
 
-        start_pkl_mgmt = time.perf_counter()
+        press_stopwatch(self, 'pkl_io')
         with open(save_path, "wb") as f:
             pickle.dump(self, f)
         
@@ -943,9 +926,7 @@ class TrackingPipeline:
             prior_path = os.path.join(output_dir, self.prior_pkl)
             if os.path.exists(prior_path) and os.path.isfile(prior_path):
                 os.remove(prior_path)
-        
-        end_pkl_mgmt = time.perf_counter()
-        self.pkl_io_time += (end_pkl_mgmt - start_pkl_mgmt)
+        press_stopwatch(self, 'pkl_io')
 
         print('Tracking pipeline saved')
 
@@ -991,9 +972,9 @@ class TrackingPipeline:
 
         for trk in all_tracks.values():
             self.cost_method_data.extend(trk.cost_method_data)
-            self.spatial_analysis_time += trk.sp_analysis_time
-            self.feature_analysis_time += trk.ft_analysis_time
-            self.tensor_conversion_time += trk.tensor_conversion_time
+            self.spatial_analysis += trk.spatial_analysis
+            self.feature_analysis += trk.feature_analysis_time
+            self.tensor_conversion_time += trk.tensor_conversion
 
         performance_data = {
             'module': [
@@ -1020,16 +1001,16 @@ class TrackingPipeline:
                 self.primary_run_time,
                 self.persist_time,
 
-                self.creation_time,
-                self.prediction_time,
-                self.measurement_matching_time,
-                self.identity_matching_time,
-                self.spatial_analysis_time,
-                self.feature_analysis_time,
+                self.trk_creation,
+                self.prediction,
+                self.match_measurements,
+                self.match_identities,
+                self.spatial_analysis,
+                self.feature_analysis,
                 
-                self.tensor_conversion_time,
-                self.pkl_io_time,
-                self.embedding_read_time
+                self.tensor_conversion,
+                self.pkl_io,
+                self.read_embeddings
             ],
         }
         performance_df = pd.DataFrame(performance_data)
@@ -1202,9 +1183,9 @@ class Track(KalmanFilter):
         
         self.cost_method_data = []
 
-        self.sp_analysis_time = 0
-        self.ft_analysis_time = 0
-        self.tensor_conversion_time = 0
+        self.spatial_analysis = 0
+        self.feature_analysis_time = 0
+        self.tensor_conversion = 0
 
         self.add_embedding(embedding)
 
@@ -1239,11 +1220,9 @@ class Track(KalmanFilter):
         if hasattr(self, 'embedding_cache_tensor'):
             del self.embedding_cache_tensor
         
-        start_convert = time.perf_counter()
-        self.embedding_cache_tensor = torch.stack(list(self.embedding_cache))
-
-        end_convert = time.perf_counter()
-        self.tensor_conversion_time += (end_convert - start_convert)
+        press_stopwatch(self, 'tensor_conversion')
+        self.embedding_cache_tensor, _ = torch.stack(list(self.embedding_cache))
+        press_stopwatch(self, 'tensor_conversion')
 
     def add_detection(self, new_detection, frame_number):
         self.object_detections[frame_number] = new_detection
@@ -1280,14 +1259,9 @@ class Track(KalmanFilter):
                 device = new_detections.device
 
                 if len(new_detections) == 0:
-                    start_convert = time.perf_counter()
-                    no_detections = torch.tensor([], dtype=torch.float32, device=device)
+                    return torch.tensor([], dtype=torch.float32, device=device)
 
-                    end_convert = time.perf_counter()
-                    self.tensor_conversion_time += (end_convert - start_convert)
-                    return no_detections
-
-                start_convert = time.perf_counter()
+                press_stopwatch(self, 'tensor_conversion')
                 trk_centroid = torch.tensor(
                     self.x[:2], dtype=torch.float32, device=device
                 ).unsqueeze(0)
@@ -1296,9 +1270,7 @@ class Track(KalmanFilter):
                     [utils.centroid(detection) for detection in new_detections],
                     dtype=torch.float32, device=device
                 )
-
-                end_convert = time.perf_counter()
-                self.tensor_conversion_time += (end_convert - start_convert)
+                press_stopwatch(self, 'tensor_conversion')
 
                 distances = torch.norm(det_centroids - trk_centroid, dim=1)
                 normalized = distances / frame_diag
@@ -1313,20 +1285,17 @@ class Track(KalmanFilter):
             def _normalized_area():
                 pass
 
-            start_sp_analysis = time.perf_counter()
+            press_stopwatch(self, 'spatial_analysis')
 
             euclidean_dists = _normalized_euclidean(
                 new_detections, frame_diag, distance_cutoff=distance_cutoff
             )
 
-            start_convert = time.perf_counter()
+            press_stopwatch(self, 'tensor_conversion')
             self.cost_method_data[-1]['spatial_costs'] = euclidean_dists.tolist()
+            press_stopwatch(self, 'tensor_conversion')
 
-            end_convert = time.perf_counter()
-            self.tensor_conversion_time += (end_convert - start_convert)
-
-            end_sp_analysis = time.perf_counter()
-            self.sp_analysis_time = (end_sp_analysis - start_sp_analysis)
+            press_stopwatch(self, 'spatial_analysis')
 
             return euclidean_dists
 
@@ -1346,7 +1315,7 @@ class Track(KalmanFilter):
 
                 num_cached = cos_distances.shape[0]
 
-                start_convert = time.perf_counter()
+                press_stopwatch(self, 'tensor_conversion')
                 weights = torch.tensor(
                     [decay_factor ** (num_cached - i - 1)
                      for i in range(num_cached)],
@@ -1354,8 +1323,7 @@ class Track(KalmanFilter):
                     dtype=cos_distances.dtype
                 ).unsqueeze(1) # shape: (num_cached, 1)
 
-                end_convert = time.perf_counter()
-                self.tensor_conversion_time += (end_convert - start_convert)
+                press_stopwatch(self, 'tensor_conversion')
 
                 weighted_distances = (
                     (masked_distances * weights).sum(dim=0) / weights.sum()
@@ -1391,23 +1359,21 @@ class Track(KalmanFilter):
 
                 return masked_distances.median(dim=0).values
             
-            start_ft_analysis = time.perf_counter()
+            press_stopwatch(self, 'feature_analysis')
 
             num_cached = len(self.embedding_cache)
             num_new = new_embeddings.shape[0]
             if num_cached == 0:
-                start_convert = time.perf_counter()
+                press_stopwatch(self, 'tensor_conversion')
                 num_new_tensor = torch.full((num_new,), float('inf'))
-
-                end_convert = time.perf_counter()
-                self.tensor_conversion_time += (end_convert - start_convert)
+                press_stopwatch(self, 'tensor_conversion')
                 return num_new_tensor
 
             cos_distances = self.calc_cos_distances(new_embeddings)
 
             method_map = {'standard': 0, 'lowest': 1, 'median': 2}
 
-            start_convert = time.perf_counter()
+            press_stopwatch(self, 'tensor_conversion')
             methods = torch.tensor(
                 [method_map[m] for m in methods], device=cos_distances.device
             )
@@ -1418,9 +1384,7 @@ class Track(KalmanFilter):
             costs = torch.full(
                 (num_new,), float('inf'), device=cos_distances.device
             )
-
-            end_convert = time.perf_counter()
-            self.tensor_conversion_time += (end_convert - start_convert)
+            press_stopwatch(self, 'tensor_conversion')
 
             if standard_mask.any():
                 costs[standard_mask] = _weighted_moving_avg(
@@ -1431,16 +1395,12 @@ class Track(KalmanFilter):
             if median_mask.any():
                 costs[median_mask] = _median_in_cache(cos_distances, median_mask)
             
-            start_convert = time.perf_counter()
+            press_stopwatch(self, 'tensor_conversion')
             self.cost_method_data[-1]['dissimilarity_costs'] = costs.tolist()
             self.cost_method_data[-1]['cost_methods'] = methods.tolist()
+            press_stopwatch(self, 'tensor_conversion')
 
-            end_convert = time.perf_counter()
-            self.tensor_conversion_time += (end_convert - start_convert)
-
-            end_ft_analysis = time.perf_counter()
-            self.ft_analysis_time += (end_ft_analysis - start_ft_analysis)
-
+            press_stopwatch(self, 'feature_analysis')
             return costs
 
         self.cost_method_data.append({
@@ -1505,7 +1465,7 @@ class Track(KalmanFilter):
             distances = group['distance']
             frequency = len(group)
             
-            avg_distance = sum(distances)/frequency
+            avg_distance = sum(distances) / frequency
     
             freq_weighting = (
                 np.log10(1 + np.exp(frequency)) * (1.025**frequency)

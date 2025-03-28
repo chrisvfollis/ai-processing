@@ -15,6 +15,7 @@ from models.osnet import OSNet
 from models.face_iq import FaceIq
 from utilities import utilities as utils
 from utilities import io_utils
+from utilities.utilities import press_stopwatch
 
 
 class InferencePipeline:
@@ -42,7 +43,7 @@ class InferencePipeline:
             
             return yolov4, osnet, face_iq
         
-        start_init = time.perf_counter()
+        press_stopwatch(self, 'init_time')
 
         self.video_file = video_file
         self.video_path = os.path.join(footage_dir, video_file)
@@ -75,11 +76,12 @@ class InferencePipeline:
         self.read_time = 0
         self.garbage_collection_time = 0
         self.skim_time = 0
-        self.init_time = (time.perf_counter() - start_init)
+
+        press_stopwatch(self, 'init_time')
 
     def skim(self):
         print(f'Skimming...')
-        start_skim = time.perf_counter()
+        press_stopwatch(self, 'skim_time')
 
         cap = cv2.VideoCapture(self.video_path)
         stride = self.fps * 2
@@ -114,9 +116,7 @@ class InferencePipeline:
             
         cap.release()
 
-        end_skim = time.perf_counter()
-        self.skim_time = (end_skim - start_skim)
-
+        press_stopwatch(self, 'skim_time')
         return result
 
     def run(self):
@@ -157,12 +157,10 @@ class InferencePipeline:
                 print(f'{progress}%')
             
             if (self.f_num % 100) == 0:
-                start_gc = time.perf_counter()
+                press_stopwatch(self, 'garbage_collection_time')
                 gc.collect()
                 torch.cuda.empty_cache()
-
-                end_gc = time.perf_counter()
-                self.garbage_collection_time += (end_gc - start_gc)
+                press_stopwatch(self, 'garbage_collection_time')
             
             prev_frame = current_frame
             current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
@@ -170,7 +168,7 @@ class InferencePipeline:
             return (prev_frame, current_frame)
 
         print(f'Running inference pipeline for {self.video_file}...')
-        start_run = time.perf_counter()
+        press_stopwatch(self, 'primary_run_time')
 
         cap = cv2.VideoCapture(self.video_path)
         frame_position = (-1, 0)
@@ -178,11 +176,9 @@ class InferencePipeline:
         while self.f_num < self.total_frames:
             prev_frame, current_frame = frame_position
 
-            start_read = time.perf_counter()
+            press_stopwatch(self, 'read_time')
             ret, frame = cap.read()
-
-            end_read = time.perf_counter()
-            self.read_time += (end_read - start_read)
+            press_stopwatch(self, 'read_time')
 
             if (not ret) or (current_frame == prev_frame):
                 break
@@ -206,9 +202,7 @@ class InferencePipeline:
 
         self.save_runtime_data()
 
-        end_run = time.perf_counter()
-        self.primary_run_time += (end_run - start_run)
-
+        press_stopwatch(self, 'primary_run_time')
         return (self.object_detections, self.face_detections)
 
     def consolidate_face_data(self, face_data):

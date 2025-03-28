@@ -19,6 +19,7 @@ from torchreid import models as reid
 
 # internal dependencies
 from utilities import io_utils
+from utilities.utilities import press_stopwatch
 
 
 class OSNet:
@@ -52,7 +53,7 @@ class OSNet:
     
     def extract_features(self, image):
         def _preprocess_img(image):
-            start_preprocess = time.perf_counter()
+            press_stopwatch(self, 'preprocess_time')
 
             image = cv2.resize(image, self.input_dims)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -64,9 +65,7 @@ class OSNet:
                 .unsqueeze(0)
                 .to(self.device)
             )
-
-            end_preprocess = time.perf_counter()
-            self.preprocess_time += (end_preprocess - start_preprocess)
+            press_stopwatch(self, 'preprocess_time')
 
             return image_tensor
         
@@ -75,12 +74,10 @@ class OSNet:
         
         image_tensor = _preprocess_img(image)
 
-        start_extract = time.perf_counter()
+        press_stopwatch(self, 'embedding_time')
         with torch.no_grad():
             output = self.model(image_tensor)
-        
-        end_extract = time.perf_counter()
-        self.embedding_time += (end_extract - start_extract)
+        press_stopwatch(self, 'embedding_time')
 
         embedding = _postprocess_output(output)
         
@@ -88,7 +85,7 @@ class OSNet:
 
     def extraction_batch(self, img, detections, f_num):
         def _preprocess(batch_images):
-            start_preprocess = time.perf_counter()
+            press_stopwatch(self, 'preprocess_time')
 
             processed_imgs = []
             for image in batch_images:
@@ -101,8 +98,7 @@ class OSNet:
             
             batch_tensor = torch.stack(processed_imgs).to(self.device)
 
-            end_preprocess = time.perf_counter()
-            self.preprocess_time += (end_preprocess - start_preprocess)
+            press_stopwatch(self, 'preprocess_time')
             
             return batch_tensor
         
@@ -126,11 +122,10 @@ class OSNet:
 
         batch_tensor = _preprocess(batch_images)
 
-        start_extract = time.perf_counter()
+        press_stopwatch(self, 'embedding_time')
         with torch.no_grad():
             batch_output = self.model(batch_tensor)
-        end_extract = time.perf_counter()
-        self.embedding_time += (end_extract - start_extract)
+        press_stopwatch(self, 'embedding_time')
 
         embeddings = _postprocess(batch_output)
         _update_buffers(embeddings, f_num)
@@ -158,7 +153,7 @@ class OSNet:
         self.hdf5_file.create_dataset('box_indices', **idx_dataset_kwargs)
 
     def flush_buffers(self, release=False):
-        start_flush = time.perf_counter()
+        press_stopwatch(self, 'flush_time')
 
         unwritten_data = (len(self.embedding_buffer) > 0)
         if unwritten_data:
@@ -177,8 +172,7 @@ class OSNet:
         torch.cuda.empty_cache()
         gc.collect()
         
-        end_flush = time.perf_counter()
-        self.flush_time += (end_flush - start_flush)
+        press_stopwatch(self, 'flush_time')
     
     def release_buffers(self):
         self.hdf5_file.flush()

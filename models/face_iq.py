@@ -21,6 +21,7 @@ from models.clearface import ClearFace
 from utilities import face_utils
 from utilities import io_utils
 from utilities import utilities as utils
+from utilities.utilities import press_stopwatch
 
 
 class FaceIq:
@@ -254,7 +255,7 @@ class FaceIq:
 
     def identify_faces(self, img, id_cutoff=None, regions=None, config=None):
         def _postprocess_output(all_face_dfs):
-            start_other_processing = time.perf_counter()
+            press_stopwatch(self, 'other_processing_time')
     
             filtered_face_dfs = []
     
@@ -274,8 +275,7 @@ class FaceIq:
                 else:
                     continue
             
-            end_other_processing = time.perf_counter()
-            self.other_processing_time += (end_other_processing - start_other_processing)
+            press_stopwatch(self, 'other_processing_time')
 
             return filtered_face_dfs
 
@@ -292,7 +292,7 @@ class FaceIq:
 
         all_face_dfs = []
         
-        start_id = time.perf_counter()
+        press_stopwatch(self, 'identification_pipeline_time')
 
         if not regions:
             face_dfs = self.find(img_path=img, **config)
@@ -329,8 +329,7 @@ class FaceIq:
 
                     all_face_dfs.append(df)
 
-        end_id = time.perf_counter()
-        self.identification_pipeline_time += (end_id - start_id)
+        press_stopwatch(self, 'identification_pipeline_time')
         
         results = _postprocess_output(all_face_dfs)
 
@@ -365,7 +364,7 @@ class FaceIq:
         if df.empty:
             return pd.DataFrame()
 
-        start = time.perf_counter()
+        press_stopwatch(self, 'face_recognition_time')
         embedding_obj = representation.represent(
             img_path=img,
             model_name=self.rec_model_name,
@@ -373,7 +372,7 @@ class FaceIq:
             align=True,
             normalization='base',
         )
-        self.face_recognition_time += (time.perf_counter() - start)
+        press_stopwatch(self, 'face_recognition_time')
 
         target_embedding = embedding_obj[0]['embedding']
 
@@ -453,7 +452,7 @@ class FaceIq:
             self.source_objs.setdefault(self.i, []).extend(source_objs)
 
         if batched:
-            start_recognition = time.perf_counter()
+            press_stopwatch(self, 'face_recognition_time')
 
             batched_results = recognition.find_batched(
                 representations,
@@ -464,9 +463,7 @@ class FaceIq:
                 threshold,
                 normalization,
             )
-
-            end_recognition = time.perf_counter()
-            self.face_recognition_time += (end_recognition - start_recognition)
+            press_stopwatch(self, 'face_recognition_time')
 
             return batched_results
         
@@ -478,8 +475,7 @@ class FaceIq:
             face_img = source_obj['face_img']
             face_region = source_obj['facial_area']
 
-            start_recognition = time.perf_counter()
-
+            press_stopwatch(self, 'face_recognition_time')
             target_embedding_obj = representation.represent(
                 img_path=face_img,
                 model_name=model_name,
@@ -487,12 +483,9 @@ class FaceIq:
                 align=align,
                 normalization=normalization,
             )
+            press_stopwatch(self, 'face_recognition_time')
 
-            end_recognition = time.perf_counter()
-            self.face_recognition_time += (end_recognition - start_recognition)
-
-            start_other_processing = time.perf_counter()
-
+            press_stopwatch(self, 'other_processing_time')
             target_representation = target_embedding_obj[0]['embedding']
 
             result_df = df.copy()  # df will be filtered in each img
@@ -534,8 +527,7 @@ class FaceIq:
 
             resp_obj.append(result_df)
 
-            end_other_processing = time.perf_counter()
-            self.other_processing_time += (start_other_processing - end_other_processing)
+            press_stopwatch(self, 'other_processing_time')
 
         if self.save_data:
             self.det_recognition_dfs.setdefault(self.i, []).extend(resp_obj)
@@ -621,13 +613,12 @@ class FaceIq:
             'save_data': self.save_data
         } 
         
-        start_detection = time.perf_counter()
+        press_stopwatch(self, 'face_detection_time')
         facial_areas = self.face_detector.detect_faces(img)
+        press_stopwatch(self, 'face_detection_time')
 
-        self.face_detection_time += (time.perf_counter() - start_detection)
-
-        start_other_processing = time.perf_counter()
-
+        press_stopwatch(self, 'other_processing_time')
+        
         if self.save_data:
             self.face_detections.setdefault(self.i, []).extend(facial_areas)
             self.i_f = 0    # Reset secondary index
@@ -654,8 +645,7 @@ class FaceIq:
                 self.i_f += 1   # Increment secondary index
                 args_['data_index'] = (self.i, self.i_f)
 
-        end_other_processing = time.perf_counter()
-        self.other_processing_time += (start_other_processing - end_other_processing)
+        press_stopwatch(self, 'face_detection_time')
 
         return results
 
