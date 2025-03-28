@@ -182,12 +182,17 @@ class CenterFace:
                     boxes.append([x1, y1, x2, y2, s])
 
                 boxes = np.asarray(boxes, dtype=np.float32)
-                keep = _nms(boxes[:, :4], boxes[:, 4], 0.3)
-                boxes = boxes[keep, :]
+                if boxes.size != 0:
+                    keep = _nms(boxes[:, :4], boxes[:, 4], 0.3)
+                    boxes = boxes[keep, :]
 
-                if not self.ignore_landmarks:
-                    lms = np.asarray(lms, dtype=np.float32)
-                    lms = lms[keep, :]
+                    if not self.ignore_landmarks:
+                        lms = np.asarray(lms, dtype=np.float32)
+                        lms = lms[keep, :]
+                else:
+                    boxes = boxes.reshape((0, 5))
+                    
+            print(f'{len(c0) - len(boxes)} small face detections filtered')
 
             if not self.ignore_landmarks:
                 return boxes, lms
