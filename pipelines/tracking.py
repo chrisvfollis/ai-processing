@@ -24,11 +24,8 @@ class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, face_data,
                  device, credentials, continuous_mode=True,
                  conf_thresh=0.65):
+        self.active_trks, self.inactive_trks, self.filtered_trks = {}, [], []
         self.trk_id = 0
-
-        self.active_trks = {}
-        self.inactive_trks = {}
-        self.filtered_trks = {}
 
         self.device = device
         self.credentials = credentials
@@ -869,8 +866,7 @@ class TrackingPipeline:
         target_trks = getattr(self, target)
 
         for trk in target_trks.values():
-            images = []
-            clear_frames = None
+            images, frames, clear_frames = [], [], []
             if trk.face_detections:
                 clear_frames = [
                     min(trk.face_detections.keys()),
@@ -891,6 +887,12 @@ class TrackingPipeline:
                 except KeyError:
                     print(f"Frame {f} not in track's object detection dictionary:")
                     print(list(trk.object_detections.keys()))
+                    if clear_frames:
+                        print('See face detection dictionary keys:')
+                        print(list(trk.face_detections.keys()))
+                    else:
+                        print('See track span:')
+                        print(list(trk.span))
                     continue
                 try:
                     x, y, w, h = map(int, detection[:4])
@@ -1192,6 +1194,8 @@ class Track(KalmanFilter):
         self.tensor_conversion_time = 0
 
         self.add_embedding(embedding)
+
+        self.start_img, self.end_img = np.array([]), np.array([])
     
     def __getstate__(self):
         'Prepare object state for pickling by moving tensors off of the GPU'

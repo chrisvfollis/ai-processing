@@ -68,6 +68,9 @@ class FaceIq:
             self.source_objs = {}
             self.det_recognition_dfs = {}
 
+    def execution_timer(self, target):
+        pass
+
     def prepare_data(
         self,
         img_path,
@@ -675,7 +678,7 @@ class FaceIq:
                 output_dir = '../files/output'
                 filename = f'{self.i}_{self.i_f}_enhanced_detection.png'
                 output_path = os.path.join(output_dir, filename)
-                
+
             cv2.imwrite(output_path, enhanced_face)
 
         return enhanced_face

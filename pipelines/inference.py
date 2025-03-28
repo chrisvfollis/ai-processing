@@ -36,9 +36,9 @@ class InferencePipeline:
             osnet.activate_buffers(video_file)
             
             if not faceiq_params:
-                face_iq = FaceIq(*model_info[2])
+                face_iq = FaceIq(*model_info[2], device=device)
             else:
-                face_iq = FaceIq(*model_info[2], **faceiq_params)
+                face_iq = FaceIq(*model_info[2], device=device, **faceiq_params)
             
             return yolov4, osnet, face_iq
         
