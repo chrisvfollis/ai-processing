@@ -446,7 +446,7 @@ class FaceIq:
             img_path=img_path,
             detector_backend=detector_backend,
             align=align,
-            enhance=True
+            enhance=True,
             expand_percentage=expand_percentage
         )
         if self.save_data:
@@ -634,7 +634,6 @@ class FaceIq:
 
             self.i_f = 0    # Reset secondary index
 
-            
         results = []
         for facial_area in facial_areas:
             facial_area, face_img = face_utils.adjust_and_extract(
