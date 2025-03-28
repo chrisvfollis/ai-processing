@@ -257,7 +257,7 @@ class CenterFace:
         self.scale_h = h / self.img_h_new
         self.scale_w = w / self.img_w_new
 
-        detections = _inference_pytorch(img, conf_thresh)
+        detections = _inference_pytorch(img, conf_thresh, min_area)
 
         if not self.ignore_landmarks:
             all_dets, all_lms = detections

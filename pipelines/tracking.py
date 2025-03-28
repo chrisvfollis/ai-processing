@@ -875,11 +875,9 @@ class TrackingPipeline:
             if shared_frames:
                 frames = [shared_frames[0], shared_frames[-1]]
                 frames = sorted(set(frames))
-
             if face_frames and len(frames) == 1:
                 frames.extend([min(face_frames), max(face_frames)])
                 frames = sorted(set(frames))
-
             if len(frames) == 1:
                 frames.append(
                     trk.span[0] if (trk.span[0] not in frames) else
@@ -905,7 +903,7 @@ class TrackingPipeline:
                     h = bbox[3]
                     x = bbox[0] - (w / 2) # convert centroid to top left
                     y = bbox[1] - (h / 2)
-                    
+
                     bbox = [x, y, w, h]
 
                 try:
