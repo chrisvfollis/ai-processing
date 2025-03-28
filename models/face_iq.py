@@ -618,8 +618,7 @@ class FaceIq:
             'align': align,
             'width_border': width_border,
             'height_border': height_border,
-            'save_data': self.save_data,
-            'data_index': (self.i, self.i_f)
+            'save_data': self.save_data
         } 
         
         start_detection = time.perf_counter()
@@ -631,8 +630,8 @@ class FaceIq:
 
         if self.save_data:
             self.face_detections.setdefault(self.i, []).extend(facial_areas)
-
             self.i_f = 0    # Reset secondary index
+            args_['data_index'] = (self.i, self.i_f)
 
         results = []
         for facial_area in facial_areas:
