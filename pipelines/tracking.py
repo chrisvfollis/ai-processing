@@ -866,40 +866,55 @@ class TrackingPipeline:
         target_trks = getattr(self, target)
 
         for trk in target_trks.values():
-            images, frames, clear_frames = [], [], []
-            if trk.face_detections:
-                clear_frames = [
-                    min(trk.face_detections.keys()),
-                    max(trk.face_detections.keys())
-                ]
+            images, frames = [], []
 
-            if clear_frames:
-                frames = [clear_frames[0], clear_frames[-1]]
-            else:
-                frames = trk.span
+            face_frames = set(trk.face_detections.keys())
+            object_frames = set(trk.object_detections.keys())
+            shared_frames= sorted(face_frames & object_frames)
+
+            if shared_frames:
+                frames = [shared_frames[0], shared_frames[-1]]
+                frames = sorted(set(frames))
+
+            if face_frames and len(frames) == 1:
+                frames.extend([min(face_frames), max(face_frames)])
+                frames = sorted(set(frames))
+
+            if len(frames) == 1:
+                frames.append(
+                    trk.span[0] if (trk.span[0] not in frames) else
+                    trk.span[-1]
+                )
 
             for f in frames:
-                if f < 0:   # Handle persisted tracks from prior runs
+                if f < 0:   # ignore persisted tracks from prior runs
                     continue
 
+                bbox = trk.object_detections.get(f, None)
+                if isinstance(bbox, (np.ndarray, torch.Tensor)):
+                    bbox = bbox.tolist()
+
+                if not bbox:
+                    try:
+                        bbox = trk.states[f]
+                    except KeyError:
+                        print(f'No detection or state for frame {f}')
+                        continue
+
+                    w = bbox[2]
+                    h = bbox[3]
+                    x = bbox[0] - (w / 2) # convert centroid to top left
+                    y = bbox[1] - (h / 2)
+                    
+                    bbox = [x, y, w, h]
+
                 try:
-                    detection = trk.object_detections[f]
-                except KeyError:
-                    print(f"Frame {f} not in track's object detection dictionary:")
-                    print(list(trk.object_detections.keys()))
-                    if clear_frames:
-                        print('See face detection dictionary keys:')
-                        print(list(trk.face_detections.keys()))
-                    else:
-                        print('See track span:')
-                        print(list(trk.span))
-                    continue
-                try:
-                    x, y, w, h = map(int, detection[:4])
+                    x, y, w, h = map(int, bbox[:4])
                 except TypeError:
-                    print('Invalid detection type:')
-                    print(detection)
+                    print('Invalid bbox:')
+                    print(bbox)
                     continue
+
                 cap.set(cv2.CAP_PROP_POS_FRAMES, f)
                 ret, frame = cap.read()
                 if not ret:
