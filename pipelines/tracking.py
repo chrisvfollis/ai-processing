@@ -24,7 +24,7 @@ class TrackingPipeline:
     def __init__(self, video_file, time_prefix, detection_data, face_data,
                  device, credentials, continuous_mode=True,
                  conf_thresh=0.65):
-        self.active_trks, self.inactive_trks, self.filtered_trks = {}, [], []
+        self.active_trks, self.inactive_trks, self.filtered_trks = {}, {}, {}
         self.trk_id = 0
 
         self.device = device
