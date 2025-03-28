@@ -122,7 +122,7 @@ class FaceIq:
                     )
                 else:
                     for img_obj in img_objs:
-                        img_content = img_obj['face']
+                        img_content = img_obj['face_img']
                         img_region = img_obj['facial_area']
 
                         embedding_obj = representation.represent(
@@ -475,7 +475,7 @@ class FaceIq:
         resp_obj = []
 
         for source_obj in source_objs:
-            face_img = source_obj['face']
+            face_img = source_obj['face_img']
             face_region = source_obj['facial_area']
 
             start_recognition = time.perf_counter()
