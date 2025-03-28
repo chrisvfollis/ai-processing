@@ -1,7 +1,6 @@
 # standard dependencies
 import os
-from typing import Any, Dict, Set, List, Tuple, IO, Union, Optional, Sequence
-from collections.abc import Iterable
+from typing import Any, Dict, Set, List, IO, Union, Optional
 import pickle
 import time
 import gc
@@ -11,16 +10,15 @@ import math
 import numpy as np
 import pandas as pd
 import cv2
-import torch
 from deepface.commons import image_utils
 from deepface.modules import modeling, representation, verification, recognition
-from deepface.commons.logger import Logger
 from deepface.models.Detector import Detector, DetectedFace, FacialAreaRegion
 
 # internal dependencies
+from models.centerface import CenterFace
+from utilities.face_utils import adjust_and_extract
 from utilities import io_utils
 from utilities import utilities as utils
-from models.centerface import CenterFace
 
 
 class FaceIq:
@@ -58,6 +56,185 @@ class FaceIq:
             self.face_objs = {}             # <-- self.detect_faces() <-- self.extract_faces()
             self.source_objs = {}           # <-- self.extract_faces() <-- self.find()
             self.det_recognition_dfs = {}   # <-- self.find()
+
+    def prepare_data(
+        self,
+        img_path,
+        db_path,
+        model_name,
+        detector_backend,
+        align,
+        expand_percentage,
+        normalization
+    ):
+        def __find_bulk_embeddings(
+            employees: Set[str],
+            model_name: str = 'VGG-Face',
+            detector_backend: str = 'opencv',
+            align: bool = True,
+            expand_percentage: int = 0,
+            normalization: str = 'base',
+        ) -> List[Dict['str', Any]]:
+            
+            representations = []
+            for employee in employees:
+                file_hash = image_utils.find_image_hash(employee)
+
+                try:
+                    img_objs = self.extract_faces(
+                        img_path=employee,
+                        detector_backend=detector_backend,
+                        align=align,
+                        expand_percentage=expand_percentage,
+                        color_face='bgr'  # `represent` expects images in bgr format.
+                    )
+                except ValueError as err:
+                    print(f'Exception while extracting faces from {employee}: {str(err)}')
+                    img_objs = []
+
+                if len(img_objs) == 0:
+                    representations.append(
+                        {
+                            'identity': employee,
+                            'hash': file_hash,
+                            'embedding': None,
+                            'target_x': 0,
+                            'target_y': 0,
+                            'target_w': 0,
+                            'target_h': 0,
+                        }
+                    )
+                else:
+                    for img_obj in img_objs:
+                        img_content = img_obj['face']
+                        img_region = img_obj['facial_area']
+
+                        embedding_obj = representation.represent(
+                            img_path=img_content,
+                            model_name=model_name,
+                            detector_backend='skip',
+                            align=align,
+                            normalization=normalization,
+                        )
+                        img_representation = embedding_obj[0]['embedding']
+                        representations.append(
+                            {
+                                'identity': employee,
+                                'hash': file_hash,
+                                'embedding': img_representation,
+                                'target_x': img_region['x'],
+                                'target_y': img_region['y'],
+                                'target_w': img_region['w'],
+                                'target_h': img_region['h'],
+                            }
+                        )
+
+            return representations
+
+        if not os.path.isdir(db_path):
+            raise ValueError(f'Passed path {db_path} does not exist!')
+
+        img, _ = image_utils.load_image(img_path)
+        if img is None:
+            raise ValueError(f'Passed image path {img_path} does not exist!')
+
+        file_parts = [
+            'ds', 'model', model_name,
+            'detector', detector_backend,
+            'aligned' if align else 'unaligned',
+            'normalization', normalization,
+            'expand', str(expand_percentage),
+        ]
+
+        file_name = '_'.join(file_parts) + '.pkl'
+        file_name = file_name.replace('-', '').lower()
+
+        datastore_path = os.path.join(db_path, file_name)
+        representations = []
+
+        # Required columns for representations
+        df_cols = {
+            'identity',
+            'hash',
+            'embedding',
+            'target_x',
+            'target_y',
+            'target_w',
+            'target_h',
+        }
+
+        if not os.path.exists(datastore_path):
+            with open(datastore_path, 'wb') as f:
+                pickle.dump([], f, pickle.HIGHEST_PROTOCOL)
+
+        with open(datastore_path, 'rb') as f:
+            representations = pickle.load(f)
+
+        # check each item of representations list has required keys
+        for i, current_representation in enumerate(representations):
+            missing_keys = df_cols - set(current_representation.keys())
+            if len(missing_keys) > 0:
+                raise ValueError(
+                    f'{i}-th item does not have some required keys - {missing_keys}.'
+                    f'Consider to delete {datastore_path}'
+                )
+
+        # Get the list of images on storage
+        storage_images = set(image_utils.yield_images(path=db_path))
+
+        if len(storage_images) == 0 and refresh_database is True:
+            raise ValueError(f'No item found in {db_path}')
+        if len(representations) == 0 and refresh_database is False:
+            raise ValueError(f'Nothing is found in {datastore_path}')
+
+        must_save_pickle = False
+        new_images, old_images, replaced_images = set(), set(), set()
+
+        # Enforce data consistency amongst on disk images and pickle file
+        if refresh_database:
+            pickled_images = {
+                representation['identity'] for representation in representations
+            }
+
+            new_images = storage_images - pickled_images  # images added to storage
+            old_images = pickled_images - storage_images  # images removed from storage
+
+            # Determine any replaced images
+            for current_representation in representations:
+                identity = current_representation['identity']
+                if identity in old_images:
+                    continue
+                alpha_hash = current_representation['hash']
+                beta_hash = image_utils.find_image_hash(identity)
+                if alpha_hash != beta_hash:
+                    replaced_images.add(identity)
+
+        # Append replaced images into both old and new images. These will be dropped and re-added.
+        new_images.update(replaced_images)
+        old_images.update(replaced_images)
+
+        # Remove old images
+        if len(old_images) > 0:
+            representations = [rep for rep in representations if rep['identity'] not in old_images]
+            must_save_pickle = True
+
+        # Find representations for new images
+        if len(new_images) > 0:
+            representations += __find_bulk_embeddings(
+                employees=new_images,
+                model_name=model_name,
+                detector_backend=detector_backend,
+                align=align,
+                expand_percentage=expand_percentage,
+                normalization=normalization,
+            )
+            must_save_pickle = True
+
+        if must_save_pickle:
+            with open(datastore_path, 'wb') as f:
+                pickle.dump(representations, f, pickle.HIGHEST_PROTOCOL)
+
+        return representations
 
     def identify_faces(self, img, id_cutoff=None, regions=None, config=None):
         def _postprocess_output(all_face_dfs):
@@ -234,204 +411,21 @@ class FaceIq:
         refresh_database: bool = True,
         batched: bool = False,
     ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
-        
-        def __find_bulk_embeddings(
-            employees: Set[str],
-            model_name: str = 'VGG-Face',
-            detector_backend: str = 'opencv',
-            align: bool = True,
-            expand_percentage: int = 0,
-            normalization: str = 'base',
-        ) -> List[Dict['str', Any]]:
-            
-            representations = []
-            for employee in employees:
-                file_hash = image_utils.find_image_hash(employee)
 
-                start_detection = time.perf_counter()
-                try:
-                    img_objs = self.extract_faces(
-                        img_path=employee,
-                        detector_backend=detector_backend,
-                        align=align,
-                        expand_percentage=expand_percentage,
-                        color_face='bgr'  # `represent` expects images in bgr format.
-                    )
 
-                except ValueError as err:
-                    self.logger.error(f'Exception while extracting faces from {employee}: {str(err)}')
-                    img_objs = []
+        representations = self.prepare_data(
+            img_path,
+            db_path,
+            model_name,
+            detector_backend,
+            align,
+            expand_percentage,
+            normalization
+        )
 
-                end_detection = time.perf_counter()
-                self.face_detection_time += (end_detection - start_detection)
-
-                if len(img_objs) == 0:
-                    representations.append(
-                        {
-                            'identity': employee,
-                            'hash': file_hash,
-                            'embedding': None,
-                            'target_x': 0,
-                            'target_y': 0,
-                            'target_w': 0,
-                            'target_h': 0,
-                        }
-                    )
-                else:
-                    for img_obj in img_objs:
-                        img_content = img_obj['face']
-                        img_region = img_obj['facial_area']
-
-                        start_recognition = time.perf_counter()
-
-                        embedding_obj = representation.represent(
-                            img_path=img_content,
-                            model_name=model_name,
-                            detector_backend='skip',
-                            align=align,
-                            normalization=normalization,
-                        )
-
-                        end_recognition = time.perf_counter()
-                        self.face_recognition_time += (end_recognition - start_recognition)
-
-                        img_representation = embedding_obj[0]['embedding']
-                        representations.append(
-                            {
-                                'identity': employee,
-                                'hash': file_hash,
-                                'embedding': img_representation,
-                                'target_x': img_region['x'],
-                                'target_y': img_region['y'],
-                                'target_w': img_region['w'],
-                                'target_h': img_region['h'],
-                            }
-                        )
-
-            return representations
-
-        start_other_processing = time.perf_counter()
-        self.logger = Logger()
-
-        if not os.path.isdir(db_path):
-            raise ValueError(f'Passed path {db_path} does not exist!')
-
-        img, _ = image_utils.load_image(img_path)
-        if img is None:
-            raise ValueError(f'Passed image path {img_path} does not exist!')
-
-        file_parts = [
-            'ds', 'model', model_name,
-            'detector', detector_backend,
-            'aligned' if align else 'unaligned',
-            'normalization', normalization,
-            'expand', str(expand_percentage),
-        ]
-
-        file_name = '_'.join(file_parts) + '.pkl'
-        file_name = file_name.replace('-', '').lower()
-
-        datastore_path = os.path.join(db_path, file_name)
-        representations = []
-
-        # required columns for representations
-        df_cols = {
-            'identity',
-            'hash',
-            'embedding',
-            'target_x',
-            'target_y',
-            'target_w',
-            'target_h',
-        }
-
-        if not os.path.exists(datastore_path):
-            with open(datastore_path, 'wb') as f:
-                pickle.dump([], f, pickle.HIGHEST_PROTOCOL)
-
-        with open(datastore_path, 'rb') as f:
-            representations = pickle.load(f)
-
-        # check each item of representations list has required keys
-        for i, current_representation in enumerate(representations):
-            missing_keys = df_cols - set(current_representation.keys())
-            if len(missing_keys) > 0:
-                raise ValueError(
-                    f'{i}-th item does not have some required keys - {missing_keys}.'
-                    f'Consider to delete {datastore_path}'
-                )
-
-        # Get the list of images on storage
-        storage_images = set(image_utils.yield_images(path=db_path))
-
-        if len(storage_images) == 0 and refresh_database is True:
-            raise ValueError(f'No item found in {db_path}')
-        if len(representations) == 0 and refresh_database is False:
-            raise ValueError(f'Nothing is found in {datastore_path}')
-
-        must_save_pickle = False
-        new_images, old_images, replaced_images = set(), set(), set()
-
-        # Enforce data consistency amongst on disk images and pickle file
-        if refresh_database:
-            # embedded images
-            pickled_images = {
-                representation['identity'] for representation in representations
-            }
-
-            new_images = storage_images - pickled_images  # images added to storage
-            old_images = pickled_images - storage_images  # images removed from storage
-
-            # detect replaced images
-            for current_representation in representations:
-                identity = current_representation['identity']
-                if identity in old_images:
-                    continue
-                alpha_hash = current_representation['hash']
-                beta_hash = image_utils.find_image_hash(identity)
-                if alpha_hash != beta_hash:
-                    replaced_images.add(identity)
-
-        # append replaced images into both old and new images. these will be dropped and re-added.
-        new_images.update(replaced_images)
-        old_images.update(replaced_images)
-
-        # remove old images first
-        if len(old_images) > 0:
-            representations = [rep for rep in representations if rep['identity'] not in old_images]
-            must_save_pickle = True
-
-        end_other_processing = time.perf_counter()
-        self.other_processing_time += (start_other_processing - end_other_processing)
-
-        # find representations for new images
-        if len(new_images) > 0:
-            representations += __find_bulk_embeddings(
-                employees=new_images,
-                model_name=model_name,
-                detector_backend=detector_backend,
-                align=align,
-                expand_percentage=expand_percentage,
-                normalization=normalization,
-            )  # add new images
-            must_save_pickle = True
-
-        start_other_processing = time.perf_counter()
-        if must_save_pickle:
-            with open(datastore_path, 'wb') as f:
-                pickle.dump(representations, f, pickle.HIGHEST_PROTOCOL)
-
-        end_other_processing = time.perf_counter()
-        self.other_processing_time += (start_other_processing - end_other_processing)
-
-        # Should we have no representations bailout
         if len(representations) == 0:
             return []
         
-        # ----------------------------
-        # now, we got representations for facial database
-
-        # img path might have more than once face
         source_objs = self.extract_faces(
             img_path=img_path,
             detector_backend=detector_backend,
@@ -464,13 +458,13 @@ class FaceIq:
         resp_obj = []
 
         for source_obj in source_objs:
-            source_img = source_obj['face']
-            source_region = source_obj['facial_area']
+            face_img = source_obj['face']
+            face_region = source_obj['facial_area']
 
             start_recognition = time.perf_counter()
 
             target_embedding_obj = representation.represent(
-                img_path=source_img,
+                img_path=face_img,
                 model_name=model_name,
                 detector_backend='skip',
                 align=align,
@@ -485,10 +479,10 @@ class FaceIq:
             target_representation = target_embedding_obj[0]['embedding']
 
             result_df = df.copy()  # df will be filtered in each img
-            result_df['source_x'] = source_region['x']
-            result_df['source_y'] = source_region['y']
-            result_df['source_w'] = source_region['w']
-            result_df['source_h'] = source_region['h']
+            result_df['source_x'] = face_region['x']
+            result_df['source_y'] = face_region['y']
+            result_df['source_w'] = face_region['w']
+            result_df['source_h'] = face_region['h']
 
             distances = []
             for _, instance in df.iterrows():
@@ -512,7 +506,6 @@ class FaceIq:
 
                 distances.append(distance)
 
-                # ---------------------------
             target_threshold = threshold or verification.find_threshold(model_name, distance_metric)
 
             result_df['threshold'] = target_threshold
@@ -622,10 +615,7 @@ class FaceIq:
 
         height, width, _ = img.shape
 
-        # If faces are close to the upper boundary, alignment move them outside
-        # Add a black border around an image to avoid this.
-        height_border = int(0.5 * height)
-        width_border = int(0.5 * width)
+        height_border, width_border = int(0.5 * height), int(0.5 * width)
         if align is True:
             img = cv2.copyMakeBorder(
                 img,
@@ -634,296 +624,51 @@ class FaceIq:
                 width_border,
                 width_border,
                 cv2.BORDER_CONSTANT,
-                value=[0, 0, 0],  # Color of the border (black)
+                value=[0, 0, 0],  # black border 
             )
-
-        # find facial areas of given image
+        
+        args_ = {
+            'expand_percentage': expand_percentage,
+            'align': align,
+            'width_border': width_border,
+            'height_border': height_border,
+            'save_data': self.save_data,
+            'data_index': (self.i, self.i_f)
+        } 
+        
         start_detection = time.perf_counter()
-
         facial_areas = self.face_detector.detect_faces(img)
 
-        end_detection = time.perf_counter()
-        self.face_detection_time += (end_detection - start_detection)
-
-        if self.save_data:
-            self.face_detections.setdefault(self.i, []).extend(facial_areas)
+        self.face_detection_time += (time.perf_counter() - start_detection)
 
         start_other_processing = time.perf_counter()
 
         if self.save_data:
-            self.i_f = 0
+            self.face_detections.setdefault(self.i, []).extend(facial_areas)
 
+            self.i_f = 0    # Reset secondary index
+
+            
         results = []
         for facial_area in facial_areas:
+            facial_area, face_img = adjust_and_extract(facial_area, img, **args_)
 
-            face = self.extract_face(
+            face_obj = DetectedFace(
+                img=face_img,
                 facial_area=facial_area,
-                img=img,
-                align=align,
-                expand_percentage=expand_percentage,
-                width_border=width_border,
-                height_border=height_border,
+                confidence=facial_area.confidence
             )
-            results.append(face)
+
+            results.append(face_obj)
 
             if self.save_data:
-                self.i_f += 1
+                self.i_f += 1   # Increment secondary index
+                args_['data_index'] = (self.i, self.i_f)
 
         end_other_processing = time.perf_counter()
         self.other_processing_time += (start_other_processing - end_other_processing)
 
         return results
-
-    def extract_face(
-        self, 
-        facial_area: FacialAreaRegion,
-        img: np.ndarray,
-        align: bool,
-        expand_percentage: int,
-        width_border: int,
-        height_border: int,
-    ) -> DetectedFace:
-        
-        x = facial_area.x
-        y = facial_area.y
-        w = facial_area.w
-        h = facial_area.h
-        left_eye = facial_area.left_eye
-        right_eye = facial_area.right_eye
-        confidence = facial_area.confidence
-        nose = facial_area.nose
-        mouth_left = facial_area.mouth_left
-        mouth_right = facial_area.mouth_right
-
-        if expand_percentage > 0:
-            # Expand the facial region height and width by the provided percentage
-            # ensuring that the expanded region stays within img.shape limits
-            expanded_w = w + int(w * expand_percentage / 100)
-            expanded_h = h + int(h * expand_percentage / 100)
-
-            x = max(0, x - int((expanded_w - w) / 2))
-            y = max(0, y - int((expanded_h - h) / 2))
-            w = min(img.shape[1] - x, expanded_w)
-            h = min(img.shape[0] - y, expanded_h)
-
-        # extract detected face unaligned
-        detected_face = img[int(y) : int(y + h), int(x) : int(x + w)]
-
-        if self.save_data:
-            cv2.imwrite(
-                f'../files/output/{self.i}_{self.i_f}_unaligned_detection.png',
-                detected_face
-            )
-        # align original image, then find projection of detected face area after alignment
-        if align is True:  # and left_eye is not None and right_eye is not None:
-            # we were aligning the original image before, but this comes with an extra cost
-            # instead we now focus on the facial area with a margin
-            # and align it instead of original image to decrese the cost
-            sub_img, relative_x, relative_y = self.extract_sub_image(img=img, facial_area=(x, y, w, h))
-
-            aligned_sub_img, angle = self.align_img_wrt_eyes(
-                img=sub_img, left_eye=left_eye, right_eye=right_eye
-            )
-
-            rotated_x1, rotated_y1, rotated_x2, rotated_y2 = self.project_facial_area(
-                facial_area=(
-                    relative_x,
-                    relative_y,
-                    relative_x + w,
-                    relative_y + h,
-                ),
-                angle=angle,
-                size=(sub_img.shape[0], sub_img.shape[1]),
-            )
-            detected_face = aligned_sub_img[
-                int(rotated_y1) : int(rotated_y2), int(rotated_x1) : int(rotated_x2)
-            ]
-
-            if self.save_data:
-                cv2.imwrite(
-                    f'../files/output/{self.i}_{self.i_f}_aligned_detection.png',
-                    detected_face
-                )
-
-            # do not spend memory for these temporary variables anymore
-            del aligned_sub_img, sub_img
-
-            # restore x, y, le and re before border added
-            x = x - width_border
-            y = y - height_border
-            # w and h will not change
-            if left_eye is not None:
-                left_eye = (left_eye[0] - width_border, left_eye[1] - height_border)
-            if right_eye is not None:
-                right_eye = (right_eye[0] - width_border, right_eye[1] - height_border)
-            if nose is not None:
-                nose = (nose[0] - width_border, nose[1] - height_border)
-            if mouth_left is not None:
-                mouth_left = (mouth_left[0] - width_border, mouth_left[1] - height_border)
-            if mouth_right is not None:
-                mouth_right = (mouth_right[0] - width_border, mouth_right[1] - height_border)
-
-        return DetectedFace(
-            img=detected_face,
-            facial_area=FacialAreaRegion(
-                x=x,
-                y=y,
-                h=h,
-                w=w,
-                confidence=confidence,
-                left_eye=left_eye,
-                right_eye=right_eye,
-                nose=nose,
-                mouth_left=mouth_left,
-                mouth_right=mouth_right,
-            ),
-            confidence=confidence or 0,
-        )
-
-    def extract_sub_image(
-        self, img: np.ndarray, facial_area: Tuple[int, int, int, int]
-    ) -> Tuple[np.ndarray, int, int]:
-        '''
-        Get the sub image with given facial area while expanding the facial region
-            to ensure alignment does not shift the face outside the image.
-
-        This function doubles the height and width of the face region,
-        and adds black pixels if necessary.
-
-        Args:
-            - img (np.ndarray): pre-loaded image with detected face
-            - facial_area (tuple of int): Representing the (x, y, w, h) of the facial area.
-
-        Returns:
-            - extracted_face (np.ndarray): expanded facial image
-            - relative_x (int): adjusted x-coordinates relative to the expanded region
-            - relative_y (int): adjusted y-coordinates relative to the expanded region
-        '''
-        x, y, w, h = facial_area
-        relative_x = int(0.5 * w)
-        relative_y = int(0.5 * h)
-
-        # calculate expanded coordinates
-        x1, y1 = x - relative_x, y - relative_y
-        x2, y2 = x + w + relative_x, y + h + relative_y
-
-        # most of the time, the expanded region fits inside the image
-        if x1 >= 0 and y1 >= 0 and x2 <= img.shape[1] and y2 <= img.shape[0]:
-            return img[y1:y2, x1:x2], relative_x, relative_y
-
-        # but sometimes, we need to add black pixels
-        # ensure the coordinates are within bounds
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(img.shape[1], x2), min(img.shape[0], y2)
-        cropped_region = img[y1:y2, x1:x2]
-
-        # create a black image
-        extracted_face = np.zeros(
-            (h + 2 * relative_y, w + 2 * relative_x, img.shape[2]), dtype=img.dtype
-        )
-
-        # map the cropped region
-        start_x = max(0, relative_x - x)
-        start_y = max(0, relative_y - y)
-        extracted_face[
-            start_y : start_y + cropped_region.shape[0], start_x : start_x + cropped_region.shape[1]
-        ] = cropped_region
-
-        return extracted_face, relative_x, relative_y
-
-    def align_img_wrt_eyes(
-        self,
-        img: np.ndarray,
-        left_eye: Optional[Union[list, tuple]],
-        right_eye: Optional[Union[list, tuple]],
-    ) -> Tuple[np.ndarray, float]:
-        '''
-        Align a given image horizontally with respect to their left and right eye locations
-        Args:
-            img (np.ndarray): pre-loaded image with detected face
-            left_eye (list or tuple): coordinates of left eye with respect to the person itself
-            right_eye(list or tuple): coordinates of right eye with respect to the person itself
-        Returns:
-            img (np.ndarray): aligned facial image
-        '''
-        # if eye could not be detected for the given image, return image itself
-        if left_eye is None or right_eye is None:
-            return img, 0
-
-        # sometimes unexpectedly detected images come with nil dimensions
-        if img.shape[0] == 0 or img.shape[1] == 0:
-            return img, 0
-
-        angle = float(np.degrees(np.arctan2(left_eye[1] - right_eye[1], left_eye[0] - right_eye[0])))
-
-        (h, w) = img.shape[:2]
-        center = (w // 2, h // 2)
-        M = cv2.getRotationMatrix2D(center, angle, 1.0)
-        img = cv2.warpAffine(
-            img, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0)
-        )
-
-        return img, angle
-
-    def project_facial_area(
-        self, facial_area: Tuple[int, int, int, int], angle: float, size: Tuple[int, int]
-    ) -> Tuple[int, int, int, int]:
-        '''
-        Update pre-calculated facial area coordinates after image itself
-            rotated with respect to the eyes.
-        Inspried from the work of @UmutDeniz26 - github.com/serengil/retinaface/pull/80
-
-        Args:
-            facial_area (tuple of int): Representing the (x1, y1, x2, y2) of the facial area.
-                x2 is equal to x1 + w1, and y2 is equal to y1 + h1
-            angle (float): Angle of rotation in degrees. Its sign determines the direction of rotation.
-                        Note that angles > 360 degrees are normalized to the range [0, 360).
-            size (tuple of int): Tuple representing the size of the image (width, height).
-
-        Returns:
-            rotated_coordinates (tuple of int): Representing the new coordinates
-                (x1, y1, x2, y2) or (x1, y1, x1+w1, y1+h1) of the rotated facial area.
-        '''
-
-        # Normalize the witdh of the angle so we don't have to
-        # worry about rotations greater than 360 degrees.
-        # We workaround the quirky behavior of the modulo operator
-        # for negative angle values.
-        direction = 1 if angle >= 0 else -1
-        angle = abs(angle) % 360
-        if angle == 0:
-            return facial_area
-
-        # Angle in radians
-        angle = angle * np.pi / 180
-
-        height, weight = size
-
-        # Translate the facial area to the center of the image
-        x = (facial_area[0] + facial_area[2]) / 2 - weight / 2
-        y = (facial_area[1] + facial_area[3]) / 2 - height / 2
-
-        # Rotate the facial area
-        x_new = x * np.cos(angle) + y * direction * np.sin(angle)
-        y_new = -x * direction * np.sin(angle) + y * np.cos(angle)
-
-        # Translate the facial area back to the original position
-        x_new = x_new + weight / 2
-        y_new = y_new + height / 2
-
-        # Calculate projected coordinates after alignment
-        x1 = x_new - (facial_area[2] - facial_area[0]) / 2
-        y1 = y_new - (facial_area[3] - facial_area[1]) / 2
-        x2 = x_new + (facial_area[2] - facial_area[0]) / 2
-        y2 = y_new + (facial_area[3] - facial_area[1]) / 2
-
-        # validate projected coordinates are in image's boundaries
-        x1 = max(int(x1), 0)
-        y1 = max(int(y1), 0)
-        x2 = min(int(x2), weight)
-        y2 = min(int(y2), height)
-
-        return (x1, y1, x2, y2)
 
     def save_runtime_data(self, filename='../files/output/faceiq_data.xlsx'):
         if not self.save_data:
