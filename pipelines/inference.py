@@ -278,8 +278,8 @@ class InferencePipeline:
                 self.osnet.input_dims,                          
                 self.osnet.output_shape,
     
-                self.face_iq.detection_model,
-                self.face_iq.recognition_model
+                self.face_iq.det_model_name,
+                self.face_iq.rec_model_name
             ]
         }
         config_df = pd.DataFrame(config_data)
