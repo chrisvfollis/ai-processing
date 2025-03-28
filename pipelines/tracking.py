@@ -980,8 +980,8 @@ class TrackingPipeline:
         for trk in all_tracks.values():
             self.cost_method_data.extend(trk.cost_method_data)
             self.spatial_analysis += trk.spatial_analysis
-            self.feature_analysis += trk.feature_analysis_time
-            self.tensor_conversion_time += trk.tensor_conversion
+            self.feature_analysis += trk.feature_analysis
+            self.tensor_conversion += trk.tensor_conversion
 
         performance_data = {
             'module': [
@@ -1195,7 +1195,7 @@ class Track(KalmanFilter):
         self.cost_method_data = []
 
         self.spatial_analysis = 0
-        self.feature_analysis_time = 0
+        self.feature_analysis = 0
         self.tensor_conversion = 0
 
         self.add_embedding(embedding)
