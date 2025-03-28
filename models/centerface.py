@@ -191,8 +191,6 @@ class CenterFace:
                         lms = lms[keep, :]
                 else:
                     boxes = boxes.reshape((0, 5))
-                    
-            print(f'{len(c0) - len(boxes)} small face detections filtered')
 
             if not self.ignore_landmarks:
                 return boxes, lms
