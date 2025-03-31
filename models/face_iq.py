@@ -356,6 +356,7 @@ class FaceIq:
                 x1, y1, x2, y2 = utils.xywh_xyxy([x, y, w, h])
 
                 face_img = img[y1:y2,x1:x2]
+                face_img = cv2.resize(face_img, (w * 2, h * 2))
 
                 possible_identities = ''
                 for name, distance in (
@@ -366,7 +367,7 @@ class FaceIq:
                 cv2.putText(
                     face_img, possible_identities,
                     (int(w/2), int(h/2)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.2, (255, 255, 255), 0.2
                 )
 
                 cv2.imwrite(output_path, face_img)

@@ -257,7 +257,7 @@ def recognize_faces_in_video(
     print(f'Total Frames: {total_frames}')
     
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (1920, 1080))
+    out = cv2.VideoWriter(output_path, fourcc, 1, (1920, 1080))
 
     f_num = -1
     face_iq.i = f_num
@@ -297,14 +297,14 @@ def recognize_faces_in_video(
 
             face_iq.face_detector.heatmaps = []
 
-        cv2.putText(
-            frame, f'frame {f_num}',
-            (int(resolution[0]/2), int(resolution[1]/2)),
-            cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
-        )
+            cv2.putText(
+                frame, f'frame {f_num}',
+                (int(resolution[0]/2), int(resolution[1]/2)),
+                cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2
+            )
 
-        frame = cv2.resize(frame, (1920, 1080))
-        out.write(frame)
+            frame = cv2.resize(frame, (1920, 1080))
+            out.write(frame)
     
     cap.release()
     out.release()
