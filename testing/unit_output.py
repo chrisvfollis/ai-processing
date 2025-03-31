@@ -232,6 +232,7 @@ def detect_faces_in_video(
 def recognize_faces_in_video(
         video_file: str,
         focus: str = 'global',
+        enhance: bool = False,
         input_dir: str = '../files/input',
         output_dir: str = '../files/output'
     ):
@@ -289,7 +290,9 @@ def recognize_faces_in_video(
                     x1, y1, x2, y2 = utils.xywh_xyxy(region)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
                 
-            all_face_dfs = face_iq.identify_faces(frame, id_cutoff=0.999, regions=regions)
+            all_face_dfs = face_iq.identify_faces(
+                frame, id_cutoff=0.999, regions=regions, enhance=enhance
+            )
             heatmaps = face_iq.face_detector.heatmaps
 
             frame = face_iq.visualize_identifications(frame, all_face_dfs)
@@ -400,6 +403,8 @@ if __name__ == '__main__':
 
     elif category == 'recognize':
         focus = sys.argv[3]
+        enhance = sys.argv[4] if len(sys.argv) == 5 else True
+
         if file_extension in ['png', 'jpg', 'jpeg']:
             print('Input: image')
             recognize_faces_in_image(input_path, focus=focus)

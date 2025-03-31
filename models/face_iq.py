@@ -72,9 +72,6 @@ class FaceIq:
 
             self.results = {}
 
-    def execution_timer(self, target):
-        pass
-
     def prepare_data(
         self,
         img_path,
@@ -83,6 +80,7 @@ class FaceIq:
         detector_backend,
         align,
         expand_percentage,
+        enhance,
         normalization,
         refresh_database
     ):
@@ -256,7 +254,7 @@ class FaceIq:
 
         return representations
 
-    def identify_faces(self, img, id_cutoff=None, regions=None, config=None):
+    def identify_faces(self, img, id_cutoff=None, regions=None, enhance=False, config=None):
         def _postprocess_output(all_face_dfs):
             press_stopwatch(self, 'other_processing_time')
     
@@ -301,7 +299,7 @@ class FaceIq:
         press_stopwatch(self, 'identification_pipeline_time')
 
         if not regions:
-            face_dfs = self.find(img_path=img, **config)
+            face_dfs = self.find(img_path=img, enhance=enhance, **config)
             for df in face_dfs:
                 df = utils.reformat_face_df(df)
 
@@ -313,7 +311,11 @@ class FaceIq:
 
             for region in regions:
                 img_crop = utils.crop_region(img, region)
-                local_face_dfs = self.find(img_path=img_crop, **config)
+                local_face_dfs = self.find(
+                    img_path=img_crop,
+                    enhance=enhance,
+                    **config
+                )
 
                 del img_crop
                 gc.collect()
@@ -461,6 +463,7 @@ class FaceIq:
         detector_backend: str = 'centerface_gpu',
         align: bool = True,
         expand_percentage: int = 0,
+        enhance: bool = True,
         threshold: Optional[float] = None,
         normalization: str = 'base',
         refresh_database: bool = True,
@@ -474,6 +477,7 @@ class FaceIq:
             detector_backend,
             align,
             expand_percentage,
+            enhance,
             normalization,
             refresh_database
         )
@@ -485,7 +489,7 @@ class FaceIq:
             img_path=img_path,
             detector_backend=detector_backend,
             align=align,
-            enhance=True,
+            enhance=enhance,
             expand_percentage=expand_percentage
         )
         if self.save_data:
