@@ -356,19 +356,19 @@ class FaceIq:
                 x1, y1, x2, y2 = utils.xywh_xyxy([x, y, w, h])
 
                 face_img = img[y1:y2,x1:x2]
-                face_img = cv2.resize(face_img, (w * 2, h * 2))
+                face_img = cv2.resize(face_img, (w * 10, h * 10))
 
                 possible_identities = ''
-                for name, distance in (
+                for i, (name, distance) in enumerate(
                     face_df[['name', 'distance']].itertuples(index=False, name=None)
                 ):
-                    possible_identities += f'\n{name}: {distance:.2f}'
-
-                cv2.putText(
-                    face_img, possible_identities,
-                    (int(w/2), int(h/2)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.2, (255, 255, 255), 1
-                )
+                    text = f'{name}: {distance:.2f}'
+                    y_offset = int(h*5 + i * 10)
+                    cv2.putText(
+                        face_img, text,
+                        (int(w * 5), y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.2, (255, 255, 255), 1
+                    )
 
                 cv2.imwrite(output_path, face_img)
 
