@@ -818,8 +818,8 @@ class TrackingPipeline:
 
         def _filter_by_size(target_trks):
             expected_avg = (
-                (self.resolution[0] / 24) *
-                (self.resolution[1] / 12)
+                (self.resolution[0] / 22) *
+                (self.resolution[1] / 10)
             )
 
             for trk_id, trk in target_trks.items():
