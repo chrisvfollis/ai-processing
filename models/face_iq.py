@@ -367,7 +367,7 @@ class FaceIq:
                     cv2.putText(
                         face_img, text,
                         (int(w * 5), y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.2, (255, 255, 255), 1
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1
                     )
 
                 cv2.imwrite(output_path, face_img)
