@@ -12,7 +12,7 @@ import pandas as pd
 import cv2
 import torch
 from deepface.commons import image_utils
-from deepface.modules import modeling, representation, verification, recognition
+from deepface.modules import detection, representation, verification, recognition
 from deepface.models.Detector import Detector, DetectedFace, FacialAreaRegion
 
 # internal dependencies
@@ -74,13 +74,11 @@ class FaceIq:
 
     def prepare_data(
         self,
-        img_path,
         db_path,
         model_name,
         detector_backend,
         align,
         expand_percentage,
-        enhance,
         normalization,
         refresh_database
     ):
@@ -98,13 +96,14 @@ class FaceIq:
                 file_hash = image_utils.find_image_hash(employee)
 
                 try:
-                    img_objs = self.detection_pipeline(
+                    img_objs = detection.extract_faces(
                         img_path=employee,
                         detector_backend=detector_backend,
+                        grayscale=False,
+                        enforce_detection=False,
                         align=align,
                         expand_percentage=expand_percentage,
-                        enhance=True,
-                        color_face='bgr'    # `represent` expects images in bgr format
+                        color_face='bgr'
                     )
                 except ValueError as err:
                     print(f'Exception while extracting faces from {employee}: {str(err)}')
@@ -151,10 +150,6 @@ class FaceIq:
 
         if not os.path.isdir(db_path):
             raise ValueError(f'Passed path {db_path} does not exist!')
-
-        img, _ = image_utils.load_image(img_path)
-        if img is None:
-            raise ValueError(f'Passed image path {img_path} does not exist!')
 
         file_parts = [
             'ds', 'model', model_name,
@@ -447,12 +442,12 @@ class FaceIq:
         )
         df['threshold'] = target_threshold
 
+        print('Distances dataframe:')
+        print(df)
+
         df = df[df['distance'] <= target_threshold]
         df = df.sort_values(by='distance', ascending=True).reset_index(drop=True)
 
-        print('Distances dataframe:')
-        print(df)
-        
         df = utils.reformat_face_df(df)
 
         print('Formatted dataframe:')
@@ -483,13 +478,11 @@ class FaceIq:
     ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
 
         representations = self.prepare_data(
-            img_path,
             db_path,
             model_name,
             detector_backend,
             align,
             expand_percentage,
-            enhance,
             normalization,
             refresh_database
         )
