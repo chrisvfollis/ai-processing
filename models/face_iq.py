@@ -123,7 +123,7 @@ class FaceIq:
                     )
                 else:
                     for img_obj in img_objs:
-                        img_content = img_obj['img']
+                        img_content = img_obj['face']
                         img_region = img_obj['facial_area']
 
                         embedding_obj = representation.represent(
