@@ -406,6 +406,7 @@ class FaceIq:
             return pd.DataFrame()
         print('Representations dataframe:')
         print(df)
+        print(f'Columns: {list(df.columns)}')
 
         press_stopwatch(self, 'face_recognition_time')
         embedding_obj = representation.represent(
@@ -431,6 +432,9 @@ class FaceIq:
                     src_embedding, target_embedding, 'cosine'
                 )
             )
+        
+        if len(distances) == 0:
+            print('No distances')
         
         df['x'] = [0] * len(distances)
         df['y'] = [0] * len(distances)
