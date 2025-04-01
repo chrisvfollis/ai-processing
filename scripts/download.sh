@@ -10,7 +10,7 @@ INSTANCE_NICKNAME="$1"
 if [[ "$2" ]]; then
     REMOTE_DIR="$2"
 else
-    REMOTE_DIR="output/"
+    REMOTE_DIR="files/"
 fi
 
 

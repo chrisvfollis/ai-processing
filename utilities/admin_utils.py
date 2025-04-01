@@ -154,8 +154,8 @@ def get_ec2_public_dns(instance_info: dict):
 
 def auto_scp(
         action: str = 'download',
-        remote_base_path: str = '/home/ubuntu/ai-processing/files/',
-        remote_dir: str = 'output/',
+        remote_base_path: str = '/home/ubuntu/ai-processing/',
+        remote_dir: str = 'files/',
         local_base_path: str = 'user_home',
         local_dir: str = 'Downloads/',
         nickname: str = None, shop_id: str = None

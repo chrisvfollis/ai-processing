@@ -403,7 +403,9 @@ if __name__ == '__main__':
 
     elif category == 'recognize':
         focus = sys.argv[3]
-        enhance = sys.argv[4] if len(sys.argv) == 5 else True
+
+        enhance = sys.argv[4].lower() if len(sys.argv) == 5 else 'true'
+        enhance = True if (enhance == 'true') else False
 
         if file_extension in ['png', 'jpg', 'jpeg']:
             print('Input: image')
