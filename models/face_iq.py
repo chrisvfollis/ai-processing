@@ -123,7 +123,7 @@ class FaceIq:
                     )
                 else:
                     for img_obj in img_objs:
-                        img_content = img_obj['face_img']
+                        img_content = img_obj['img']
                         img_region = img_obj['facial_area']
 
                         embedding_obj = representation.represent(
@@ -236,7 +236,7 @@ class FaceIq:
             representations += __find_bulk_embeddings(
                 employees=new_images,
                 model_name=model_name,
-                detector_backend=detector_backend,
+                detector_backend='centerface',
                 align=align,
                 expand_percentage=expand_percentage,
                 normalization=normalization,
