@@ -433,8 +433,8 @@ class FaceIq:
                 )
             )
         
-        if len(distances) == 0:
-            print('No distances')
+        print('Distances:')
+        print(distances)
         
         df['x'] = [0] * len(distances)
         df['y'] = [0] * len(distances)
