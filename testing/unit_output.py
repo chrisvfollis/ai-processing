@@ -413,7 +413,7 @@ if __name__ == '__main__':
         elif file_extension == 'mp4':
             print('Input: video')
             
-            recognize_faces_in_video(input_path, focus=focus)
+            recognize_faces_in_video(input_path, focus=focus, enhance=enhance)
     
     elif category == 'enhance':
         if file_extension in ['png', 'jpg', 'jpeg']:

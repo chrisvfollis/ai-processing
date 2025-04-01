@@ -404,13 +404,15 @@ class FaceIq:
         df = pd.DataFrame(representations)
         if df.empty:
             return pd.DataFrame()
+        print('Representations dataframe:')
+        print(df)
 
         press_stopwatch(self, 'face_recognition_time')
         embedding_obj = representation.represent(
             img_path=img,
             model_name=self.rec_model_name,
             detector_backend='skip',
-            align=True,
+            align=False,
             normalization='base',
         )
         press_stopwatch(self, 'face_recognition_time')
@@ -443,8 +445,14 @@ class FaceIq:
 
         df = df[df['distance'] <= target_threshold]
         df = df.sort_values(by='distance', ascending=True).reset_index(drop=True)
+
+        print('Distances dataframe:')
+        print(df)
         
         df = utils.reformat_face_df(df)
+
+        print('Formatted dataframe:')
+        print(df)
 
         results = io_utils.lookup_identities(df['identity'], db_path=self.db_path)
         print(df)
