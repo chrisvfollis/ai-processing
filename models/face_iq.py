@@ -358,7 +358,7 @@ class FaceIq:
 
                 match_dict = {'name': name, 'distance': distance}
 
-                self.id_matches.setdefault(self.i, []).extend(match_dict)
+                self.id_matches.setdefault(self.i, []).append(match_dict)
 
                 filename = f'{self.i}_{i_f}_{name}_detection.png'
                 output_path = os.path.join(output_dir, filename)
