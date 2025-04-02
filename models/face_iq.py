@@ -102,7 +102,8 @@ class FaceIq:
                         align=align,
                         expand_percentage=expand_percentage,
                         enhance=True,
-                        color_face='bgr'    # `represent` expects images in bgr format
+                        color_face='bgr',    # `represent` expects images in bgr format
+                        warn=True
                     )
                 except ValueError as err:
                     print(f'Exception while extracting faces from {employee}: {str(err)}')
@@ -595,7 +596,8 @@ class FaceIq:
         expand_percentage: int = 0,
         enhance: bool = True,
         color_face: str = 'rgb',
-        normalize_face: bool = True
+        normalize_face: bool = True,
+        warn: bool = False
     ) -> List[Dict[str, Any]]:
 
         resp_objs = []
@@ -623,7 +625,8 @@ class FaceIq:
                 img=img,
                 align=align,
                 expand_percentage=expand_percentage,
-                enhance=enhance
+                enhance=enhance,
+                warn=warn
             )
 
         if self.save_data:
@@ -641,7 +644,8 @@ class FaceIq:
         img: np.ndarray,
         align: bool = True,
         expand_percentage: int = 0,
-        enhance: bool = True
+        enhance: bool = True,
+        warn: bool = False
     ) -> List[DetectedFace]:
 
         height, width, _ = img.shape
@@ -668,6 +672,8 @@ class FaceIq:
         
         press_stopwatch(self, 'face_detection_time')
         facial_areas = self.face_detector.detect_faces(img)
+        if warn and (not facial_areas):
+            print('No faces detected')
         press_stopwatch(self, 'face_detection_time')
 
         press_stopwatch(self, 'other_processing_time')
