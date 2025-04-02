@@ -124,7 +124,7 @@ class FaceIq:
                 else:
                     for i, img_obj in enumerate(img_objs):
                         img_content = img_obj['face']
-                        cv2.imwrite(f'{employee.split('/')[-1].split('.')[0]}_{i}', img_content)
+                        cv2.imwrite(f'{employee.split("/")[-1].split(".")[0]}_{i}', img_content)
                         img_region = img_obj['facial_area']
 
                         embedding_obj = representation.represent(
