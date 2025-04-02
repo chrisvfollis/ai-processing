@@ -96,14 +96,14 @@ class FaceIq:
                 file_hash = image_utils.find_image_hash(employee)
 
                 try:
-                    img_objs = self.detection_pipeline(
+                    img_objs = detection.extract_faces(
                         img_path=employee,
-                        detector_backend=detector_backend,
-                        align=align,
+                        detector_backend='retinaface',
+                        grayscale=False,
+                        enforce_detection=False,
+                        align=False,
                         expand_percentage=expand_percentage,
-                        enhance=True,
-                        color_face='bgr',    # `represent` expects images in bgr format
-                        warn=True
+                        color_face='bgr'  # `represent` expects images in bgr format.
                     )
                 except ValueError as err:
                     print(f'Exception while extracting faces from {employee}: {str(err)}')
@@ -123,7 +123,7 @@ class FaceIq:
                     )
                 else:
                     for i, img_obj in enumerate(img_objs):
-                        img_content = img_obj['face_img']
+                        img_content = img_obj['face']
                         img_region = img_obj['facial_area']
 
                         img_to_save = img_content
