@@ -71,6 +71,7 @@ class FaceIq:
             self.det_recognition_dfs = {}
 
             self.results = {}
+            self.id_matches = {}
 
     def prepare_data(
         self,
@@ -275,6 +276,7 @@ class FaceIq:
                     filtered_face_dfs.append(df)
 
                 else:
+                    filtered_face_dfs.append(df)
                     continue
             
             press_stopwatch(self, 'other_processing_time')
@@ -323,6 +325,7 @@ class FaceIq:
                 for df in local_face_dfs:
                     df = utils.reformat_face_df(df)
                     if df.empty:
+                        all_face_dfs.append(df)
                         continue
     
                     df[['x', 'y']] = df.apply(
@@ -342,14 +345,20 @@ class FaceIq:
         if self.save_data:
             i_f = -1
             output_dir = '../files/output'
-            for face_df in all_face_dfs:
+            for face_df in results:
                 i_f += 1
                 
                 if face_df.empty:
                     continue
 
                 best_match = face_df.loc[face_df['distance'].idxmin()]
+
                 name = best_match['name']
+                distance = best_match['distance']
+
+                match_dict = {'name': name, 'distance': distance}
+
+                self.id_matches.setdefault(self.i, []).extend(match_dict)
 
                 filename = f'{self.i}_{i_f}_{name}_detection.png'
                 output_path = os.path.join(output_dir, filename)
@@ -359,18 +368,6 @@ class FaceIq:
 
                 face_img = img[y1:y2,x1:x2]
                 face_img = cv2.resize(face_img, (w * 10, h * 10))
-
-                possible_identities = ''
-                for i, (name, distance) in enumerate(
-                    face_df[['name', 'distance']].itertuples(index=False, name=None)
-                ):
-                    text = f'{name}: {distance:.2f}'
-                    y_offset = int(h*5 + i * 10)
-                    cv2.putText(
-                        face_img, text,
-                        (int(w * 5), y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 1
-                    )
 
                 cv2.imwrite(output_path, face_img)
 
@@ -735,10 +732,19 @@ class FaceIq:
         
         detection_data = []
         for i, detections in self.face_detections.items():
-            for det in detections:
+            identifications = self.id_matches.get(
+                i, [{'name': '', 'distance': 1.0}] * len(detections)
+            )
+            for i_f, det in enumerate(detections):
                 area = math.prod((det.w, det.h))
+
+                name = identifications[i_f]['name']
+                distance = identifications[i_f]['distance']
+
                 detection_data.append({
                     'idx': i,
+                    'name': name,
+                    'distance': distance,
                     'a': area,
                     'c': det.confidence,
                     'x': det.x,
@@ -781,6 +787,7 @@ class FaceIq:
                 continue
     
             best_match = face_df.loc[face_df['distance'].idxmin()]
+            name = best_match['name']
 
             x, y, w, h = best_match[['x', 'y', 'w', 'h']]
             x1, y1, x2, y2 = utils.xywh_xyxy([x, y, w, h])
@@ -792,9 +799,8 @@ class FaceIq:
                 cv2.FONT_HERSHEY_SIMPLEX, 2, color, 2
             )
 
-            first_name, _ = io_utils.lookup_name(best_match['identity'])
             cv2.putText(
-                image, f'name: {first_name}', (x2 - 5, y2 - 5),
+                image, f'name: {name}', (x2 - 5, y2 - 5),
                 cv2.FONT_HERSHEY_SIMPLEX, 2, color, 2
             )
 
