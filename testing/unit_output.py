@@ -282,6 +282,10 @@ def recognize_faces_in_video(
 
                 if not bboxes:
                     continue
+
+                for box in bboxes:
+                    x1, y1, x2, y2 = utils.xywh_xyxy(box[:4])
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 1)
     
                 regions = utils.cluster_bboxes_into_regions(
                     bboxes, *resolution
