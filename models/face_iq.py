@@ -86,7 +86,7 @@ class FaceIq:
             employees: Set[str],
             model_name: str = 'VGG-Face',
             detector_backend: str = 'opencv',
-            align: bool = True,
+            align: bool = False,
             expand_percentage: int = 0,
             normalization: str = 'base',
         ) -> List[Dict['str', Any]]:
@@ -96,14 +96,13 @@ class FaceIq:
                 file_hash = image_utils.find_image_hash(employee)
 
                 try:
-                    img_objs = detection.extract_faces(
+                    img_objs = self.detection_pipeline(
                         img_path=employee,
                         detector_backend=detector_backend,
-                        grayscale=False,
-                        enforce_detection=False,
                         align=align,
                         expand_percentage=expand_percentage,
-                        color_face='bgr'
+                        enhance=True,
+                        color_face='bgr'    # `represent` expects images in bgr format
                     )
                 except ValueError as err:
                     print(f'Exception while extracting faces from {employee}: {str(err)}')
@@ -123,7 +122,7 @@ class FaceIq:
                     )
                 else:
                     for i, img_obj in enumerate(img_objs):
-                        img_content = img_obj['face']
+                        img_content = img_obj['face_img']
                         img_region = img_obj['facial_area']
 
                         img_to_save = img_content
@@ -241,7 +240,7 @@ class FaceIq:
             representations += __find_bulk_embeddings(
                 employees=new_images,
                 model_name=model_name,
-                detector_backend='centerface',
+                detector_backend=detector_backend,
                 align=align,
                 expand_percentage=expand_percentage,
                 normalization=normalization,
