@@ -291,7 +291,7 @@ def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
 # Local database:
 
 
-def build_db_schema(db_path='../files/data.db'):
+def build_database(db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -307,7 +307,7 @@ def build_db_schema(db_path='../files/data.db'):
     ''')
 
     cursor.execute('''
-        CREATE TABLE faces (
+        CREATE TABLE IF NOT EXISTS faces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             person INTEGER NOT NULL,
             file TEXT UNIQUE NOT NULL,
@@ -325,11 +325,12 @@ def build_db_schema(db_path='../files/data.db'):
             entry INTEGER, exit INTEGER
         );
     ''')
+
     conn.commit()
     conn.close()
 
 
-def get_shop(db_path):
+def get_shop(db_path='../files/data.db'):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute('''
@@ -517,71 +518,6 @@ def clear_track_info(identifier, db_path='../files/data.db'):
         print(f'Unable to clear track_info: {e}')
 
 
-# ----------------------------------------------------------------------------
-
-
-# API/remote database:
-
-
-def get_api_tokens(credentials=None):
-    if not credentials:
-        email = input('Enter account email: ')
-        password = input('Enter account password: ')
-
-        credentials = {
-            'email': email,
-            'password': password
-        }
-
-    load_dotenv()
-    WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
-    headers = {
-        'x-custom-api-key': WEBAPP_API_KEY,
-        'Content-Type': 'application/json'
-    }
-
-    base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
-    endpoint = 'accounts/login/'
-
-    endpoint_url = base_url + endpoint
-
-    r = requests.post(endpoint_url, json=credentials, headers=headers)
-
-    if r.status_code == 200:
-        access_token = r.json().get('access')
-        refresh_token = r.cookies.get('refresh_token')
-        
-        api_tokens = (access_token, refresh_token)
-    else:
-        api_tokens = (None, None)
-        print(f'Error: {r.status_code}: {r.json()}')
-    
-    return api_tokens
-
-
-def fetch_person_data(shop_uuid, access_token=None, db_path='../files/data.db'):
-    base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
-    endpoint = 'employees-json/'
-
-    endpoint_url = f"{base_url}{endpoint}?shop_uuid={shop_uuid}"
-
-    access_token = access_token or get_api_tokens()[0]
-    headers = {
-        'X-Custom-API-Key': '',
-        'Authorization': f'Bearer {access_token}'
-    }
-
-    r = requests.get(endpoint_url, headers=headers)
-
-    if r.status_code == 200:
-        employee_data = r.json().get('employees', [])
-    else:
-        employee_data = []
-        print(f'Error: {r.status_code}: {r.text}')
-    
-    return employee_data
-
-
 def save_person_data(
         person_data, db_path='../files/data.db', img_dir='../files/input/faces'
     ):
@@ -651,6 +587,79 @@ def save_person_data(
 
     conn.commit()
     conn.close()
+
+
+# ----------------------------------------------------------------------------
+
+
+# API/remote database:
+
+
+def get_api_tokens(credentials=None):
+    if not credentials:
+        email = input('Enter account email: ')
+        password = input('Enter account password: ')
+
+        credentials = {
+            'email': email,
+            'password': password
+        }
+
+    load_dotenv()
+    WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
+    headers = {
+        'x-custom-api-key': WEBAPP_API_KEY,
+        'Content-Type': 'application/json'
+    }
+
+    base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
+    endpoint = 'accounts/login/'
+
+    endpoint_url = base_url + endpoint
+
+    r = requests.post(endpoint_url, json=credentials, headers=headers)
+
+    if r.status_code == 200:
+        access_token = r.json().get('access')
+        refresh_token = r.cookies.get('refresh_token')
+        
+        api_tokens = (access_token, refresh_token)
+    else:
+        api_tokens = (None, None)
+        print(f'Error: {r.status_code}: {r.json()}')
+    
+    return api_tokens
+
+
+def fetch_person_data(
+        shop_uuid: str = None, access_token: str = None, save_data: bool = True,
+        db_path: str = '../files/data.db', img_dir: str = '../files/input/faces'
+    ) -> list:
+
+    if not shop_uuid:
+        shop_uuid, _ = get_shop(db_path=db_path)
+    if not access_token:
+        access_token, _ = get_api_tokens()
+
+    base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
+    endpoint = 'employees-json/'
+
+    endpoint_url = f"{base_url}{endpoint}?shop_uuid={shop_uuid}"
+    headers = {
+        'X-Custom-API-Key': '',
+        'Authorization': f'Bearer {access_token}'
+    }
+    r = requests.get(endpoint_url, headers=headers)
+
+    if r.status_code == 200:
+        person_data = r.json().get('employees', [])
+        if save_data:
+            save_person_data(person_data, db_path=db_path, img_dir=img_dir)
+    else:
+        person_data = []
+        print(f'Error: {r.status_code}: {r.text}')
+    
+    return person_data
 
 
 def get_queue_block(shop_id):
