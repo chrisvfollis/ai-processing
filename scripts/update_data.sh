@@ -4,9 +4,9 @@ if [[ "$1" ]]; then
     SHOP_UUID="$1"
 else
     SHOP_UUID=$(python3 -c "
-    from utilities.io_utils import get_shop
-    print(get_shop()[0])
-    ")
+from utilities.io_utils import get_shop
+print(get_shop()[0])
+")
 fi
 
 
