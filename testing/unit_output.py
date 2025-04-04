@@ -377,7 +377,7 @@ if __name__ == '__main__':
     unit_categorization = sys.argv[1].split('=')
 
     category, subcategory = (
-        unit_categorization if (len(unit_categorization) == 2) else 
+        unit_categorization if (len(unit_categorization) == 2) else
         (unit_categorization[0], None)
     ) 
     

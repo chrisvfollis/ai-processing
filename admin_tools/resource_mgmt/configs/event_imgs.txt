@@ -1,2 +1,0 @@
-REGION=us-west-1
-BUCKET=timemanager-event-imgs
