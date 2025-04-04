@@ -640,13 +640,16 @@ def fetch_person_data(
         shop_uuid, _ = get_shop(db_path=db_path)
     if not access_token:
         access_token, _ = get_api_tokens()
+    
+    load_dotenv()
+    WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
 
     base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
     endpoint = 'employees-json/'
 
     endpoint_url = f"{base_url}{endpoint}?shop_uuid={shop_uuid}"
     headers = {
-        'X-Custom-API-Key': '',
+        'X-Custom-API-Key': WEBAPP_API_KEY,
         'Authorization': f'Bearer {access_token}'
     }
     r = requests.get(endpoint_url, headers=headers)
