@@ -23,152 +23,18 @@ import psutil
 from utilities import utilities as utils
 
 
+# ----------------------------------------------------------------------------
+
+
+# Memory management:
+
+
 def clear_memory():
     import tensorflow as tf
     K = tf.keras.backend
     K.clear_session()
     torch.cuda.empty_cache()
     gc.collect()
-
-
-# ----------------------------------------------------------------------------
-
-
-# File Read/Write Functions:
-
-
-def get_unique_filename(dir_path, base_name):
-    '''Append a number to the filename if it already exists.'''
-
-    filename, ext = os.path.splitext(base_name)
-    counter = 1
-    file_path = os.path.join(dir_path, base_name)
-
-    new_name = base_name
-    while os.path.exists(file_path):
-        new_name = f"{filename}_{counter}{ext}"
-        file_path = os.path.join(dir_path, new_name)
-        counter += 1
-
-    return new_name
-
-
-def get_latest_file(dir_path, base_name):
-    '''Find the latest version of a file by checking for appended digits.'''
-
-    filename, ext = os.path.splitext(base_name)
-    pattern = re.compile(re.escape(filename) + r'(?:_(\d+))?' + re.escape(ext) + '$')
-
-    latest_version = -1
-    latest_file = None
-
-    for f in os.listdir(dir_path):
-        match = pattern.match(f)
-        if match:
-            version = int(match.group(1)) if match.group(1) is not None else 0
-            if version > latest_version:
-                latest_version = version
-                latest_file = f
-
-    return latest_file
-
-
-def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
-    if img is None:
-        return None
-    object_key = f'{uuid.uuid4()}.jpg'
-    file_path = os.path.join(img_dir, object_key)
-    cv2.imwrite(file_path, img)
-    try:
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=credentials[0],
-            aws_secret_access_key=credentials[1],
-            region_name='us-west-1'
-        )
-        bucket_name = 'timemanager-event-imgs'
-        s3_client.upload_file(file_path, bucket_name, object_key)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-    except (EndpointConnectionError, NoCredentialsError) as e:
-        pass
-
-    return object_key
-
-
-def write_embeddings(hdf5_file, embeddings, frames, box_indices):
-    embeddings_array = np.stack(embeddings)
-    embeddings_dataset = hdf5_file['embeddings']
-
-    frames = np.array(frames)
-    frames_dataset = hdf5_file['frames']
-
-    box_indices = np.array(box_indices)
-    box_indices_dataset = hdf5_file['box_indices']
-
-    new_size = embeddings_dataset.shape[0] + embeddings_array.shape[0]
-
-    embeddings_dataset.resize(new_size, axis=0)
-    frames_dataset.resize(new_size, axis=0)
-    box_indices_dataset.resize(new_size, axis=0)
-
-    embeddings_dataset[-embeddings_array.shape[0]:] = embeddings_array
-    frames_dataset[-frames.shape[0]:] = frames
-    box_indices_dataset[-box_indices.shape[0]:] = box_indices
-
-
-def read_embeddings(hdf5_file, target_frame, device):
-    with h5py.File(hdf5_file, 'r') as file:
-        frames = file['frames'][:]
-
-        indices = np.where(frames == target_frame)[0]
-        if len(indices) == 0:
-            print(f"Found 0 indices for frame {target_frame}")
-
-        target_embeddings = file['embeddings'][sorted(indices)]
-        target_embeddings = torch.from_numpy(target_embeddings).to(device)
-
-        return target_embeddings
-
-
-def delete_local_files(identifier, file_types='any',
-                 paths=['../files/input', '../files/output',
-                        '../files/output/event_imgs']):
-    def _parse_name_and_extension(file):
-        file_parts = [x for x in file.rsplit('.', 1)]
-
-        name = file_parts[0]
-        extension = (
-            file_parts[-1] if len(file_parts) == 2 else ''
-        )
-    
-        return name, extension
-
-    n_deleted = 0
-    for path in paths:
-        if not os.path.exists(path):
-            print(f'Skipping non-existent path: {path}')
-            continue
-        for result in os.listdir(path):
-            full_path = os.path.join(path, result)
-            if not os.path.isfile(full_path):
-                continue
-            elif full_path.endswith('.pkl'):
-                continue
-            
-            file_name, file_extension = _parse_name_and_extension(result)
-            if (
-                ((identifier == 'all') or (file_name.startswith(identifier))) and
-                ((file_types == 'any') or (file_extension in file_types))
-            ):
-                try:
-                    os.remove(full_path)
-                    n_deleted += 1
-                except Exception as e:
-                    print(f'Error deleting {full_path}: {e}')
-
-    print(f'Deleted {n_deleted} files')
-    return True
 
 
 def cleanup_semaphores():
@@ -227,6 +93,159 @@ def cleanup_semaphores():
         print(f'Error checking SysV semaphores: {e}')
 
 
+# ----------------------------------------------------------------------------
+
+
+# Local files:
+
+
+def get_unique_filename(dir_path, base_name):
+    '''Append a number to the filename if it already exists.'''
+
+    filename, ext = os.path.splitext(base_name)
+    counter = 1
+    file_path = os.path.join(dir_path, base_name)
+
+    new_name = base_name
+    while os.path.exists(file_path):
+        new_name = f"{filename}_{counter}{ext}"
+        file_path = os.path.join(dir_path, new_name)
+        counter += 1
+
+    return new_name
+
+
+def get_latest_file(dir_path, base_name):
+    '''Find the latest version of a file by checking for appended digits.'''
+
+    filename, ext = os.path.splitext(base_name)
+    pattern = re.compile(re.escape(filename) + r'(?:_(\d+))?' + re.escape(ext) + '$')
+
+    latest_version = -1
+    latest_file = None
+
+    for f in os.listdir(dir_path):
+        match = pattern.match(f)
+        if match:
+            version = int(match.group(1)) if match.group(1) is not None else 0
+            if version > latest_version:
+                latest_version = version
+                latest_file = f
+
+    return latest_file
+
+
+def delete_local_files(identifier, file_types='any',
+                 paths=['../files/input', '../files/output',
+                        '../files/output/event_imgs']):
+    def _parse_name_and_extension(file):
+        file_parts = [x for x in file.rsplit('.', 1)]
+
+        name = file_parts[0]
+        extension = (
+            file_parts[-1] if len(file_parts) == 2 else ''
+        )
+    
+        return name, extension
+
+    n_deleted = 0
+    for path in paths:
+        if not os.path.exists(path):
+            print(f'Skipping non-existent path: {path}')
+            continue
+        for result in os.listdir(path):
+            full_path = os.path.join(path, result)
+            if not os.path.isfile(full_path):
+                continue
+            elif full_path.endswith('.pkl'):
+                continue
+            
+            file_name, file_extension = _parse_name_and_extension(result)
+            if (
+                ((identifier == 'all') or (file_name.startswith(identifier))) and
+                ((file_types == 'any') or (file_extension in file_types))
+            ):
+                try:
+                    os.remove(full_path)
+                    n_deleted += 1
+                except Exception as e:
+                    print(f'Error deleting {full_path}: {e}')
+
+    print(f'Deleted {n_deleted} files')
+    return True
+
+
+def write_embeddings(hdf5_file, embeddings, frames, box_indices):
+    embeddings_array = np.stack(embeddings)
+    embeddings_dataset = hdf5_file['embeddings']
+
+    frames = np.array(frames)
+    frames_dataset = hdf5_file['frames']
+
+    box_indices = np.array(box_indices)
+    box_indices_dataset = hdf5_file['box_indices']
+
+    new_size = embeddings_dataset.shape[0] + embeddings_array.shape[0]
+
+    embeddings_dataset.resize(new_size, axis=0)
+    frames_dataset.resize(new_size, axis=0)
+    box_indices_dataset.resize(new_size, axis=0)
+
+    embeddings_dataset[-embeddings_array.shape[0]:] = embeddings_array
+    frames_dataset[-frames.shape[0]:] = frames
+    box_indices_dataset[-box_indices.shape[0]:] = box_indices
+
+
+def read_embeddings(hdf5_file, target_frame, device):
+    with h5py.File(hdf5_file, 'r') as file:
+        frames = file['frames'][:]
+
+        indices = np.where(frames == target_frame)[0]
+        if len(indices) == 0:
+            print(f"Found 0 indices for frame {target_frame}")
+
+        target_embeddings = file['embeddings'][sorted(indices)]
+        target_embeddings = torch.from_numpy(target_embeddings).to(device)
+
+        return target_embeddings
+
+
+def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
+    if img is None:
+        return None
+    object_key = f'{uuid.uuid4()}.jpg'
+    file_path = os.path.join(img_dir, object_key)
+    cv2.imwrite(file_path, img)
+    try:
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=credentials[0],
+            aws_secret_access_key=credentials[1],
+            region_name='us-west-1'
+        )
+        bucket_name = 'timemanager-event-imgs'
+        s3_client.upload_file(file_path, bucket_name, object_key)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except (EndpointConnectionError, NoCredentialsError) as e:
+        pass
+
+    return object_key
+
+
+# ----------------------------------------------------------------------------
+
+
+# Remote files:
+
+
+def get_aws_creds():
+    load_dotenv()
+    access_key = os.environ.get('AWS_ACCESS_KEY')
+    secret_key = os.environ.get('AWS_SECRET_KEY')
+    return [access_key, secret_key]
+
+
 def download_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
     s3 = boto3.client(
         's3',
@@ -266,17 +285,10 @@ def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
         return False
 
 
-def get_aws_creds():
-    load_dotenv()
-    access_key = os.environ.get('AWS_ACCESS_KEY')
-    secret_key = os.environ.get('AWS_SECRET_KEY')
-    return [access_key, secret_key]
-
-
 # ----------------------------------------------------------------------------
 
 
-# Local Database Functions:
+# Local database:
 
 
 def build_db_schema(db_path='../files/data.db'):
@@ -298,7 +310,7 @@ def build_db_schema(db_path='../files/data.db'):
         CREATE TABLE faces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             person INTEGER NOT NULL,
-            file TEXT NOT NULL,
+            file TEXT UNIQUE NOT NULL,
             FOREIGN KEY (person) REFERENCES people (id) ON DELETE CASCADE
         );
     ''')
@@ -508,7 +520,137 @@ def clear_track_info(identifier, db_path='../files/data.db'):
 # ----------------------------------------------------------------------------
 
 
-# Remote Database Functions:
+# API/remote database:
+
+
+def get_api_tokens(credentials=None):
+    if not credentials:
+        email = input('Enter account email: ')
+        password = input('Enter account password: ')
+
+        credentials = {
+            'email': email,
+            'password': password
+        }
+
+    load_dotenv()
+    WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
+    headers = {
+        'x-custom-api-key': WEBAPP_API_KEY,
+        'Content-Type': 'application/json'
+    }
+
+    base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
+    endpoint = 'accounts/login/'
+
+    endpoint_url = base_url + endpoint
+
+    r = requests.post(endpoint_url, json=credentials, headers=headers)
+
+    if r.status_code == 200:
+        access_token = r.json().get('access')
+        refresh_token = r.cookies.get('refresh_token')
+        
+        api_tokens = (access_token, refresh_token)
+    else:
+        api_tokens = (None, None)
+        print(f'Error: {r.status_code}: {r.json()}')
+    
+    return api_tokens
+
+
+def fetch_person_data(shop_uuid, access_token=None, db_path='../files/data.db'):
+    base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
+    endpoint = 'employees-json/'
+
+    endpoint_url = f"{base_url}{endpoint}?shop_uuid={shop_uuid}"
+
+    access_token = access_token or get_api_tokens()[0]
+    headers = {
+        'X-Custom-API-Key': '',
+        'Authorization': f'Bearer {access_token}'
+    }
+
+    r = requests.get(endpoint_url, headers=headers)
+
+    if r.status_code == 200:
+        employee_data = r.json().get('employees', [])
+    else:
+        employee_data = []
+        print(f'Error: {r.status_code}: {r.text}')
+    
+    return employee_data
+
+
+def save_person_data(
+        person_data, db_path='../files/data.db', img_dir='../files/input/faces'
+    ):
+    def _format_filename(img_url):
+        filename = img_url.rsplit('/', 1)[1]    # remove bucket/folder info
+        return '.'.join(filename.rsplit('_', 1)[:2])    # format file extension
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    column_names__people = [
+        'first_name',
+        'last_name',
+        'designation',
+        'identity_uuid',
+        'shop_uuid',
+    ]
+    update_clause__people = ", ".join([
+        f"{col}=excluded.{col}" for col in column_names__people
+        if col != 'identity_uuid'
+    ])
+    insert_query__people = f'''
+        INSERT INTO people ({", ".join(column_names__people)})
+        VALUES ({", ".join(["?"] * len(column_names__people))})
+        ON CONFLICT(identity_uuid) DO UPDATE SET
+            {update_clause__people}
+        RETURNING id
+    '''
+    column_names__faces = [
+        'person',
+        'file',
+    ]
+    insert_query__faces = f'''
+        INSERT OR IGNORE INTO faces ({", ".join(column_names__faces)})
+        VALUES ({", ".join(["?"] * len(column_names__faces))})
+    '''
+
+    for person in person_data:
+        cursor.execute(insert_query__people, (
+            person['first_name'], person['last_name'],
+            'tracked_employee' if person['is_active'] else 'untracked',
+            person['uuid'], person['shop_uuid'],
+        ))
+        person_id = cursor.fetchone()[0]
+
+        img_urls = [
+            person['front_image'],
+            person['left_image'],
+            person['right_image'],
+        ]
+        for img_url in img_urls:
+            r = requests.get(img_url)
+            if r.status_code == 200:
+                filename = _format_filename(img_url)
+                
+                cursor.execute(insert_query__faces, (person_id, filename))
+                output_path = os.path.join(img_dir, filename)
+
+                if os.path.exists(output_path):
+                    print('Image already saved')
+                    continue
+                
+                with open(output_path, 'wb') as file:
+                    file.write(r.content)
+            else:
+                print(f'Error: {r.status_code}: {r.json()}')
+
+    conn.commit()
+    conn.close()
 
 
 def get_queue_block(shop_id):
@@ -575,9 +717,9 @@ def clear_queue_block(shop_id, timestamp):
     response = requests.post(endpoint_url, headers=headers, json=payload)
 
     if response.status_code == 200:
-        print("Successfully cleared queue block")
+        print('Successfully cleared queue block')
     else:
-        print(f"Failed posting to internal API: {response.text}")
+        print(f'Failed posting to internal API: {response.text}')
         print(response.status_code) 
 
 
@@ -585,8 +727,8 @@ def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
     def _merge_tracks(df, max_continuation_gap=75):
         merged = []
         for identity, group in df.groupby('identity'):
-            if identity == "":
-                merged.extend(group.to_dict(orient="records"))
+            if identity == '':
+                merged.extend(group.to_dict(orient='records'))
                 continue
 
             group = group.sort_values('start_frame').reset_index(drop=True)

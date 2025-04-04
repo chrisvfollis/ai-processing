@@ -598,7 +598,6 @@ class FaceIq:
     ) -> List[Dict[str, Any]]:
 
         resp_objs = []
-
         img, img_name = image_utils.load_image(img_path)
 
         if img is None:
