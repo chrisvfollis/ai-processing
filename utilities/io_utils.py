@@ -285,6 +285,33 @@ def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
         return False
 
 
+def download_s3_image(object_key, credentials, img_dir='../files/input',
+                      bucket_name='ivakt-employee-photos'):
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=credentials[0],
+        aws_secret_access_key=credentials[1],
+        region_name='us-west-1'
+    )
+
+    filename = object_key.split('/')[-1]
+    output_path = os.path.join(img_dir, filename)
+
+    try:
+        if os.path.exists(output_path):
+            print('Image already saved')
+            return False
+        
+        s3.download_file(bucket_name, object_key, output_path)
+        print(f'Downloaded {object_key}')
+        return True
+    except Exception as e:
+        print(f"Failed to download {object_key}: {e}")
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        return False
+
+
 # ----------------------------------------------------------------------------
 
 
@@ -573,21 +600,13 @@ def save_person_data(
             person['right_image'],
         ]
         for img_url in img_urls:
-            r = requests.get(img_url)
-            if r.status_code == 200:
-                filename = _format_filename(img_url)
-                
-                cursor.execute(insert_query__faces, (person_id, filename))
-                output_path = os.path.join(img_dir, filename)
+            object_key = img_url.lsplit('/', 1)[-1]
+            filename = _format_filename(img_url)
+            
+            cursor.execute(insert_query__faces, (person_id, filename))
 
-                if os.path.exists(output_path):
-                    print('Image already saved')
-                    continue
-                
-                with open(output_path, 'wb') as file:
-                    file.write(r.content)
-            else:
-                print(f'Error: {r.status_code}: {r.text}')
+            credentials = get_aws_creds()
+            download_s3_image(object_key, credentials, img_dir=img_dir)
 
     conn.commit()
     conn.close()
