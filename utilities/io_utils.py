@@ -285,7 +285,7 @@ def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
         return False
 
 
-def download_s3_image(object_key, credentials, img_dir='../files/input',
+def download_s3_image(object_key, credentials, filename=None, img_dir='../files/input',
                       bucket_name='ivakt-employee-photos'):
     s3 = boto3.client(
         's3',
@@ -294,7 +294,8 @@ def download_s3_image(object_key, credentials, img_dir='../files/input',
         region_name='us-west-1'
     )
 
-    filename = object_key.split('/')[-1]
+    if not filename:
+        filename = object_key.split('/')[-1]
     output_path = os.path.join(img_dir, filename)
 
     try:
@@ -606,7 +607,8 @@ def save_person_data(
             cursor.execute(insert_query__faces, (person_id, filename))
 
             credentials = get_aws_creds()
-            download_s3_image(object_key, credentials, img_dir=img_dir)
+            download_s3_image(object_key, credentials, filename=filename,
+                              img_dir=img_dir)
 
     conn.commit()
     conn.close()
