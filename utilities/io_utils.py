@@ -556,9 +556,13 @@ def save_person_data(
     '''
 
     for person in person_data:
+        if 'is_active' in person:
+            designation = 'tracked_employee' if person['is_active'] else 'untracked'
+        else:
+            designation = 'tracked_employee'
         cursor.execute(insert_query__people, (
             person['first_name'], person['last_name'],
-            'tracked_employee' if person['is_active'] else 'untracked',
+            designation,
             person['uuid'], person['shop_uuid'],
         ))
         person_id = cursor.fetchone()[0]
