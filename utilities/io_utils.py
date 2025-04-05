@@ -6,6 +6,7 @@ import getpass
 import subprocess
 import gc
 import uuid
+from urllib.parse import urlparse
 
 # 3rd-party dependencies
 import numpy as np
@@ -601,14 +602,16 @@ def save_person_data(
             person['right_image'],
         ]
         for img_url in img_urls:
-            object_key = img_url.lsplit('/', 1)[-1]
+            credentials = get_aws_creds()
+
+            parsed = urlparse(img_url)
+            object_key = parsed.path.lstrip('/')
             filename = _format_filename(img_url)
             
             cursor.execute(insert_query__faces, (person_id, filename))
-
-            credentials = get_aws_creds()
-            download_s3_image(object_key, credentials, filename=filename,
-                              img_dir=img_dir)
+            download_s3_image(
+                object_key, credentials, filename=filename, img_dir=img_dir
+            )
 
     conn.commit()
     conn.close()
