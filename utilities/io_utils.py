@@ -587,7 +587,7 @@ def save_person_data(
                 with open(output_path, 'wb') as file:
                     file.write(r.content)
             else:
-                print(f'Error: {r.status_code}: {r.json()}')
+                print(f'Error: {r.status_code}: {r.text}')
 
     conn.commit()
     conn.close()
