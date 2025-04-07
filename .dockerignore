@@ -3,6 +3,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+**/__pycache__/
+**/__pypackages__/
+**/.ipynb_checkpoints/
 
 # Virtual environments
 .venv/
@@ -24,6 +28,28 @@ Pipfile.lock
 # Secrets / config
 .env
 .env.*
+*.pem
 
 # System configuration
 *.service
+
+
+# Content files
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+*.png
+*.PNG
+*.mp4
+*.MP4
+
+*.csv
+*.xlsx
+*.xls
+*.db
+
+*.pkl
+*.hdf5
+
+*.log
