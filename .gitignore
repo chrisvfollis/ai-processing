@@ -9,6 +9,10 @@
 *.png
 *.jpeg
 *.jpg
+*.JPG
+*.JPEG
+*.PNG
+*.MP4
 
 scratch.py
 
