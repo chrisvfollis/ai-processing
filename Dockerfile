@@ -40,7 +40,7 @@ RUN apt-get update && xargs -a installed-packages.txt apt-get install -y && rm -
 
 # Install python dependencies
 COPY requirements.txt dev-requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -r dev-requirements.txt
+RUN pip install --no-cache-dir --ignore-installed -r requirements.txt -r dev-requirements.txt
 
 # Copy source code last to optimize layer caching
 COPY . .
