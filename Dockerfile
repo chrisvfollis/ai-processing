@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 # Set python and pip symlinks
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
  && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
- && python -m ensurepip --upgrade \
+ && ln -s /usr/bin/pip3 /usr/bin/pip \
  && pip install --upgrade pip
 
 WORKDIR /app
