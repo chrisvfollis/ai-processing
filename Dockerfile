@@ -26,6 +26,14 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON
 
 WORKDIR /app
 
+# Add the CUDA keyring and NVIDIA repository
+RUN apt-get update && \
+    apt-get install -y curl gnupg && \
+    curl -fsSL https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb -o cuda-keyring.deb && \
+    dpkg -i cuda-keyring.deb && \
+    rm cuda-keyring.deb && \
+    apt-get update
+
 # Install additional system packages
 COPY installed-packages.txt .
 RUN apt-get update && xargs -a installed-packages.txt apt-get install -y && rm -rf /var/lib/apt/lists/*
