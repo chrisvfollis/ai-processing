@@ -14,6 +14,8 @@ docker run -d \
   --gpus all \
   --restart unless-stopped \
   -v /var/log/$CONTAINER_NAME:/app/logs \
+  --log-opt max-size=25m \
+  --log-opt max-file=4 \
   $IMAGE_NAME
 
 echo "Container '$CONTAINER_NAME' is up and running"

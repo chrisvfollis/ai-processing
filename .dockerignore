@@ -44,10 +44,11 @@ Pipfile.lock
 *.mp4
 *.MP4
 
+*.db
 *.csv
 *.xlsx
 *.xls
-*.db
+*.txt
 
 *.pkl
 *.hdf5
