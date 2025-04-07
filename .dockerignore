@@ -1,0 +1,29 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+
+# Unused dependency formats
+Pipfile
+Pipfile.lock
+
+# Secrets / config
+.env
+.env.*
+
+# System configuration
+*.service
