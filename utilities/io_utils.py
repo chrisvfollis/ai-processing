@@ -350,6 +350,13 @@ def build_database(db_path='../files/data.db'):
         );
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS shop (
+            uuid TEXT PRIMARY KEY,
+            shop_name TEXT NOT NULL
+        );    
+    ''')
+
     conn.commit()
     conn.close()
 

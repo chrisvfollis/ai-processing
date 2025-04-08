@@ -5,3 +5,4 @@ libzmq3-dev
 libnvidia-container-tools
 libnvidia-container1
 nvidia-container-toolkit
+cuda-toolkit-12-1

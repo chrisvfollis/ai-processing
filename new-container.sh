@@ -22,6 +22,7 @@ docker run -d \
   --restart unless-stopped \
   -v /var/log/$CONTAINER_NAME:/app/logs \
   -v timemanager-data:/app/files \
+  -v /home/ubuntu/.deepface:/home/ubuntu/.deepface \
   --log-opt max-size=25m \
   --log-opt max-file=4 \
   $IMAGE_NAME
