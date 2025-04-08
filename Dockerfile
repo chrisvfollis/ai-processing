@@ -24,6 +24,11 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON
  && [ -e /usr/bin/pip ] || ln -s /usr/bin/pip3 /usr/bin/pip \
  && pip install --upgrade pip
 
+# Create non-root app user called 'ubuntu' with UID 1000 (aligns with typical
+# host UID to ensure copied files from outside the base image don't introduce
+# permission mismatches):
+RUN useradd -u 1000 -ms /bin/bash ubuntu
+
 WORKDIR /app
 
 # Add the CUDA keyring and NVIDIA repository
@@ -46,6 +51,13 @@ RUN pip install --no-cache-dir --ignore-installed -r requirements.txt -r dev-req
 COPY . .
 RUN pip install --no-cache-dir -e .
 
+# Assign ownership of /app to the app user with all-access permissions to
+# the contents:
+RUN chown -R ubuntu:ubuntu /app && chmod -R u+rwX /app
+
 ENV PATH="/app/scripts:${PATH}"
+
+# Switch to the app user:
+USER ubuntu
 
 CMD ["python3", "execution/main.py"]
