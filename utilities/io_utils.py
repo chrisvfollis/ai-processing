@@ -721,20 +721,21 @@ def get_queue_block(shop_id):
 
     try:
         response = requests.get(endpoint_url, headers=headers, params=params)
-        data = response.json()
+        response.raise_for_status()
+        try:
+            data = response.json()
+        except ValueError:
+            print(f"Invalid JSON response: {response.text}")
+            return False
 
-        queue_block = data.get('results', [])
-        if len(queue_block) == 0:
+        queue_block = data.get('results')
+        if not queue_block:
             print('No clips in the queue')
             return None
-        else:
-            return queue_block
+        return queue_block
 
     except requests.exceptions.RequestException as e:
         print(f'Error making request: {e}')
-        return False
-    except Exception as e:
-        print(f'Unexpected error: {e}')
         return False
 
 
