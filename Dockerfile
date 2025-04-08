@@ -60,4 +60,6 @@ ENV PATH="/app/scripts:${PATH}"
 # Switch to the app user:
 USER ubuntu
 
-CMD ["python3", "execution/main.py"]
+WORKDIR /app/execution
+
+CMD ["python3", "main.py"]

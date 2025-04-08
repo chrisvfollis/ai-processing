@@ -157,8 +157,6 @@ if __name__ == '__main__':
         , ('Facenet512', 'centerface_gpu')
     ]
 
-    print("CWD:", os.getcwd())  # [DEBUG]: container path issue
-
     credentials = io_utils.get_aws_creds()
     shop_id, _ = io_utils.get_shop('../files/data.db')
 
