@@ -126,6 +126,9 @@ def run_master_process(device, model_info, shop_id, credentials):
 
         time_logger, stop_timing = utils.observability_thread('elapsed_time')
         time_logger.start()
+        
+        print("Preparing to create multiprocessing pool...")
+        sys.stdout.flush()
 
         tasks = [(row, model_info, device, credentials) for row in queue_block]
         with multiprocessing.Pool(processes=3) as pool:
@@ -140,8 +143,18 @@ def run_master_process(device, model_info, shop_id, credentials):
                 'failed_workers', args=(pool, initial_pids, async_results)
             )
             worker_monitor.start()
-            
+
+            print("Waiting for async results...")
+            sys.stdout.flush()
+
             async_results.get()
+
+            print("All async results returned.")
+            sys.stdout.flush()
+
+
+        print("Exited multiprocessing pool block.")
+        sys.stdout.flush()
 
         _finalize(shop_id, queue_block)
         stop_timing.set()
