@@ -5,23 +5,19 @@ set -e
 IMAGE_NAME="timemanager-image"
 CONTAINER_NAME="timemanager-app"
 
-# [Optional] pass --build to force rebuild:
-if [[ "$1" == "--build" ]]; then
-  docker build -t $IMAGE_NAME .
+# Check container status:
+STATUS=$(docker inspect -f '{{.State.Status}}' $CONTAINER_NAME 2>/dev/null || echo "not_found")
+
+if [[ "$STATUS" == "exited" || "$STATUS" == "paused" ]]; then
+  echo "Starting up '$CONTAINER_NAME' container..."
+  docker start $CONTAINER_NAME
+elif [[ "$STATUS" == "running" ]]; then
+  echo "'$CONTAINER_NAME' is already running. Restarting container..."
+  docker restart $CONTAINER_NAME
+else
+  echo "'$CONTAINER_NAME' container does not exist"
+  exit 1
 fi
 
-# Remove any stale containers:
-docker rm -f $CONTAINER_NAME 2>/dev/null || true
-
-# Run the container:
-docker run -d \
-  --name $CONTAINER_NAME \
-  --gpus all \
-  --restart unless-stopped \
-  -v /var/log/$CONTAINER_NAME:/app/logs \
-  --log-opt max-size=25m \
-  --log-opt max-file=4 \
-  $IMAGE_NAME
-
-echo "Container '$CONTAINER_NAME' is up and running"
-echo "Logs: /var/log/$CONTAINER_NAME/app.log"
+echo -e "'$CONTAINER_NAME' container is up and running...\n"
+echo -e "Logs are located at /var/log/$CONTAINER_NAME/app.log"
