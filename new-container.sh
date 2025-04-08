@@ -8,6 +8,8 @@ CONTAINER_NAME="timemanager-app"
 # [Optional] pass --build to force rebuild:
 if [[ "$1" == "--build" ]]; then
   docker build --no-cache -t $IMAGE_NAME .
+elif [[ "$1" == "--update" ]]; then
+  docker build -t $IMAGE_NAME .
 fi
 
 # Remove any stale containers:
@@ -19,6 +21,7 @@ docker run -d \
   --gpus all \
   --restart unless-stopped \
   -v /var/log/$CONTAINER_NAME:/app/logs \
+  -v timemanager-data:/app/files \
   --log-opt max-size=25m \
   --log-opt max-file=4 \
   $IMAGE_NAME
