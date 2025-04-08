@@ -7,7 +7,7 @@ CONTAINER_NAME="timemanager-app"
 
 # [Optional] pass --build to force rebuild:
 if [[ "$1" == "--build" ]]; then
-  docker build -t $IMAGE_NAME .
+  docker build --no-cache -t $IMAGE_NAME .
 fi
 
 # Remove any stale containers:
@@ -23,5 +23,5 @@ docker run -d \
   --log-opt max-file=4 \
   $IMAGE_NAME
 
-echo -e "'$CONTAINER_NAME' container is up and running...\n"
+echo -e "$CONTAINER_NAME container is up and running...\n"
 echo -e "Logs are located at /var/log/$CONTAINER_NAME/app.log"

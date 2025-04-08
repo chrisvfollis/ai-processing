@@ -7,15 +7,19 @@ CONTAINER_NAME="timemanager-app"
 
 # Check container status:
 STATUS=$(docker inspect -f '{{.State.Status}}' $CONTAINER_NAME 2>/dev/null || echo "not_found")
+IS_RESTARTING=$(docker inspect -f '{{.State.Restarting}}' $CONTAINER_NAME 2>/dev/null || echo "false")
 
 if [[ "$STATUS" == "exited" || "$STATUS" == "paused" ]]; then
-  echo "Starting up '$CONTAINER_NAME' container..."
+  echo "Starting up $CONTAINER_NAME container..."
   docker start $CONTAINER_NAME
 elif [[ "$STATUS" == "running" ]]; then
-  echo "'$CONTAINER_NAME' is already running. Restarting container..."
+  echo "$CONTAINER_NAME is already running. Restarting container..."
   docker restart $CONTAINER_NAME
-else
-  echo "'$CONTAINER_NAME' container does not exist"
+elif [[ "$IS_RESTARTING" == "true" ]]; then
+  echo "$CONTAINER_NAME is already restarting, it may be in a crash loop."
+  exit 1
+elif [[ "$STATUS" == "not_found" ]]; then
+  echo "$CONTAINER_NAME container does not exist"
   exit 1
 fi
 
