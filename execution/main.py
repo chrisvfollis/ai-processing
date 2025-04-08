@@ -17,6 +17,10 @@ import tensorflow as tf
 # internal dependencies
 from utilities import io_utils
 from utilities import utilities as utils
+from utilities.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def handle_early_termination(signum, frame):

@@ -56,6 +56,9 @@ RUN pip install --no-cache-dir -e .
 RUN chown -R ubuntu:ubuntu /app && chmod -R u+rwX /app
 
 ENV PATH="/app/scripts:${PATH}"
+ENV TMPDIR=/tmp
+ENV PYTHONUNBUFFERED=1
+
 
 # Switch to the app user:
 USER ubuntu

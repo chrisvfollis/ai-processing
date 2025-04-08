@@ -5,7 +5,6 @@ set -e
 IMAGE_NAME="timemanager-image"
 CONTAINER_NAME="timemanager-app"
 
-# [Optional] pass --build to force rebuild:
 if [[ "$1" == "--build" ]]; then
   docker build --no-cache -t $IMAGE_NAME .
 elif [[ "$1" == "--update" ]]; then
@@ -15,7 +14,7 @@ fi
 # Remove any stale containers:
 docker rm -f $CONTAINER_NAME 2>/dev/null || true
 
-# Create and start the container:
+# Create and start the new container:
 docker run -d \
   --name $CONTAINER_NAME \
   --gpus all \
