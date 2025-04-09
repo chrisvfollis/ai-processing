@@ -40,11 +40,11 @@ RUN apt-get update && \
     apt-get update
 
 # Install additional system packages
-COPY installed-packages.txt .
+COPY runtime/docker/gpu/dependencies/installed-packages.txt .
 RUN apt-get update && xargs -a installed-packages.txt apt-get install -y && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-COPY requirements.txt dev-requirements.txt ./
+COPY runtime/docker/gpu/dependencies/requirements.txt runtime/docker/gpu/dependencies/dev-requirements.txt ./
 RUN pip install --no-cache-dir --ignore-installed -r requirements.txt -r dev-requirements.txt
 
 # Copy source code last to optimize layer caching

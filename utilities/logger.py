@@ -38,5 +38,6 @@ logging.basicConfig(
     handlers=[file_handler, stream_handler]
 )
 
+
 def get_logger(name=None):
     return logging.getLogger(name or __name__)

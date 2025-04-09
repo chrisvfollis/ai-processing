@@ -1,43 +1,41 @@
 # ============================================================================
-# Content files:
+#                         - SECRETS, KEYS, ETC -
 # ----------------------------------------------------------------------------
-*.log
 
-*.jpg
-*.jpeg
-*.JPG
-*.JPEG
-*.png
-*.PNG
-*.mp4
-*.MP4
+# SECRETS - ENV FILES
+.env
+.env.*
 
-*.pkl
-*.hdf5
+# KEYS - GENERAL
+*.pem
 
-*.db
-*.csv
-*.xlsx
-*.xls
-*.txt
+# =============================================================================
+#              - SPECIFICATIONS, ENVIRONMENTS, & CONFIGS -
+# -----------------------------------------------------------------------------
+
+# SPECIFICATIONS - CONTAINERIZED RUNTIMES
+runtime/docker/
+
+# SPECIFICATIONS - NATIVE RUNTIMES
+runtime/systemd/
+*Pipfile
+*Pipfile.lock
+
+# ENVIRONMENTS — LOCAL
+.venv/
+env/
+venv/
+
+# CONFIGS - EDITOR/IDE
+.vscode/
+.idea/
+*.swp
 
 # ============================================================================
-# Container dependency file whitelist:
+#                        - ARTIFACTS, CACHES, ETC - 
 # ----------------------------------------------------------------------------
-!installed-packages.txt
-!requirements.txt
-!dev-requirements.txt
 
-# ============================================================================
-# Alternate runtime files:
-# ----------------------------------------------------------------------------
-Pipfile
-Pipfile.lock
-*.service
-
-# ============================================================================
-# Python artifacts:
-# ----------------------------------------------------------------------------
+# ARTIFACTS - PYTHON
 *.pyc
 *.pyo
 *.pyd
@@ -47,28 +45,47 @@ __pycache__/
 **/__pypackages__/
 **/.ipynb_checkpoints/
 
-# ============================================================================
-# Virtual environments:
-# ----------------------------------------------------------------------------
-.venv/
-env/
-venv/
-
-# ============================================================================
-# Editor/IDE files:
-# ----------------------------------------------------------------------------
-.vscode/
-.idea/
-*.swp
-
-# ============================================================================
-# OS files:
-# ----------------------------------------------------------------------------
+# CACHES - OS
 .DS_Store
 
 # ============================================================================
-# Secrets/keys:
+#                           - GENERAL FILES/DATA  -
 # ----------------------------------------------------------------------------
-.env
-.env.*
-*.pem
+
+# MEDIA DATA - IMAGES
+*.jpg
+*.JPG
+*.jpeg
+*.JPEG
+*.png
+*.PNG
+
+# MEDIA DATA - VIDEO
+*.mp4
+*.MP4
+
+# STRUCTURED DATA - TABULAR
+*.db
+*.csv
+*.xlsx
+*.xls
+
+# STRUCTURED DATA - GENERAL
+*.pkl
+*.hdf5
+
+# TEXT DATA - GENERAL
+*.txt
+*.log
+
+# =============================================================================
+#                           + WHITELISTED FILES +
+# -----------------------------------------------------------------------------
+
+# ENV FILES
+!*.env.public
+
+# RUNTIME ENVIRONMENT DEPENDENCIES
+!runtime/docker/gpu/dependencies/installed-packages.txt
+!runtime/docker/gpu/dependencies/requirements.txt
+!runtime/docker/gpu/dependencies/dev-requirements.txt

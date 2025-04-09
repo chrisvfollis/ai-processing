@@ -1,33 +1,91 @@
-*.csv
-*.xlsx
-*.xls
-*.hdf5
-*.db
-*.pkl
+# ============================================================================
+#                         - SECRETS, KEYS, ETC -
+# ----------------------------------------------------------------------------
 
-*.mp4
-*.png
-*.jpeg
-*.jpg
-*.JPG
-*.JPEG
-*.PNG
-*.MP4
-
-scratch.py
-
+# SECRETS - ENV FILES
 .env
+.env.*
+
+# KEYS - GENERAL
 *.pem
 
-.DS_Store
-.idea/
-.vscode/
+# =============================================================================
+#              - SPECIFICATIONS, ENVIRONMENTS, & CONFIGS -
+# -----------------------------------------------------------------------------
 
+# SPECIFICATIONS - NATIVE RUNTIMES
+Pipfile
+Pipfile.lock
+
+# ENVIRONMENTS — LOCAL
+.venv/
+env/
+venv/
+
+# CONFIGS - EDITOR/IDE
+.vscode/
+.idea/
+*.swp
+
+# ============================================================================
+#                        - ARTIFACTS, CACHES, ETC - 
+# ----------------------------------------------------------------------------
+
+# ARTIFACTS - PYTHON
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+__pycache__/
 **/__pycache__/
 **/__pypackages__/
 **/.ipynb_checkpoints/
 
-*.egg-info/
+# CACHES - OS
+.DS_Store
 
-Pipfile
-Pipfile.lock
+# ============================================================================
+#                           - GENERAL FILES/DATA  -
+# ----------------------------------------------------------------------------
+
+# MEDIA DATA - IMAGES
+*.jpg
+*.JPG
+*.jpeg
+*.JPEG
+*.png
+*.PNG
+
+# MEDIA DATA - VIDEO
+*.mp4
+*.MP4
+
+# STRUCTURED DATA - TABULAR
+*.db
+*.csv
+*.xlsx
+*.xls
+
+# STRUCTURED DATA - GENERAL
+*.pkl
+*.hdf5
+
+# TEXT DATA - GENERAL
+*.txt
+*.log
+
+# =============================================================================
+#                           + WHITELISTED FILES +
+# -----------------------------------------------------------------------------
+
+# ENV FILES
+!*.env.public
+
+# RUNTIME ENVIRONMENT DEPENDENCIES
+!runtime/docker/gpu/dependencies/installed-packages.txt
+!runtime/docker/gpu/dependencies/requirements.txt
+!runtime/docker/gpu/dependencies/dev-requirements.txt
+
+!runtime/docker/cpu/dependencies/installed-packages.txt
+!runtime/docker/cpu/dependencies/requirements.txt
+!runtime/docker/cpu/dependencies/dev-requirements.txt
