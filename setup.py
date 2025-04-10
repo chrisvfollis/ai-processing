@@ -10,10 +10,6 @@ from setuptools import setup, find_packages
 pass
 
 
-for script in os.listdir('scripts/'):
-    if script.endswith('.sh'):
-        subprocess.call(['chmod', '+x', os.path.join('scripts', script)])
-
 setup(
     name='ai_processing',
     version='0.1.0',

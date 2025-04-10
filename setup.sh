@@ -7,12 +7,12 @@ set +a
 find . scripts -name "*.sh" -exec chmod +x {} +
 
 # Add shell scripts to PATH:
-EXPORT_S_PATH="export PATH=$SCRIPTS_PATH"
+EXPORT_S_PATH="export PATH=$PATH:$SCRIPTS_PATH"
 
 if ! grep -Fxq "$EXPORT_S_PATH" ~/.bashrc && ! grep -Fxq "$EXPORT_S_PATH" ~/.zshrc; then
     echo "$EXPORT_S_PATH" >> ~/.bashrc
     echo "$EXPORT_S_PATH" >> ~/.zshrc
-    echo "Updated PATH to include project scripts"
+    echo "Appended relevant scripts to PATH "
 fi
 
 # Set machine:
@@ -28,7 +28,16 @@ if [[ $1 == "--use-pipenv" ]]; then
     cp "runtime/native/$MACHINE/Pipfile" Pipfile
     pipenv install
     pipenv run pip install -e .
-    echo "Finished installing environment. To activate, run pipenv shell"
+    printf "\n"
+    echo "Finished installing environment. Next steps:"
+    printf "\n"
+    echo "   1. Source the updated shell configuration file:"
+    echo "      source ~/.bashrc "
+    echo "      # or "
+    echo "      source ~/.zshrc"
+    printf "\n"
+    echo "   2. Activate the virtual environment with \`pipenv shell\`"
+    printf "\n"
 
 elif [[ $1 == "--use-docker" ]]; then
     ./deploy.sh --build
