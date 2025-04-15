@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 
 
 def handle_early_termination(signum, frame):
-    print(f'Received {signum}. Cleaning up...')
+    logger.info(f'Received {signum}. Cleaning up...')
 
     io_utils.clear_track_info('all')
     io_utils.delete_local_files('all')
@@ -45,7 +45,7 @@ def run_processing_pipelines(row, model_info, device, credentials):
                 [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=2048)]
             )
         except RuntimeError as e:
-            print(f"Error configuring TensorFlow GPU memory: {e}")
+            logger.exception(f'Error configuring TensorFlow GPU memory: {e}')
 
     from pipelines.inference import InferencePipeline
     from pipelines.tracking import TrackingPipeline
@@ -56,6 +56,7 @@ def run_processing_pipelines(row, model_info, device, credentials):
     time_prefix, camera = utils.parse_clip_filename(video_file)
 
     if not io_utils.download_s3_footage(object_key, credentials):
+        logger.warning(f'Failed to download footage: {object_key}')
         return False
 
     try:
@@ -86,12 +87,11 @@ def run_processing_pipelines(row, model_info, device, credentials):
             time_prefix, camera, tracking_pipeline.inactive_trks,
             fps=tracking_pipeline.fps
         )
-        print(f"Processed {video_file}")
+        logger.info(f'Processed {video_file}')
         return True
     except Exception as e:
-        print(f'Error: {e}')
-        print(traceback.format_exc())
-        return False
+        logger.exception(f'Error occurred while processing {video_file}')   # logs the traceback automatically, so
+        return False                                                        # no need for traceback.format_exc()
 
 
 def run_master_process(device, model_info, shop_id, credentials):
@@ -130,13 +130,10 @@ def run_master_process(device, model_info, shop_id, credentials):
 
         time_logger, stop_timing = utils.observability_thread('elapsed_time')
         time_logger.start()
-        
-        print("Preparing to create multiprocessing pool...")
-        sys.stdout.flush()
 
         tasks = [(row, model_info, device, credentials) for row in queue_block]
         with multiprocessing.Pool(processes=3) as pool:
-            time.sleep(1)   # Ensure workers have enough time to start
+            time.sleep(1)   # ensure workers have enough time to start
             initial_pids = {p.pid for p in pool._pool if p.is_alive()}
 
             async_results = pool.starmap_async(
@@ -148,17 +145,7 @@ def run_master_process(device, model_info, shop_id, credentials):
             )
             worker_monitor.start()
 
-            print("Waiting for async results...")
-            sys.stdout.flush()
-
             async_results.get()
-
-            print("All async results returned.")
-            sys.stdout.flush()
-
-
-        print("Exited multiprocessing pool block.")
-        sys.stdout.flush()
 
         _finalize(shop_id, queue_block)
         stop_timing.set()
