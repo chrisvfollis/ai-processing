@@ -462,8 +462,6 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
             INSERT INTO track_info (
                 time_prefix, camera,
                 track_id, identity,
-
-                start_frame, end_frame,
                 start_img, end_img,
                 start_time, end_time
             )
@@ -476,8 +474,6 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
         values = (
             time_prefix, camera,
             trk_id, identity,
-
-            start_frame, end_frame,
             start_img, end_img,
             start_time, end_time,
         )
@@ -773,13 +769,12 @@ def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
                 merged.extend(group.to_dict(orient='records'))
                 continue
 
-            group = group.sort_values('start_frame').reset_index(drop=True)
+            group = group.sort_values('start_time').reset_index(drop=True)
             current = group.iloc[0].to_dict()
             for _, row in group.iloc[1:].iterrows():
                 gap = (row['start_time'] - current['end_time']).total_seconds()
 
                 if gap <= max_continuation_gap:
-                    current['end_frame'] = max(current['end_frame'], row['end_frame'])
                     current['end_time'] = max(current['end_time'], row['end_time'])
                     current['end_img'] = row['end_img']
                 else:
@@ -800,9 +795,9 @@ def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
         return None
     
     columns = [
-        'id', 'track_id', 'camera', 'time_prefix', 'identity', 'id_method', 
-        'id_cost', 'start_img', 'end_img', 'id_img', 'start_frame', 
-        'start_time', 'end_frame', 'end_time', 'entry', 'exit', 'designation'
+        'id', 'track_id', 'camera', 'time_prefix', 'identity', 'id_method',
+        'id_cost', 'start_img', 'end_img', 'id_img',  'start_time', 'end_time',
+        'entry', 'exit', 'designation'
     ]
 
     df = pd.DataFrame(results, columns=columns)
