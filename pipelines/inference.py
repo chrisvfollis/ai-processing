@@ -16,6 +16,10 @@ from models.face_iq import FaceIq
 from utilities import utilities as utils
 from utilities import io_utils
 from utilities.utilities import press_stopwatch
+from utilities.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class InferencePipeline:
@@ -80,7 +84,7 @@ class InferencePipeline:
         press_stopwatch(self, 'init_time')
 
     def skim(self):
-        print(f'Skimming...')
+        logger.info(f'Skimming...')
         press_stopwatch(self, 'skim_time')
 
         cap = cv2.VideoCapture(self.video_path)
@@ -95,10 +99,10 @@ class InferencePipeline:
             ret, frame = cap.read()
 
             if (not ret) or (current_frame == prev_frame):
-                print(f'Nothing to process in {self.video_file}')
+                logger.info(f'Nothing to process in {self.video_file}')
                 break
             elif utils.is_grayscale(frame, threshold=10):
-                print(f'Footage too dark in {self.video_file}')
+                logger.info(f'Footage too dark in {self.video_file}')
                 break
 
             if f_num % stride == 0:
@@ -154,7 +158,7 @@ class InferencePipeline:
             
             if self.f_num % self.progress_interval == 0:
                 progress = int(round((self.f_num / self.total_frames) * 100, 0))
-                print(f'{progress}%')
+                logger.info(f'{progress}%')
             
             if (self.f_num % 100) == 0:
                 press_stopwatch(self, 'garbage_collection_time')
@@ -167,7 +171,7 @@ class InferencePipeline:
 
             return (prev_frame, current_frame)
 
-        print(f'Running inference pipeline for {self.video_file}...')
+        logger.info(f'Running inference pipeline for {self.video_file}...')
         press_stopwatch(self, 'primary_run_time')
 
         cap = cv2.VideoCapture(self.video_path)
@@ -188,7 +192,7 @@ class InferencePipeline:
             frame_position = _continue_forward(cap, current_frame)
             del frame
 
-        print(f'Exiting inference run on frame {self.f_num}')
+        logger.info(f'Exiting inference run on frame {self.f_num}')
         cap.release()
 
         if len(self.osnet.embedding_buffer) > 0:
@@ -335,9 +339,9 @@ class InferencePipeline:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
                 config_df.to_excel(writer, sheet_name='Inference Configuration', index=False)
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
-                print(f'Saved inference runtime data to {excel_path}')
+                logger.info(f'Saved inference runtime data to {excel_path}')
         except Exception as e:
-            print(f'Failed to save Excel file: {e}')
+            logger.info(f'Failed to save Excel file: {e}')
 
     def save_inference_data(self, output_dir='../files/output'):
         os.makedirs(output_dir, exist_ok=True)
@@ -353,4 +357,4 @@ class InferencePipeline:
         with open(save_path, "wb") as f:
             pickle.dump(data, f)
 
-        print('Inference data saved')
+        logger.info('Inference data saved')
