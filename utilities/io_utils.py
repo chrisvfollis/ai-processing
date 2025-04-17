@@ -467,7 +467,7 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
             )
             VALUES (
                 ?, ?, ?, ?,
-                ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?,
             )
         '''
 
