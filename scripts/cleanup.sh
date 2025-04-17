@@ -8,3 +8,5 @@ rm -f files/output/videos/*.mp4
 
 sudo journalctl --rotate
 sudo journalctl --vacuum-time=1s
+
+rm -f files/logs/*.log

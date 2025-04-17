@@ -19,6 +19,10 @@ import torch.nn.functional as F
 from utilities import io_utils
 from utilities import utilities as utils
 from utilities.utilities import press_stopwatch
+from utilities.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class TrackingPipeline:
@@ -186,11 +190,11 @@ class TrackingPipeline:
             press_stopwatch(self, 'read_embeddings')
 
             if not (conf_mask.shape[0] == embeddings.shape[0]):
-                print(f'detections shape: {detections.shape}')
+                logger.warning(f'detections shape: {detections.shape}')
                 for detection in detections:
-                    print(f'detection: {detection}')
-                print(f'conf_mask shape: {conf_mask.shape}')
-                print(f'embeddings shape: {embeddings.shape}')
+                    logger.warning(f'detection: {detection}')
+                logger.warning(f'conf_mask shape: {conf_mask.shape}')
+                logger.warning(f'embeddings shape: {embeddings.shape}')
 
             detections = detections[conf_mask].tolist()
 
@@ -317,7 +321,7 @@ class TrackingPipeline:
                                     orig_col = np.where(viable_cols)[0][j]
                                     assignments_dict[orig_row] = orig_col
                             except ValueError:
-                                print('No feasible measurement assignments')
+                                logger.warning('No feasible measurement assignments')
 
                 return assignments_dict
             
@@ -419,7 +423,7 @@ class TrackingPipeline:
         press_stopwatch(self, 'primary_run_time')
 
         if not prior_pipeline:
-            print(f"Running tracking pipeline for {self.video_file}...")
+            logger.info(f"Running tracking pipeline for {self.video_file}...")
         
         memory_snapshot = utils.memory_usage('allocation_lines')
         threshold = memory_snapshot * 1.5
@@ -669,7 +673,7 @@ class TrackingPipeline:
                         matrix[:, id_idx] = float('inf')
                         matrix[trk_idx, id_idx] = 0
                     except ValueError:
-                        print("Non-overlapping identity")
+                        logger.warning('Non-overlapping identity')
                         continue
             return matrix
         
@@ -757,7 +761,7 @@ class TrackingPipeline:
                                             identities[orig_col]
                                         )
                                 except ValueError:
-                                    print('No feasible identity assignments')
+                                    logger.warning('No feasible identity assignments')
     
                 if cost < min_cost:
                     min_cost = cost
@@ -884,7 +888,7 @@ class TrackingPipeline:
                     try:
                         bbox = trk.states[f]
                     except KeyError:
-                        print(f'No detection or state for frame {f}')
+                        logger.warning(f'No detection or state for frame {f}')
                         continue
 
                     w = bbox[2]
@@ -897,8 +901,8 @@ class TrackingPipeline:
                 try:
                     x, y, w, h = map(int, bbox[:4])
                 except TypeError:
-                    print('Invalid bbox:')
-                    print(bbox)
+                    logger.warning('Invalid bbox:')
+                    logger.warning(bbox)
                     continue
 
                 cap.set(cv2.CAP_PROP_POS_FRAMES, f)
@@ -921,7 +925,7 @@ class TrackingPipeline:
         os.makedirs(output_dir, exist_ok=True)
         file_prefix = self.video_file.split('.')[0]
 
-        print(f'{len(self.active_trks.keys())} tracks saved to be continued')
+        logger.info(f'{len(self.active_trks.keys())} tracks saved to be continued')
 
         save_path = os.path.join(output_dir, f'{file_prefix}.pkl')
 
@@ -935,7 +939,7 @@ class TrackingPipeline:
                 os.remove(prior_path)
         press_stopwatch(self, 'pkl_io')
 
-        print('Tracking pipeline saved')
+        logger.info('Tracking pipeline saved')
 
     def save_runtime_data(self, output_dir='../files/output/runtime_data'):
         commit_hash, commit_datetime = utils.get_git_commit_info()
@@ -1083,12 +1087,12 @@ class TrackingPipeline:
                 cost_method_df.to_excel(writer, sheet_name='Association Data', index=False)
                 config_df.to_excel(writer, sheet_name='Configuration', index=False)
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
-                print(f'Saved tracking runtime data to {excel_path}')
+                logger.info(f'Saved tracking runtime data to {excel_path}')
         except Exception as e:
-            print(f"Failed to save Excel file: {e}")
+            logger.error(f"Failed to save Excel file: {e}")
 
     def generate_output_vid(self, input_dir='../files/input/', output_dir='../files/output/videos'):
-        print(f'Generating output video for {self.video_file}')
+        logger.info(f'Generating output video for {self.video_file}')
 
         all_trks = {**self.active_trks, **self.inactive_trks, **self.filtered_trks}
 
