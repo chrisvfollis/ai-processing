@@ -308,8 +308,16 @@ def clear_queue_block(timestamp):
 
 def time_delete(
         start: Union[datetime, list] = None, end: Union[datetime, list] = None,
-        config: Union[dict, str] = None, existing_setup: list = None
+        shop_id: str = None, config: Union[dict, str] = None,
+        existing_setup: list = None
     ):
+    '''
+    Args:
+        start: date/time in UTC of the start of the time period. If only start is
+               specified without end, then all files after the start are deleted.
+        end: date/time in UTC of the end of the time period. If only end is
+             specified without start, then all files prior to the end are deleted.
+    '''
     def _parse_timestamp_from_key(obj_key):
         try:
             matches = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})', obj_key)
@@ -372,6 +380,6 @@ def time_delete(
 
     results = list_delete(object_keys, existing_setup=[s3_client, bucket])
     for timestamp in timestamps_to_clear:
-        clear_queue_block(timestamp)
+        clear_queue_block(shop_id, timestamp)
 
     return results
