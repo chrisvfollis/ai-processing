@@ -94,12 +94,18 @@ def run_processing_pipelines(row, model_info, device, credentials):
         return False                                                        # no need for traceback.format_exc()
 
 
-def run_master_process(device, model_info, shop_id, credentials):
+def run_master_process(
+        device: torch.device,
+        model_info: list,
+        shop_id: str,
+        credentials: dict,
+        retain_footage: bool = False
+    ):
     def _clear_local_data():
         io_utils.clear_track_info('all')
         io_utils.delete_local_files('all')
 
-    def _finalize(shop_id, queue_block):
+    def _finalize(shop_id, queue_block, retain_footage=False):
         time_prefix = utils.parse_clip_filename(
             queue_block[0][0].split('/')[-1], data='time'
         )
@@ -108,8 +114,9 @@ def run_master_process(device, model_info, shop_id, credentials):
         io_utils.post_events_to_webapp(time_prefix)
 
         object_keys = [row[0] for row in queue_block]
-        for object_key in object_keys:
-            io_utils.delete_s3_footage(object_key, credentials)
+        if not retain_footage:
+            for object_key in object_keys:
+                io_utils.delete_s3_footage(object_key, credentials)
 
         io_utils.clear_queue_block(shop_id, timestamp)
         io_utils.delete_local_files(time_prefix)
@@ -147,13 +154,18 @@ def run_master_process(device, model_info, shop_id, credentials):
 
             async_results.get()
 
-        _finalize(shop_id, queue_block)
+        _finalize(shop_id, queue_block, retain_footage=retain_footage)
         stop_timing.set()
         time_logger.join()
 
 
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
+
+    if len(sys.argv) == 2:
+        retain_footage = True if sys.argv[1] == '--retain-footage' else False
+    else:
+        retain_footage = False
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model_info = [
@@ -167,4 +179,7 @@ if __name__ == '__main__':
     memory_monitor, _ = utils.observability_thread('low_memory')
     memory_monitor.start()
 
-    run_master_process(device, model_info, shop_id, credentials)
+    run_master_process(
+        device, model_info, shop_id, credentials,
+        retain_footage=retain_footage
+    )
