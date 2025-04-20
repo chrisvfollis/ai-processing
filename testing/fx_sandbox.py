@@ -372,45 +372,50 @@ def test_enhanced_face_detections(
 
 
 if __name__ == '__main__':
-    all_args = sys.argv
+    if '--help' in sys.argv:
+        print('========== Required Args: ==========')
+        print('1. <fx_nickname>')
+        print('     a. --detect-people')
+        print('     b. --detect-faces')
+        print('     c. --recognize')
+        print('     d. --enhance-face')
+        print('2. <input_data_path>\n')
 
-    unit_categorization = sys.argv[1].split('=')
+        print('========== Optional Args: ==========')
+        print('+ <focus>')
+        print('     a. --local')
+        print('     b. --global')
+        print('+ --enhance\n')
+        sys.exit(0)
 
-    category, subcategory = (
-        unit_categorization if (len(unit_categorization) == 2) else
-        (unit_categorization[0], None)
-    ) 
+    fx_nickname, input_path = sys.argv[1], sys.argv[2]
+
+    focus = 'local' if ('--local' in sys.argv) else 'global'
+    enhance = '--enhance' in sys.argv
     
-    input_path = sys.argv[2]
     file_extension = input_path.split('.')[-1]
     print(f'File extension: {file_extension}')
 
-    if category == 'detect':
-        if subcategory == 'people':
-            print('Detecting: people')
-            if file_extension in ['png', 'jpg', 'jpeg']:
-                print('Input: image')
-                detect_people_in_image()
-            elif file_extension == 'mp4':
-                print('Input: video')
-                detect_people_in_video()
+    if fx_nickname == '--detect-people':
+        print('Detecting: people')
+        if file_extension in ['png', 'jpg', 'jpeg']:
+            print('Input: image')
+            detect_people_in_image()
+        elif file_extension == 'mp4':
+            print('Input: video')
+            detect_people_in_video()
 
-        elif subcategory == 'faces':
-            print('Detecting: faces')
-            if file_extension in ['png', 'jpg', 'jpeg']:
-                print('Input: image')
-                detect_faces_in_image(input_path)
-            elif file_extension == 'mp4':
-                print('Input: video')
-                focus = sys.argv[3]
-                detect_faces_in_video(input_path, focus=focus)
+    elif fx_nickname == '--detect-faces':
+        print('Detecting: faces')
+        if file_extension in ['png', 'jpg', 'jpeg']:
+            print('Input: image')
+            detect_faces_in_image(input_path)
+        elif file_extension == 'mp4':
+            print('Input: video')
+            focus = sys.argv[3]
+            detect_faces_in_video(input_path, focus=focus)
 
-    elif category == 'recognize':
-        focus = sys.argv[3]
-
-        enhance = sys.argv[4].lower() if len(sys.argv) == 5 else 'true'
-        enhance = True if (enhance == 'true') else False
-
+    elif fx_nickname == '--recognize':
         if file_extension in ['png', 'jpg', 'jpeg']:
             print('Input: image')
             recognize_faces_in_image(input_path, focus=focus)
@@ -418,8 +423,8 @@ if __name__ == '__main__':
             print('Input: video')
             
             recognize_faces_in_video(input_path, focus=focus, enhance=enhance)
-    
-    elif category == 'enhance':
+
+    elif fx_nickname == '--enhance-face':
         if file_extension in ['png', 'jpg', 'jpeg']:
             enhance_face(input_path)
         elif file_extension == 'mp4':

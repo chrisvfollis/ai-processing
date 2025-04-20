@@ -162,10 +162,7 @@ def run_master_process(
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
 
-    if len(sys.argv) == 2:
-        retain_footage = True if sys.argv[1] == '--retain-footage' else False
-    else:
-        retain_footage = False
+    retain_footage = '--retain-footage' in sys.argv
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model_info = [
