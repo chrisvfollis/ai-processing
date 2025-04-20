@@ -12,7 +12,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 # internal dependencies
-pass
+from utilities import io_utils
 
 
 def get_instance_info(nickname: str = None, shop_id: str = None):
@@ -282,30 +282,6 @@ def list_delete(object_keys: Union[list, str], config: Union[dict, str] = None,
     return results
 
 
-def clear_queue_block(timestamp):
-    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
-    
-    load_dotenv()
-    headers = {
-        'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
-        'Content-Type': 'application/json'
-    }
-
-    update_queue_url = base_url + 'api/service/update_queue/'
-
-    response = requests.post(
-        update_queue_url, json={
-            'action': 'clear_section', 'timestamp': timestamp.isoformat()},
-        headers=headers
-    )
-
-    if response.status_code == 200:
-        print(f"Cleared queue section for {timestamp}")
-    else:
-        print(f"Failed posting to internal API: {response.text}")
-        print(response.status_code)
-
-
 def time_delete(
         start: Union[datetime, list] = None, end: Union[datetime, list] = None,
         shop_id: str = None, config: Union[dict, str] = None,
@@ -380,6 +356,6 @@ def time_delete(
 
     results = list_delete(object_keys, existing_setup=[s3_client, bucket])
     for timestamp in timestamps_to_clear:
-        clear_queue_block(shop_id, timestamp)
+        io_utils.clear_queue_block(shop_id, timestamp)
 
     return results
