@@ -32,7 +32,9 @@ def handle_early_termination(signum, frame):
     sys.exit(0)
 
 
-def run_processing_pipelines(row, model_info, device, credentials):
+def run_processing_pipelines(
+        row, model_info, device, credentials, save_all_data=False
+    ):
     gc.set_debug(gc.DEBUG_SAVEALL)
 
     io_utils.clear_memory()
@@ -70,6 +72,8 @@ def run_processing_pipelines(row, model_info, device, credentials):
             return False
         
         inference_output = inference_pipeline.run()
+        if save_all_data:
+            inference_pipeline.save_inference_data()
 
         tracking_pipeline = TrackingPipeline(
             video_file, time_prefix,
@@ -82,11 +86,17 @@ def run_processing_pipelines(row, model_info, device, credentials):
         io_utils.clear_memory()
 
         tracking_pipeline.run()
+        if save_all_data:
+            pass    # tracking pipeline data is already saved for continuation
 
         io_utils.save_track_info(
             time_prefix, camera, tracking_pipeline.inactive_trks,
             fps=tracking_pipeline.fps
         )
+        if save_all_data:
+            logger.info('Uploading data...')
+            io_utils.upload_data(credentials)
+        
         logger.info(f'Processed {video_file}')
         return True
     except Exception as e:
@@ -99,7 +109,8 @@ def run_master_process(
         model_info: list,
         shop_id: str,
         credentials: dict,
-        retain_footage: bool = False
+        retain_footage: bool = False,
+        save_all_data: bool = False
     ):
     def _clear_local_data():
         io_utils.clear_track_info('all')
@@ -138,7 +149,10 @@ def run_master_process(
         time_logger, stop_timing = utils.observability_thread('elapsed_time')
         time_logger.start()
 
-        tasks = [(row, model_info, device, credentials) for row in queue_block]
+        tasks = [
+            (row, model_info, device, credentials, save_all_data)
+            for row in queue_block
+        ]
         with multiprocessing.Pool(processes=3) as pool:
             time.sleep(1)   # ensure workers have enough time to start
             initial_pids = {p.pid for p in pool._pool if p.is_alive()}
@@ -163,6 +177,7 @@ if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
 
     retain_footage = '--retain-footage' in sys.argv
+    save_all_data = '--save-all-data' in sys.argv
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model_info = [
@@ -178,5 +193,6 @@ if __name__ == '__main__':
 
     run_master_process(
         device, model_info, shop_id, credentials,
-        retain_footage=retain_footage
+        retain_footage=retain_footage,
+        save_all_data=save_all_data
     )

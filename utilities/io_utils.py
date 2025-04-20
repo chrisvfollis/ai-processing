@@ -155,7 +155,10 @@ def delete_local_files(identifier, file_types='any',
             full_path = os.path.join(path, result)
             if not os.path.isfile(full_path):
                 continue
-            elif full_path.endswith('.pkl'):
+            elif (
+                    (full_path.endswith('.pkl')) and
+                    (not full_path.endswith('inference_output.pkl'))
+                ):
                 continue
             
             file_name, file_extension = _parse_name_and_extension(result)
@@ -229,6 +232,29 @@ def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
         pass
 
     return object_key
+
+
+def upload_data(credentials, dir='../files/output/'):
+    try:
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=credentials[0],
+            aws_secret_access_key=credentials[1],
+            region_name='us-west-1'
+        )
+        bucket_name = 'visionservice-data'
+
+        for root, _, files in os.walk(dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                object_key = file
+                try:
+                    s3_client.upload_file(file_path, bucket_name, object_key)
+                except Exception as e:
+                    print(f'Failed to upload {file_path}: {e}')
+
+    except (EndpointConnectionError, NoCredentialsError) as e:
+        print(f'S3 client error: {e}')
 
 
 # ============================================================================
