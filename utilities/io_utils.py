@@ -7,6 +7,7 @@ import subprocess
 import gc
 import uuid
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 3rd-party dependencies
 import numpy as np
@@ -234,9 +235,17 @@ def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
     return object_key
 
 
-def upload_data(credentials, dir='../files/output/'):
+def upload_file(s3_client, bucket_name, file_path, object_key):
     try:
-        s3_client = boto3.client(
+        s3_client.upload_file(file_path, bucket_name, object_key)
+    except Exception as e:
+        print(f'Failed to upload {file_path}: {e}')
+
+
+def upload_data(credentials, dir='../files/output/', max_workers=8):
+    try:
+        session = boto3.session.Session()
+        s3_client = session.client(
             's3',
             aws_access_key_id=credentials[0],
             aws_secret_access_key=credentials[1],
@@ -244,14 +253,18 @@ def upload_data(credentials, dir='../files/output/'):
         )
         bucket_name = 'visionservice-data'
 
-        for root, _, files in os.walk(dir):
-            for file in files:
-                file_path = os.path.join(root, file)
-                object_key = file
-                try:
-                    s3_client.upload_file(file_path, bucket_name, object_key)
-                except Exception as e:
-                    print(f'Failed to upload {file_path}: {e}')
+        upload_tasks = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for root, _, files in os.walk(dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    object_key = file
+                    upload_tasks.append(executor.submit(
+                        upload_file, s3_client, bucket_name, file_path, object_key
+                    ))
+
+            for future in as_completed(upload_tasks):
+                future.result()
 
     except (EndpointConnectionError, NoCredentialsError) as e:
         print(f'S3 client error: {e}')
