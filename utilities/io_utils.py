@@ -159,7 +159,7 @@ def delete_local_files(identifier, file_types='any',
                 continue
             elif (
                     (full_path.endswith('.pkl')) and
-                    (not full_path.endswith('inference_output.pkl'))
+                    (not full_path.endswith('inference_pipeline.pkl'))
                 ):
                 continue
             
