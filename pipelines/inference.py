@@ -354,9 +354,20 @@ class InferencePipeline:
         )
         save_path = os.path.join(output_dir, filename)
 
+        # make shallow copy and remove unpickleable objects
+        state = self.__dict__.copy()
+        state['yolov4'] = None
+        state['osnet'] = None
+        state['face_iq'] = None
+
+        for f, detections in state['object_detections'].items():
+            for i, det in enumerate(detections):
+                if isinstance(det, torch.Tensor):
+                    detections[i] = det.cpu().numpy().tolist()
+
         press_stopwatch(self, 'pkl_io')
         with open(save_path, "wb") as f:
-            pickle.dump(self, f)
+            pickle.dump(state, f)
         press_stopwatch(self, 'pkl_io')
 
         logger.info(f'Inference pipeline state saved to {save_path}')
