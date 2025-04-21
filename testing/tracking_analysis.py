@@ -58,40 +58,129 @@ def download_tracking_pkls(
                 s3.download_file(bucket_name, key, local_path)
 
 
-def analyze_lengths(pkl_dir='../files/output/'):
-    durations = []
-    identities = []
-
+def load_tracking_data(pkl_dir='../files/output/'):
+    tracking_data = []
+    
     for fname in os.listdir(pkl_dir):
         if fname.endswith('.pkl') and not fname.endswith('inference_data.pkl'):
             path = os.path.join(pkl_dir, fname)
             try:
                 with open(path, 'rb') as f:
                     pipeline = pickle.load(f)
-
-                fps = pipeline.fps
-                all_tracks = pipeline.all_trks
-
-                for trk in all_tracks.values():
-                    if hasattr(trk, 'span') and isinstance(trk.span, list):
-                        start, end = trk.span
-                        length_sec = max(0, end - start) / fps
-                        durations.append(length_sec)
-                        identities.append(bool(getattr(trk, 'identity', None)))
-
+                tracking_data.append((pipeline.fps, pipeline.all_trks))
             except Exception as e:
                 print(f'Failed to process {fname}: {e}')
+    
+    return tracking_data
+
+
+def analyze_lengths(pkl_dir='../files/output/'):
+    '''
+    Models relationships between track length (duration) and other attributes or
+    outcomes.
+    '''
+    def _plot_duration_histogram(durations):
+        plt.figure()
+        plt.hist(durations, bins=30, edgecolor='black')
+        plt.yscale('log')
+        plt.title('Track Duration Distribution')
+        plt.xlabel('Track Duration (seconds, log scale)')
+        plt.ylabel('Frequency')
+        plt.grid(True, which="both", ls="--", linewidth=0.5)
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'track_duration_histogram.png'))
+        plt.close()
+
+    def _plot_boxplot(df):
+        plt.figure()
+        sns.boxplot(x='has_identity', y='duration_sec', data=df)
+        plt.yscale('log')
+        plt.title('Track Duration by Identity Assignment')
+        plt.xlabel('Has Identity')
+        plt.ylabel('Track Duration (seconds)')
+        plt.grid(True, which='both', ls='--')
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'duration_vs_identity_boxplot.png'))
+        plt.close()
+
+    def _plot_identity_bins(df):
+        bin_max = utils.logceil_round(np.max(df['duration_sec']))
+        bins = sorted(set([0] + [bin_max // i for i in range(10, 0, -1)]))
+
+        df['duration_bin'] = pd.cut(df['duration_sec'], bins=bins, include_lowest=True, right=False)
+        bin_summary = df.groupby('duration_bin')['has_identity'].mean().reset_index()
+
+        plt.figure()
+        sns.barplot(x='duration_bin', y='has_identity', data=bin_summary)
+        plt.xticks(rotation=45)
+        plt.ylim(0, 1)
+        plt.title('Identity Assignment Rate by Track Duration Bin')
+        plt.ylabel('Fraction with Identity')
+        plt.xlabel('Track Duration Bin (seconds)')
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'identity_assignment_by_duration_bin.png'))
+        plt.close()
+
+    def _plot_heatmap(df):
+        heatmap_df = df.copy()
+        heatmap_df['duration_bin'] = pd.cut(df['duration_sec'], bins=6)
+        heatmap_df['face_frame_bin'] = pd.cut(df['num_face_frames'], bins=6)
+
+        pivot = (
+            heatmap_df
+            .groupby(['duration_bin', 'face_frame_bin'])['has_identity']
+            .mean()
+            .unstack()
+        )
+
+        plt.figure(figsize=(10, 6))
+        sns.heatmap(pivot, annot=True, cmap='viridis', fmt=".2f", cbar_kws={'label': 'Fraction with Identity'})
+        plt.title('Identity Assignment Rate by Duration and Face Detection Count')
+        plt.xlabel('Face Frame Count (binned)')
+        plt.ylabel('Track Duration (binned)')
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'identity_assignment_heatmap.png'))
+        plt.close()
+
+    # Main body
+    durations = []
+    identities = []
+    num_face_frames = []
+    avg_min_cos_dists = []
+
+    for fps, all_tracks in load_tracking_data(pkl_dir):
+        for trk in all_tracks.values():
+            if hasattr(trk, 'span') and isinstance(trk.span, list):
+                start, end = trk.span
+                duration = max(0, end - start) / fps
+
+                face_frames = trk.face_detections.keys()
+                num_faces = len(face_frames)
+
+                dists = []
+                for df in trk.face_detections.values():
+                    if 'distance' in df:
+                        dists.append(df['distance'].min())
+
+                mean_min_cos_dist = np.mean(dists) if dists else np.nan
+
+                durations.append(duration)
+                identities.append(bool(getattr(trk, 'identity', None)))
+                num_face_frames.append(num_faces)
+                avg_min_cos_dists.append(mean_min_cos_dist)
 
     if not durations:
         return 'No valid track durations found'
 
     df = pd.DataFrame({
         'duration_sec': durations,
-        'has_identity': identities
+        'has_identity': identities,
+        'num_face_frames': num_face_frames,
+        'avg_min_cos_dist': avg_min_cos_dists
     })
 
-    X = np.log(df['duration_sec'].values + 1)  # add 1 to avoid log(0)
-    X = sm.add_constant(X)  # adds intercept
+    X = np.log(df['duration_sec'].values + 1)[:, None]
+    X = sm.add_constant(X)
     y = df['has_identity'].astype(int)
 
     model = sm.Logit(y, X).fit()
@@ -107,171 +196,90 @@ def analyze_lengths(pkl_dir='../files/output/'):
         'total_tracks': len(df)
     }
 
-    plt.figure()
-    plt.hist(durations, bins=30, edgecolor='black')
-    plt.yscale('log')
-    plt.title('Track Duration Distribution')
-    plt.xlabel('Track Duration (seconds, log scale)')
-    plt.ylabel('Frequency')
-    plt.grid(True, which="both", ls="--", linewidth=0.5)
-    plt.tight_layout()
-    hist_path = os.path.join(pkl_dir, 'track_duration_histogram.png')
-    plt.savefig(hist_path)
-    plt.close()
-
-    plt.figure()
-    sns.boxplot(x='has_identity', y='duration_sec', data=df)
-    plt.yscale('log')
-    plt.title('Track Duration by Identity Assignment')
-    plt.xlabel('Has Identity')
-    plt.ylabel('Track Duration (seconds)')
-    plt.grid(True, which='both', ls='--')
-    plt.tight_layout()
-    box_path = os.path.join(pkl_dir, 'duration_vs_identity_boxplot.png')
-    plt.savefig(box_path)
-    plt.close()
-
-    bin_max = utils.logceil_round(np.max(durations))
-    bins = [bin_max // i for i in range(10, 0, -1)]
-    
-    df['duration_bin'] = pd.cut(
-        df['duration_sec'],
-        bins=sorted(set([0]+ bins)),
-        include_lowest=True,
-        right=False
-    )
-    bin_summary = df.groupby('duration_bin')['has_identity'].mean().reset_index()
-
-    plt.figure()
-    sns.barplot(x='duration_bin', y='has_identity', data=bin_summary)
-    plt.xticks(rotation=45)
-    plt.ylim(0, 1)
-    plt.title('Identity Assignment Rate by Track Duration Bin')
-    plt.ylabel('Fraction with Identity')
-    plt.xlabel('Track Duration Bin (seconds)')
-    plt.tight_layout()
-    bar_path = os.path.join(pkl_dir, 'identity_assignment_by_duration_bin.png')
-    plt.savefig(bar_path)
-    plt.close()
-
-    return stats
-
-
-def analyze_bbox_areas(pkl_dir='../files/output/'):
-    side_lengths = []
-    has_identity = []
-
-    for fname in os.listdir(pkl_dir):
-        if fname.endswith('.pkl') and not fname.endswith('inference_data.pkl'):
-            path = os.path.join(pkl_dir, fname)
-            try:
-                with open(path, 'rb') as f:
-                    pipeline = pickle.load(f)
-
-                for trk in pipeline.all_trks.values():
-                    detections = trk.object_detections.values()
-                    if not detections:
-                        continue
-
-                    areas = [d[2] * d[3] for d in detections if len(d) >= 4]
-                    if not areas:
-                        continue
-                    avg_area = np.mean(areas)
-                    avg_side_length = np.sqrt(avg_area)
-
-                    side_lengths.append(avg_side_length)
-                    has_identity.append(bool(getattr(trk, 'identity', None)))
-
-            except Exception as e:
-                print(f"Failed to process {fname}: {e}")
-
-    if not side_lengths:
-        return 'No valid bbox areas found'
-
-    df = pd.DataFrame({
-        'avg_bbox_side_length': side_lengths,
-        'has_identity': has_identity
-    })
-
-    stats = {
-        'mean_side_length': np.mean(side_lengths),
-        'median_side_length': np.median(side_lengths),
-        'min_side_length': np.min(side_lengths),
-        'max_side_length': np.max(side_lengths),
-        'with_identity': df['has_identity'].sum(),
-        'without_identity': len(df) - df['has_identity'].sum(),
-        'total_tracks': len(df)
-    }
-
-    plt.figure()
-    plt.hist(side_lengths, bins=30, edgecolor='black')
-    plt.title('Average BBox Side Length Distribution')
-    plt.xlabel('(Average Area) — Side Length (pixels)')
-    plt.ylabel('Frequency')
-    plt.grid(True, which="both", ls="--", linewidth=0.5)
-    plt.tight_layout()
-    plt.savefig(os.path.join(pkl_dir, 'bbox_side_length_histogram.png'))
-    plt.close()
-
-    plt.figure()
-    sns.boxplot(x='has_identity', y='avg_bbox_side_length', data=df)
-    plt.yscale('log')
-    plt.title('Avg BBox Side Length by Identity Assignment')
-    plt.xlabel('Has Identity')
-    plt.ylabel('(Avg Area) — Side Length (pixels)')
-    plt.grid(True, which='both', ls='--')
-    plt.tight_layout()
-    plt.savefig(os.path.join(pkl_dir, 'bbox_side_length_vs_identity_boxplot.png'))
-    plt.close()
-
-    bin_edges = np.linspace(min(side_lengths), max(side_lengths), num=10)
-    df['length_bin'] = pd.cut(df['avg_bbox_side_length'], bins=bin_edges)
-
-    bin_proportions = (
-        df.groupby('length_bin')['has_identity']
-        .agg(['sum', 'count'])
-        .rename(columns={'sum': 'with_id', 'count': 'total'})
-    )
-    bin_proportions['proportion'] = bin_proportions['with_id'] / bin_proportions['total']
-
-    plt.figure()
-    bin_centers = [interval.mid for interval in bin_proportions.index]
-    plt.plot(bin_centers, bin_proportions['proportion'], marker='o')
-    plt.ylim(0, 1.05)
-    plt.title('Proportion of Tracks with Identity by Side Length Bin')
-    plt.xlabel('Avg BBox Side Length (pixels)')
-    plt.ylabel('Proportion with Identity')
-    plt.grid(True, ls='--')
-    plt.tight_layout()
-    plt.savefig(os.path.join(pkl_dir, 'identity_proportion_by_side_length.png'))
-    plt.close()
-
-    X = np.array(side_lengths)
-    y = np.array(has_identity, dtype=int)
-
-    X_sm = sm.add_constant(X)
-    model = sm.Logit(y, X_sm)
-    result = model.fit(disp=False)
-
-    side_len_range = np.linspace(min(X), max(X), 500)
-    X_plot = sm.add_constant(side_len_range)
-    probs = result.predict(X_plot)
-
-    plt.figure()
-    plt.plot(side_len_range, probs, label='Logit fit')
-    plt.scatter(X, y, alpha=0.2, s=10, c='gray', label='Data (jittered)')
-    plt.title('Logistic Regression: Identity vs Side Length')
-    plt.xlabel('Avg BBox Side Length (pixels)')
-    plt.ylabel('P(Identity Assigned)')
-    plt.ylim(-0.05, 1.05)
-    plt.grid(True, ls='--')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(pkl_dir, 'logit_identity_vs_side_length.png'))
-    plt.close()
+    _plot_duration_histogram(durations)
+    _plot_boxplot(df)
+    _plot_identity_bins(df)
+    _plot_heatmap(df)
 
     return stats, df
 
+
+def analyze_bbox_areas(pkl_dir='../files/output/'):
+
+    def _chart_area_histogram(df, pkl_dir):
+        plt.figure()
+        plt.hist(df['avg_bbox_area'], bins=30, edgecolor='black')
+        plt.yscale('log')
+        plt.title('Avg. Bounding Box Area Distribution')
+        plt.xlabel('Average BBox Area (pixels²)')
+        plt.ylabel('Frequency (log scale)')
+        plt.grid(True, which="both", ls="--", linewidth=0.5)
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'bbox_area_histogram.png'))
+        plt.close()
+
+    def _chart_area_boxplot(df, pkl_dir):
+        plt.figure()
+        sns.boxplot(x='has_identity', y='avg_bbox_area', data=df)
+        plt.yscale('log')
+        plt.title('Avg. BBox Area by Identity Assignment')
+        plt.xlabel('Has Identity')
+        plt.ylabel('Average BBox Area (pixels²)')
+        plt.grid(True, which='both', ls='--')
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'bbox_area_boxplot.png'))
+        plt.close()
+
+    def _chart_area_bins(df, pkl_dir):
+        bin_max = utils.logceil_round(df['avg_bbox_area'].max())
+        bins = sorted(set([0] + [bin_max // i for i in range(10, 0, -1)]))
+
+        df['area_bin'] = pd.cut(
+            df['avg_bbox_area'],
+            bins=bins,
+            include_lowest=True,
+            right=False
+        )
+
+        bin_summary = df.groupby('area_bin')['has_identity'].mean().reset_index()
+
+        plt.figure()
+        sns.barplot(x='area_bin', y='has_identity', data=bin_summary)
+        plt.xticks(rotation=45)
+        plt.ylim(0, 1)
+        plt.title('Identity Assignment Rate by Avg. BBox Area Bin')
+        plt.ylabel('Fraction with Identity')
+        plt.xlabel('Avg. BBox Area Bin (pixels²)')
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'identity_assignment_by_area_bin.png'))
+        plt.close()
+    
+    data = load_tracking_data(pkl_dir)
+
+    avg_areas = []
+    identities = []
+
+    for _, all_tracks in data:
+        for trk in all_tracks.values():
+            boxes = list(trk.object_detections.values())
+            areas = [box[2] * box[3] for box in boxes if len(box) >= 4]
+            if areas:
+                avg_areas.append(np.mean(areas))
+                identities.append(bool(getattr(trk, 'identity', None)))
+
+    if not avg_areas:
+        return 'No valid track data found'
+
+    df = pd.DataFrame({
+        'avg_bbox_area': avg_areas,
+        'has_identity': identities
+    })
+
+    _chart_area_histogram(df, pkl_dir)
+    _chart_area_boxplot(df, pkl_dir)
+    _chart_area_bins(df, pkl_dir)
+
+    return df
 
 
 if __name__ == '__main__':
