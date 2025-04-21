@@ -4,12 +4,13 @@ import os
 import re
 import argparse
 
-
 # 3rd-party dependencies
 import numpy as np
 import pandas as pd
 import boto3
 import matplotlib.pyplot as plt
+import seaborn as sns
+
 
 # internal dependencies
 from utilities import io_utils
@@ -56,53 +57,95 @@ def download_tracking_pkls(
 
 
 def analyze_lengths(pkl_dir='../files/output/'):
-    track_lengths = []
-    all_fps = []
+    durations = []
+    identities = []
 
     for fname in os.listdir(pkl_dir):
-        if fname.endswith('.pkl') and (not fname.endswith('inference_data.pkl')):
+        if fname.endswith('.pkl') and not fname.endswith('inference_data.pkl'):
             path = os.path.join(pkl_dir, fname)
             try:
                 with open(path, 'rb') as f:
                     pipeline = pickle.load(f)
 
-                all_tracks = pipeline.all_trks
                 fps = pipeline.fps
+                all_tracks = pipeline.all_trks
 
                 for trk in all_tracks.values():
                     if hasattr(trk, 'span') and isinstance(trk.span, list):
                         start, end = trk.span
-                        length = max(0, end - start)
-                        track_lengths.append(length)
-                        all_fps.append(fps)
+                        length_sec = max(0, end - start) / fps
+                        durations.append(length_sec)
+                        identities.append(bool(getattr(trk, 'identity', None)))
 
             except Exception as e:
                 print(f'Failed to process {fname}: {e}')
 
-    if not track_lengths:
-        return 'No valid track lengths found'
+    if not durations:
+        return 'No valid track durations found'
+
+    df = pd.DataFrame({
+        'duration_sec': durations,
+        'has_identity': identities
+    })
 
     stats = {
-        'average_length': np.mean(track_lengths),
-        'median_length': np.median(track_lengths),
-        'min_length': np.min(track_lengths),
-        'max_length': np.max(track_lengths),
+        'average_duration_sec': np.mean(durations),
+        'median_duration_sec': np.median(durations),
+        'min_duration_sec': np.min(durations),
+        'max_duration_sec': np.max(durations),
+        'with_identity': df['has_identity'].sum(),
+        'without_identity': len(df) - df['has_identity'].sum(),
+        'total_tracks': len(df)
     }
 
-    # Plot histogram
-    plt.hist(track_lengths, bins=30, edgecolor='black')
-    plt.title('Track Length Distribution')
-    plt.xlabel('Track Length (frames)')
+    plt.figure()
+    plt.hist(durations, bins=30, edgecolor='black')
+    plt.yscale('log')
+    plt.title('Track Duration Distribution (Log Scale)')
+    plt.xlabel('Track Duration (seconds, log scale)')
     plt.ylabel('Frequency')
-    plt.grid(True)
+    plt.grid(True, which="both", ls="--", linewidth=0.5)
     plt.tight_layout()
-    plot_path = os.path.join(pkl_dir, 'track_length_histogram.png')
-    plt.savefig(plot_path)
+    hist_path = os.path.join(pkl_dir, 'track_duration_histogram.png')
+    plt.savefig(hist_path)
     plt.close()
 
-    stats['histogram_path'] = plot_path
+    plt.figure()
+    sns.boxplot(x='has_identity', y='duration_sec', data=df)
+    plt.yscale('log')
+    plt.title('Track Duration by Identity Assignment')
+    plt.xlabel('Has Identity')
+    plt.ylabel('Track Duration (seconds)')
+    plt.grid(True, which='both', ls='--')
+    plt.tight_layout()
+    box_path = os.path.join(pkl_dir, 'duration_vs_identity_boxplot.png')
+    plt.savefig(box_path)
+    plt.close()
 
-    return pd.DataFrame([stats])
+    df['duration_bin'] = pd.cut(
+        df['duration_sec'],
+        bins=[0, 5, 10, 30, 60, 120, 300, 600],
+        include_lowest=True,
+        right=False
+    )
+    bin_summary = df.groupby('duration_bin')['has_identity'].mean().reset_index()
+
+    plt.figure()
+    sns.barplot(x='duration_bin', y='has_identity', data=bin_summary)
+    plt.xticks(rotation=45)
+    plt.ylim(0, 1)
+    plt.title('Identity Assignment Rate by Track Duration Bin')
+    plt.ylabel('Fraction with Identity')
+    plt.xlabel('Track Duration Bin (seconds)')
+    plt.tight_layout()
+    bar_path = os.path.join(pkl_dir, 'identity_assignment_by_duration_bin.png')
+    plt.savefig(bar_path)
+    plt.close()
+
+    stats['binned_identity_rate_path'] = bar_path
+
+    return stats
+
 
 
 if __name__ == '__main__':
@@ -111,8 +154,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     analyze_track_lengths = args.track_lengths
 
-    shop_id = io_utils.get_shop()
-    download_tracking_pkls(shop_id=shop_id)
+    download_tracking_pkls()
 
     if analyze_track_lengths:
-        analyze_lengths()
+        length_stats = analyze_lengths()
+        print(length_stats)
