@@ -343,18 +343,20 @@ class InferencePipeline:
         except Exception as e:
             logger.info(f'Failed to save Excel file: {e}')
 
-    def save_inference_data(self, output_dir='../files/output'):
+    def save_pipeline_state(self, output_dir='../files/output'):
         os.makedirs(output_dir, exist_ok=True)
         file_prefix = self.video_file.split('.')[0]
 
-        data = [self.object_detections, self.face_detections]
+        logger.info('Saving inference pipeline state...')
 
         filename = io_utils.get_unique_filename(
-            output_dir, f'{file_prefix}_inference_data.pkl'
+            output_dir, f'{file_prefix}_inference_pipeline.pkl'
         )
-
         save_path = os.path.join(output_dir, filename)
-        with open(save_path, "wb") as f:
-            pickle.dump(data, f)
 
-        logger.info('Inference data saved')
+        press_stopwatch(self, 'pkl_io')
+        with open(save_path, "wb") as f:
+            pickle.dump(self, f)
+        press_stopwatch(self, 'pkl_io')
+
+        logger.info(f'Inference pipeline state saved to {save_path}')

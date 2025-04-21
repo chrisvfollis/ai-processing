@@ -75,7 +75,7 @@ def run_processing_pipelines(
         
         inference_output = inference_pipeline.run()
         if save_all_data:
-            inference_pipeline.save_inference_data()
+            inference_pipeline.save_pipeline_state()
 
         tracking_pipeline = TrackingPipeline(
             video_file, time_prefix,
