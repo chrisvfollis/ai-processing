@@ -13,10 +13,10 @@ import torch
 from models.yolov4 import YOLOv4
 from models.osnet import OSNet
 from models.face_iq import FaceIq
-from utilities import utilities as utils
+from utilities import general_utils as utils
 from utilities import io_utils
-from utilities.utilities import press_stopwatch
-from utilities.logger import get_logger
+from utilities.general_utils import press_stopwatch
+from utilities.logging_utils import get_logger
 
 
 logger = get_logger(__name__)

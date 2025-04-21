@@ -6,6 +6,8 @@ import signal
 import gc
 import multiprocessing
 import time
+import argparse
+from datetime import datetime
 
 # 3rd-party dependencies
 import torch
@@ -16,8 +18,8 @@ import tensorflow as tf
 
 # internal dependencies
 from utilities import io_utils
-from utilities import utilities as utils
-from utilities.logger import get_logger
+from utilities import general_utils as utils
+from utilities.logging_utils import get_logger
 
 
 logger = get_logger(__name__)
@@ -93,9 +95,6 @@ def run_processing_pipelines(
             time_prefix, camera, tracking_pipeline.inactive_trks,
             fps=tracking_pipeline.fps
         )
-        if save_all_data:
-            logger.info('Uploading data...')
-            io_utils.upload_data(credentials)
         
         logger.info(f'Processed {video_file}')
         return True
@@ -169,6 +168,9 @@ def run_master_process(
             async_results.get()
 
         _finalize(shop_id, queue_block, retain_footage=retain_footage)
+        if save_all_data:
+            logger.info('Uploading data...')
+            io_utils.upload_data(credentials)
         stop_timing.set()
         time_logger.join()
 
@@ -176,8 +178,25 @@ def run_master_process(
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
 
-    retain_footage = '--retain-footage' in sys.argv
-    save_all_data = '--save-all-data' in sys.argv
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--retain-footage', action='store_true')
+    parser.add_argument('--save-all-data', action='store_true')
+    parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
+
+    args = parser.parse_args()
+
+    retain_footage = args.retain_footage
+    save_all_data = args.save_all_data
+
+    start_from = None
+    if args.start_from:
+        try:
+            parts = [int(x) for x in args.start_from.split(',')]
+            start_from = datetime(*parts)
+        except Exception as e:
+            logger.error(f'Invalid --start-from value: {args.start_from} ({e})')
+            sys.exit(1)
+
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model_info = [

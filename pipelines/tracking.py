@@ -17,9 +17,9 @@ import torch.nn.functional as F
 
 # internal dependencies
 from utilities import io_utils
-from utilities import utilities as utils
-from utilities.utilities import press_stopwatch
-from utilities.logger import get_logger
+from utilities import general_utils as utils
+from utilities.general_utils import press_stopwatch
+from utilities.logging_utils import get_logger
 
 
 logger = get_logger(__name__)

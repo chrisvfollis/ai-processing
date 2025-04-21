@@ -8,7 +8,7 @@ import cv2
 from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
-from utilities import utilities as utils
+from utilities import general_utils as utils
 
 
 def adjust_and_extract(

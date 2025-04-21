@@ -8,6 +8,7 @@ import gc
 import uuid
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 # 3rd-party dependencies
 import numpy as np
@@ -22,7 +23,7 @@ import requests
 import psutil
 
 # internal dependencies
-from utilities import utilities as utils
+from utilities import general_utils as utils
 
 
 # ============================================================================
@@ -729,7 +730,7 @@ def fetch_person_data(
     return person_data
 
 
-def get_queue_block(shop_id):
+def get_queue_block(shop_id, start_from=None):
     '''
     Returns:
         queue_block (List[List]):
@@ -753,6 +754,14 @@ def get_queue_block(shop_id):
     }
 
     params = {'shop_id': shop_id}
+    if start_from:
+        try:
+            if isinstance(start_from, list):
+                start_from = datetime(*start_from)
+            params['start_from'] = start_from.isoformat(timespec='seconds')
+        except Exception as e:
+            print(f'Invalid start time input: {start_from} — {e}')
+            return False
 
     try:
         response = requests.get(endpoint_url, headers=headers, params=params)

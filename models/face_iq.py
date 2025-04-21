@@ -20,8 +20,8 @@ from models.centerface import CenterFace
 from models.clearface import ClearFace
 from utilities import face_utils
 from utilities import io_utils
-from utilities import utilities as utils
-from utilities.utilities import press_stopwatch
+from utilities import general_utils as utils
+from utilities.general_utils import press_stopwatch
 
 
 class FaceIq:

@@ -16,7 +16,7 @@ from models.face_iq import FaceIq
 from models.centerface import CenterFace
 from models.clearface import ClearFace
 from models.yolov4 import YOLOv4
-from utilities import utilities as utils
+from utilities import general_utils as utils
 from utilities import io_utils
 
 

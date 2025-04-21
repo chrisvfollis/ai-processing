@@ -16,7 +16,7 @@ import tensorflow as tf
 
 # internal dependencies
 from utilities import io_utils
-from utilities import utilities as utils
+from utilities import general_utils as utils
 
 
 # ----------------------------------------------------------------------------
