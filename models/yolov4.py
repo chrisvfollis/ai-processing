@@ -35,6 +35,11 @@ class YOLOv4:
         
     def detect(self, img, class_id, nms_thresh=None, conf_thresh=None,
                input_dims=None):
+        '''
+        Returns:
+            list[list[Union[int, float]]]: A list of lists — where each inner
+                list corresponds to the [x, y, w, h, confidence] of a detection.
+        '''
         def _preprocess_img(img, input_dims):
             '''
             input_dims — the width and height to resize the image to. YOLOv4
