@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import time
 from typing import Union
 from collections.abc import Sequence, Iterable
+import math
 
 # 3rd-party dependencies
 import numpy as np
@@ -806,3 +807,33 @@ def xywh_xyxy(coordinates, out='xyxy'):
         h = y2 -y1
 
         return x1, y1, w, h
+
+
+def logceil_round(x):
+    '''
+    Rounds a number up to the next "nice" number based on its order of magnitude.
+    Useful for generating human-friendly intervals (e.g. for chart axes or scaling
+    in general).
+    
+    Returns:
+        int: the smallest number in the set {1, 2, 5, 10} x 10ⁿ that is greater
+        than or equal to `x`, where n is the base-10 order of magnitude of `x`
+    
+    Examples:
+        >>> logceil_round(16)
+        20
+        >>> logceil_round(72)
+        100
+        >>> logceil_round(630)
+        1000
+    '''
+
+    if x == 0:
+        return 0
+    magnitude = 10 ** math.floor(math.log10(x))
+    steps = [1, 2, 5, 10]
+    for step in steps:
+        rounded = step * magnitude
+        if x <= rounded:
+            return rounded
+    return 10 * magnitude
