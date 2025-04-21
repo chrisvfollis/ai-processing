@@ -10,6 +10,7 @@ import pandas as pd
 import boto3
 import matplotlib.pyplot as plt
 import seaborn as sns
+import statsmodels.api as sm
 
 
 # internal dependencies
@@ -88,6 +89,13 @@ def analyze_lengths(pkl_dir='../files/output/'):
         'has_identity': identities
     })
 
+    X = np.log(df['duration_sec'].values + 1)  # add 1 to avoid log(0)
+    X = sm.add_constant(X)  # adds intercept
+    y = df['has_identity'].astype(int)
+
+    model = sm.Logit(y, X).fit()
+    print(model.summary())
+
     stats = {
         'average_duration_sec': np.mean(durations),
         'median_duration_sec': np.median(durations),
@@ -101,7 +109,7 @@ def analyze_lengths(pkl_dir='../files/output/'):
     plt.figure()
     plt.hist(durations, bins=30, edgecolor='black')
     plt.yscale('log')
-    plt.title('Track Duration Distribution (Log Scale)')
+    plt.title('Track Duration Distribution')
     plt.xlabel('Track Duration (seconds, log scale)')
     plt.ylabel('Frequency')
     plt.grid(True, which="both", ls="--", linewidth=0.5)
@@ -124,7 +132,7 @@ def analyze_lengths(pkl_dir='../files/output/'):
 
     df['duration_bin'] = pd.cut(
         df['duration_sec'],
-        bins=[0, 5, 10, 30, 60, 120, 300, 600],
+        bins=[0, 1, 5, 10, 50, 100, 500, 1000],
         include_lowest=True,
         right=False
     )
