@@ -49,7 +49,8 @@ setup(
         'shapely',
         'tqdm==4.43.0',
         'psutil',
-        'jupyter'
+        'jupyter',
+        'matplotlib',
     ],
     python_requires='>=3.10,<3.11',
 )
