@@ -1,7 +1,15 @@
 #!/bin/bash
 
-if [[ "$1" == "--forward" ]]; then
-    sudo journalctl -u ai-process.service
+ARGS="$*"
+
+CMD=(sudo journalctl -u ai-process.service)
+
+if [[ "$ARGS" != *"--forward"* ]]; then
+    CMD+=("--reverse")
+fi
+
+if [[ "$ARGS" != *"--memory-traces"* ]]; then
+    "${CMD[@]}" | grep -v alloc | less
 else
-    sudo journalctl -u ai-process.service --reverse
+    "${CMD[@]}"
 fi
