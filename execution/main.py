@@ -109,7 +109,8 @@ def run_master_process(
         shop_id: str,
         credentials: dict,
         retain_footage: bool = False,
-        save_all_data: bool = False
+        save_all_data: bool = False,
+        start_from=None
     ):
     def _clear_local_data():
         io_utils.clear_track_info('all')
@@ -139,7 +140,7 @@ def run_master_process(
     while True:
         io_utils.cleanup_semaphores()
 
-        queue_block = io_utils.get_queue_block(shop_id)
+        queue_block = io_utils.get_queue_block(shop_id, start_from=start_from)
 
         if not queue_block:
             time.sleep(60)
@@ -213,5 +214,6 @@ if __name__ == '__main__':
     run_master_process(
         device, model_info, shop_id, credentials,
         retain_footage=retain_footage,
-        save_all_data=save_all_data
+        save_all_data=save_all_data,
+        start_from=start_from
     )
