@@ -123,26 +123,40 @@ def analyze_lengths(pkl_dir='../files/output/'):
 
     def _plot_heatmap(df):
         heatmap_df = df.copy()
-        heatmap_df['duration_bin'] = pd.cut(df['duration_sec'], bins=6)
-        heatmap_df['face_frame_bin'] = pd.cut(df['num_face_frames'], bins=6)
 
+        # Bin duration and face frame counts
+        heatmap_df['duration_bin'] = pd.cut(df['duration_sec'], bins=10)
+        heatmap_df['face_frame_bin'] = pd.cut(df['num_face_frames'], bins=10)
+
+        # Bin labels formatted as integers
+        row_labels = [f"{int(b.left)}-{int(b.right)}" for b in heatmap_df['duration_bin'].cat.categories]
+        col_labels = [f"{int(b.left)}-{int(b.right)}" for b in heatmap_df['face_frame_bin'].cat.categories]
+
+        # Group by bins and compute mean of average minimum cosine distance
         pivot = (
             heatmap_df
-            .groupby(['duration_bin', 'face_frame_bin'])['has_identity']
+            .groupby(['duration_bin', 'face_frame_bin'])['avg_min_cos_dist']
             .mean()
             .unstack()
         )
 
+        # Replace bin edges with formatted labels
+        pivot.index = row_labels
+        pivot.columns = col_labels
+
+        # Plot
         plt.figure(figsize=(10, 6))
-        sns.heatmap(pivot, annot=True, cmap='viridis', fmt=".2f", cbar_kws={'label': 'Fraction with Identity'})
-        plt.title('Identity Assignment Rate by Duration and Face Detection Count')
+        sns.heatmap(
+            pivot, annot=True, cmap='coolwarm', fmt=".3f",
+            cbar_kws={'label': 'Mean Min Cosine Distance'}
+        )
+        plt.title('Mean Cosine Distance by Duration and Face Detection Count')
         plt.xlabel('Face Frame Count (binned)')
         plt.ylabel('Track Duration (binned)')
         plt.tight_layout()
-        plt.savefig(os.path.join(pkl_dir, 'identity_assignment_heatmap.png'))
+        plt.savefig(os.path.join(pkl_dir, 'cos_dist_heatmap.png'))
         plt.close()
 
-    # Main body
     durations = []
     identities = []
     num_face_frames = []
@@ -254,30 +268,74 @@ def analyze_bbox_areas(pkl_dir='../files/output/'):
         plt.savefig(os.path.join(pkl_dir, 'identity_assignment_by_area_bin.png'))
         plt.close()
     
+    def _chart_area_vs_duration(df, pkl_dir):
+        X = np.log(df['avg_bbox_side_length'] + 1).values
+        y = np.log(df['duration_sec'] + 1).values
+        X = sm.add_constant(X)
+
+        model = sm.OLS(y, X).fit()
+        print(model.summary())
+
+        x_vals = np.linspace(min(df['avg_bbox_side_length']), max(df['avg_bbox_side_length']), 100)
+        X_plot = sm.add_constant(np.log(x_vals + 1))
+        y_pred = model.predict(X_plot)
+
+        plt.figure()
+        plt.scatter(df['avg_bbox_side_length'], df['duration_sec'], alpha=0.3, label='Data')
+        plt.plot(x_vals, np.exp(y_pred) - 1, color='red', label='Log-log OLS fit')
+        plt.xlabel('Avg BBox Side Length (pixels)')
+        plt.ylabel('Track Duration (seconds)')
+        plt.yscale('log')
+        plt.xscale('log')
+        plt.title('Track Duration vs BBox Side Length')
+        plt.legend()
+        plt.grid(True, which='both', ls='--')
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'duration_vs_bbox_size_regression.png'))
+        plt.close()
+
     data = load_tracking_data(pkl_dir)
 
     avg_areas = []
+    side_lengths = []
     identities = []
+    durations = []
 
-    for _, all_tracks in data:
+    for fps, all_tracks in data:
         for trk in all_tracks.values():
             boxes = list(trk.object_detections.values())
             areas = [box[2] * box[3] for box in boxes if len(box) >= 4]
-            if areas:
-                avg_areas.append(np.mean(areas))
-                identities.append(bool(getattr(trk, 'identity', None)))
+            if not areas:
+                continue
+            
+        if not hasattr(trk, 'span') or not isinstance(trk.span, list):
+            continue
+
+        start, end = trk.span
+        duration = max(0, end - start) / fps
+        durations.append(duration)
+
+        avg_area = np.mean(areas)
+        side_length = np.sqrt(avg_area)
+
+        avg_areas.append(avg_area)
+        side_lengths.append(side_length)
+        identities.append(bool(getattr(trk, 'identity', None)))
 
     if not avg_areas:
         return 'No valid track data found'
 
     df = pd.DataFrame({
         'avg_bbox_area': avg_areas,
+        'avg_bbox_side_length': side_lengths,
+        'duration_sec': durations,
         'has_identity': identities
     })
 
     _chart_area_histogram(df, pkl_dir)
     _chart_area_boxplot(df, pkl_dir)
     _chart_area_bins(df, pkl_dir)
+    _chart_area_vs_duration(df, pkl_dir)
 
     return df
 
@@ -296,7 +354,7 @@ if __name__ == '__main__':
     download_tracking_pkls()
 
     if analyze_track_lengths:
-        length_stats = analyze_lengths()
+        length_stats, _ = analyze_lengths()
         print('\n')
         print('========== Track Lengths (Duration) vs Identification ==========')
         print(length_stats)
@@ -304,6 +362,6 @@ if __name__ == '__main__':
     if analyze_track_bbox_areas:
         print('\n')
         print('========== Track Bbox Areas vs Identification ==========')
-        bbox_area_stats, _ = analyze_bbox_areas()
+        bbox_area_stats = analyze_bbox_areas()
         print(bbox_area_stats)
         print('\n')
