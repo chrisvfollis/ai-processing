@@ -1381,11 +1381,11 @@ class Track(KalmanFilter):
             
             press_stopwatch(self, 'feature_analysis')
 
-            num_cached = len(self.embedding_cache)
+            num_cached = self.embedding_cache_tensor.shape[0]
             num_new = new_embeddings.shape[0]
             if num_cached == 0:
                 press_stopwatch(self, 'tensor_conversion')
-                num_new_tensor = torch.full((num_new,), float('inf'))
+                num_new_tensor = torch.full((num_new,), float('inf'), device=new_embeddings.device)
                 press_stopwatch(self, 'tensor_conversion')
                 return num_new_tensor
 
