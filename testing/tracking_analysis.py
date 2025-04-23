@@ -23,30 +23,34 @@ def analyze_lengths(data, file_dir='../files/output/'):
     outcomes.
     '''
     def _plot_duration_histogram(durations):
+        filename = io_utils.get_unique_filename(file_dir, 'duration__histogram.png')
         plt.figure()
         plt.hist(durations, bins=30, edgecolor='black')
         plt.yscale('log')
-        plt.title('Track Duration Distribution')
-        plt.xlabel('Track Duration (seconds, log scale)')
-        plt.ylabel('Frequency')
+        plt.title('Distribution of Track Durations')
+        plt.xlabel('track duration (seconds)')
+        plt.ylabel('frequency')
         plt.grid(True, which="both", ls="--", linewidth=0.5)
         plt.tight_layout()
-        plt.savefig(os.path.join(file_dir, 'track_duration_histogram.png'))
+        plt.savefig(os.path.join(file_dir, filename))
         plt.close()
 
     def _plot_boxplot(df):
+        filename = io_utils.get_unique_filename(file_dir, 'duration-vs-ids_boxplot.png')
         plt.figure()
         sns.boxplot(x='has_identity', y='duration_sec', data=df)
         plt.yscale('log')
-        plt.title('Track Duration by Identity Assignment')
+        plt.title('Durations of Identified vs Unidentified Tracks')
         plt.xlabel('Has Identity')
         plt.ylabel('Track Duration (seconds)')
         plt.grid(True, which='both', ls='--')
         plt.tight_layout()
-        plt.savefig(os.path.join(file_dir, 'duration-vs-ids_boxplot.png'))
+        plt.savefig(os.path.join(file_dir, filename))
         plt.close()
 
     def _plot_identity_bins(df):
+        filename = io_utils.get_unique_filename(file_dir, 'duration-vs-ids__barchart.png')
+
         bin_max = utils.logceil_round(np.max(df['duration_sec']))
         bins = sorted(set([0] + [bin_max // i for i in range(10, 0, -1)]))
 
@@ -65,14 +69,15 @@ def analyze_lengths(data, file_dir='../files/output/'):
         sns.barplot(x='duration_bin', y='has_identity', data=bin_summary)
         plt.xticks(rotation=45)
         plt.ylim(0, 1)
-        plt.title('Identity Assignment Rate by Track Duration Bin')
-        plt.ylabel('Fraction with Identity')
-        plt.xlabel('Track Duration Bin (seconds)')
+        plt.title('Identification Rate by Track Duration')
+        plt.ylabel('identification rate')
+        plt.xlabel('track duration (seconds)')
         plt.tight_layout()
-        plt.savefig(os.path.join(file_dir, 'duration-vs-ids_barchart.png'))
+        plt.savefig(os.path.join(file_dir, filename))
         plt.close()
 
     def _plot_heatmap(df):
+        filename = io_utils.get_unique_filename(file_dir, 'cos_dist_heatmap.png')
         heatmap_df = df.copy()
 
         heatmap_df['duration_bin'] = pd.cut(df['duration_sec'], bins=10)
@@ -105,7 +110,7 @@ def analyze_lengths(data, file_dir='../files/output/'):
         plt.xlabel('Face Frame Count (binned)')
         plt.ylabel('Track Duration (binned)')
         plt.tight_layout()
-        plt.savefig(os.path.join(file_dir, 'cos_dist_heatmap.png'))
+        plt.savefig(os.path.join(file_dir, filename))
         plt.close()
 
     durations = []
@@ -150,12 +155,15 @@ def analyze_lengths(data, file_dir='../files/output/'):
 
     model = sm.Logit(y, X).fit(disp=0)
 
+    params = pd.Series(model.params)
+    pvalues = pd.Series(model.pvalues)
+
     ols_output = pd.DataFrame([{
         'feature': 'duration_sec',
-        'coef': model.params[1],
-        'intercept': model.params[0],
-        'p_value': model.pvalues[1],
-        'r_squared': None,
+        'coef': params.iloc[1],
+        'intercept': params.iloc[0],
+        'p_value': pvalues.iloc[1],
+        'r_squared': model.prsquared,   #McFadden's pseudo-R^2
         'model_type': 'Logit',
         'module': 'duration'
     }])
@@ -182,35 +190,40 @@ def analyze_lengths(data, file_dir='../files/output/'):
 def analyze_bbox_areas(data, file_dir='../files/output/'):
 
     def _chart_area_histogram(df, file_dir):
+        filename = io_utils.get_unique_filename(file_dir, 'avg-area__histogram.png')
+
         plt.figure()
-        plt.hist(df['avg_bbox_area'], bins=30, edgecolor='black')
-        plt.yscale('log')
-        plt.title('Avg. Bounding Box Area Distribution')
-        plt.xlabel('Average BBox Area (pixels²)')
-        plt.ylabel('Frequency (log scale)')
+        plt.hist(df['avg_bbox_side_length'], bins=30, edgecolor='black')
+        # plt.yscale('log')
+        plt.title('Trackwise Avg BBox Areas')
+        plt.xlabel('avg bbox area (√pixels)')
+        plt.ylabel('frequency')
         plt.grid(True, which="both", ls="--", linewidth=0.5)
         plt.tight_layout()
-        plt.savefig(os.path.join(file_dir, 'avg-area__histogram.png'))
+        plt.savefig(os.path.join(file_dir, filename))
         plt.close()
 
     def _chart_area_boxplot(df, file_dir):
+        filename = io_utils.get_unique_filename(file_dir, 'avg-area_vs_ids__boxplot.png')
         plt.figure()
-        sns.boxplot(x='has_identity', y='avg_bbox_area', data=df)
+        sns.boxplot(x='has_identity', y='avg_bbox_side_length', data=df)
         plt.yscale('log')
-        plt.title('Avg. BBox Area by Identity Assignment')
-        plt.xlabel('Has Identity')
-        plt.ylabel('Average BBox Area (pixels²)')
+        plt.title('Avg BBox Area by Identity Assignment')
+        plt.xlabel('has identity')
+        plt.ylabel('avg bbox area (√pixels)')
         plt.grid(True, which='both', ls='--')
         plt.tight_layout()
-        plt.savefig(os.path.join(file_dir, 'avg-area_vs_ids__boxplot.png'))
+        plt.savefig(os.path.join(file_dir, filename))
         plt.close()
 
     def _chart_area_bins(df, file_dir):
-        bin_max = utils.logceil_round(df['avg_bbox_area'].max())
+        filename = io_utils.get_unique_filename(file_dir, 'avg-area_vs_ids__barchart.png')
+
+        bin_max = utils.logceil_round(df['avg_bbox_side_length'].max())
         bins = sorted(set([0] + [bin_max // i for i in range(10, 0, -1)]))
 
         df['area_bin'] = pd.cut(
-            df['avg_bbox_area'],
+            df['avg_bbox_side_length'],
             bins=bins,
             include_lowest=True,
             right=False
@@ -225,26 +238,29 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
         sns.barplot(x='area_bin', y='has_identity', data=bin_summary)
         plt.xticks(rotation=45)
         plt.ylim(0, 1)
-        plt.title('Identity Assignment Rate by Avg. BBox Area Bin')
-        plt.ylabel('Fraction with Identity')
-        plt.xlabel('Avg. BBox Area Bin (pixels²)')
+        plt.title('Identification Rate by Avg BBox Area')
+        plt.ylabel('identification rate')
+        plt.xlabel('avg bbox area (√pixels)')
         plt.tight_layout()
-        plt.savefig(os.path.join(file_dir, 'avg-area_vs_ids__barchart.png'))
+        plt.savefig(os.path.join(file_dir, filename))
         plt.close()
 
     def _chart_area_vs_duration(df, file_dir):
-        def _run_loglog_regression(x_column, suffix, records):
+        def _run_loglog_regression(x_column, prefix, records):
             X = np.log(df[x_column] + 1).values
             y = np.log(df['duration_sec'] + 1).values
             X = sm.add_constant(X)
 
             model = sm.OLS(y, X).fit()
 
+            params = pd.Series(model.params)
+            pvalues = pd.Series(model.pvalues)
+
             records.append({
                 'feature': x_column,
-                'coef': model.params[1],
-                'intercept': model.params[0],
-                'p_value': model.pvalues[1],
+                'coef': params.iloc[1],
+                'intercept': params.iloc[0],
+                'p_value': pvalues.iloc[1],
                 'r_squared': model.rsquared,
                 'model_type': 'OLS',
                 'module': 'bbox_area'
@@ -257,15 +273,16 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
             plt.figure()
             plt.scatter(df[x_column], df['duration_sec'], alpha=0.3, label='Data')
             plt.plot(x_vals, np.exp(y_pred) - 1, color='red', label='Log-log OLS fit')
-            plt.xlabel(f'{x_column.replace("_", " ").title()} (pixels)')
-            plt.ylabel('Track Duration (seconds)')
+            plt.xlabel(f'{prefix} bbox area (√pixels)')
+            plt.ylabel('track duration (seconds)')
             plt.yscale('log')
-            plt.xscale('log')
-            plt.title(f'Track Duration vs {x_column.replace("_", " ").title()}')
+            # plt.xscale('log')
+            title_prefix = prefix[0].upper() + prefix[1:]
+            plt.title(f'{title_prefix} Bbox Area vs Duration')
             plt.legend()
             plt.grid(True, which='both', ls='--')
             plt.tight_layout()
-            filename = f'{suffix}-area_vs_duration__regression.png'
+            filename = io_utils.get_unique_filename(file_dir, f'{prefix}-area_vs_duration__regression.png')
             plt.savefig(os.path.join(file_dir, filename))
             plt.close()
 
@@ -284,7 +301,7 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
     identifications = []
     avg_areas = []
     q75_areas = []
-    side_lengths = []
+    avg_side_lengths = []
     q75_side_lengths = []
     durations = []
 
@@ -307,7 +324,7 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
 
             avg_areas.append(avg_area)
             q75_areas.append(q75_area)
-            side_lengths.append(np.sqrt(avg_area))
+            avg_side_lengths.append(np.sqrt(avg_area))
             q75_side_lengths.append(np.sqrt(q75_area))
             identifications.append(bool(getattr(trk, 'identity', None)))
 
@@ -317,7 +334,7 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
     trackwise_stats = pd.DataFrame({
         'avg_bbox_area': avg_areas,
         'q75_bbox_area': q75_areas,
-        'avg_bbox_side_length': side_lengths,
+        'avg_bbox_side_length': avg_side_lengths,
         'q75_bbox_side_length': q75_side_lengths,
         'duration_sec': durations,
         'has_identity': identifications
@@ -351,9 +368,10 @@ if __name__ == '__main__':
 
     test_utils.download_tracking_pkls()
 
-    print(f'min_length={min_length}')
-    print(f'var_percentile={var_percentile}')
-
+    print('\n')
+    print(f'min_length = {min_length}')
+    print(f'var_percentile = {var_percentile}')
+    print('\n')
     data = test_utils.prepare_tracking_data(
         min_duration_sec=min_length,
         var_percentile=var_percentile

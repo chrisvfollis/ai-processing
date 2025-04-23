@@ -5,7 +5,7 @@ import pickle
 import time
 import math
 from itertools import permutations
-from collections import deque
+import sys
 
 # 3rd-party dependencies
 import numpy as np
@@ -449,7 +449,11 @@ class TrackingPipeline:
                 if memory_snapshot > threshold:
                     threshold = memory_snapshot * 1.5
                     if torch.cuda.is_available():
-                        logger.info(f'GPU Mem: {torch.cuda.memory_allocated() / 1024**2:.2f} MB')
+                        logger.info(f'GPU memory allocated: {torch.cuda.memory_allocated() / 1024**2:.2f} MB')
+                        total_trk_memory = 0
+                        for trk in self.all_trks.values():
+                            total_trk_memory += sys.getsizeof(trk)
+                        print(f'Total track memory allocated: {total_trk_memory}') 
 
             if self.f_num % 100 == 0:
                 io_utils.clear_memory()

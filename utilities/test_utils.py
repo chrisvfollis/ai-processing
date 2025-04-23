@@ -194,7 +194,9 @@ def export_tracking_analysis(
         if all_ols_output else pd.DataFrame()
     )
 
-    output_path = os.path.join('../files/output/', 'tracking_analysis_results.xlsx')
+    filename = io_utils.get_unique_filename('../files/output/', 'tracking_analysis_results.xlsx')
+
+    output_path = os.path.join('../files/output/', filename)
     with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
         if not merged_trackwise.empty:
             merged_trackwise.to_excel(writer, sheet_name='Trackwise Stats', index=False)
