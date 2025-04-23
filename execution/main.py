@@ -1,13 +1,13 @@
 # standard dependencies
 import os
 import sys
-import traceback
 import signal
 import gc
 import multiprocessing
 import time
 import argparse
 from datetime import datetime
+import textwrap
 
 # 3rd-party dependencies
 import torch
@@ -132,6 +132,13 @@ def run_master_process(
         io_utils.clear_queue_block(shop_id, timestamp)
         io_utils.delete_local_files(time_prefix)
     
+    logger.info(textwrap.dedent(f'''
+        master process args:
+        retain_footage={retain_footage}
+        save_all_data={save_all_data}
+        start_from={start_from}
+    '''))
+
     signal.signal(signal.SIGTERM, handle_early_termination)
     signal.signal(signal.SIGINT, handle_early_termination)
 
