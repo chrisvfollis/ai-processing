@@ -1,14 +1,10 @@
 # standard dependencies
-import pickle
 import os
-import re
 import argparse
-from typing import Union
 
 # 3rd-party dependencies
 import numpy as np
 import pandas as pd
-import boto3
 import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.api as sm
@@ -17,138 +13,11 @@ import statsmodels.api as sm
 # internal dependencies
 from utilities import io_utils
 import utilities.general_utils as utils
+from utilities import test_utils
 
 
-def download_tracking_pkls(
-        shop_id: str = None,
-        bucket_name='visionservice-data',
-        local_dir='../files/output/'
-    ):
-    credentials = io_utils.get_aws_creds()
 
-    s3 = boto3.client(
-        's3',
-        aws_access_key_id=credentials[0],
-        aws_secret_access_key=credentials[1],
-        region_name='us-west-1'
-    )
-
-    os.makedirs(local_dir, exist_ok=True)
-
-    pattern = re.compile(r'\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_\d+\.pkl')
-    # pattern match example: 2025-04-18_09-30-00_3.pkl
-
-    prefix = f'{shop_id}/' if shop_id else ''
-
-    paginator = s3.get_paginator('list_objects_v2')
-    page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
-
-    for page in page_iterator:
-        if 'Contents' not in page:
-            continue
-
-        for obj in page['Contents']:
-            key = obj['Key']
-            filename = os.path.basename(key)
-
-            if pattern.fullmatch(filename):
-                local_path = os.path.join(local_dir, filename)
-                if os.path.exists(local_path):
-                    continue
-                print(f'Downloading {key} to {local_path}')
-                s3.download_file(bucket_name, key, local_path)
-
-
-def prepare_tracking_data(
-        pkl_dir='../files/output/',
-        min_duration_sec: Union[float, int] = 1.0,
-        var_percentile: int = 5
-    ):
-    '''
-    Loads and cleans pickled tracking data.
-
-    Args:
-        min_duration_sec: Filters short-lived tracks likely caused by transient
-                          object detector noise. Tracks with durations below this
-                          threshold are discarded.
-
-        var_percentile: Filters stationary objects erroneously tracked as people
-                        for extended periods. A track's average [x, y, w, h] variance
-                        must fall above this percentile within the distribution of
-                        all track-wise variances.
-
-    Returns:
-        List of (fps, cleaned_tracks) tuples.
-    '''
-
-    all_variances = []
-    loaded_data = []
-
-    len_filtered = 0
-    var_filtered = 0
-
-    # load and compute variances
-    for fname in os.listdir(pkl_dir):
-        if fname.endswith('.pkl') and not fname.endswith('inference_data.pkl'):
-            path = os.path.join(pkl_dir, fname)
-            try:
-                with open(path, 'rb') as f:
-                    pipeline = pickle.load(f)
-
-                fps = pipeline.fps
-                track_variances = []
-
-                for trk in pipeline.all_trks.values():
-                    if not hasattr(trk, 'span') or not isinstance(trk.span, list):
-                        continue
-                    start, end = trk.span
-                    duration = max(0, end - start) / fps
-                    if duration <= min_duration_sec:
-                        len_filtered += 1
-                        continue  # filter short, irrelevant tracks
-
-                    boxes = list(trk.object_detections.values())
-                    if len(boxes) < 2:
-                        continue
-
-                    arr = np.array([[box[0], box[1], box[2], box[3]]
-                                    for box in boxes if len(box) >= 4])
-                    if arr.shape[0] < 2:
-                        continue
-
-                    var = np.var(arr, axis=0).mean()
-                    track_variances.append((trk, var))
-
-                if track_variances:
-                    loaded_data.append((fps, track_variances))
-                    all_variances.extend([v for _, v in track_variances])
-
-            except Exception as e:
-                print(f'Failed to process {fname}: {e}')
-
-    if not all_variances:
-        return []
-    
-    # filter using variance threshold
-    var_cutoff = np.percentile(all_variances, var_percentile)
-    cleaned_data = []
-    for fps, trk_var_pairs in loaded_data:
-        cleaned_tracks = {}
-        for trk, var in trk_var_pairs:
-            if var > var_cutoff:
-                cleaned_tracks[trk.track_id] = trk
-            else:
-                var_filtered += 1
-        if cleaned_tracks:
-            cleaned_data.append((fps, cleaned_tracks))
-    
-    print(f'{len_filtered} short-lived tracks filtered')
-    print(f'{var_filtered} tracked stationary objects filtered')
-
-    return cleaned_data
-
-
-def analyze_lengths(data, pkl_dir='../files/output/'):
+def analyze_lengths(data, file_dir='../files/output/'):
     '''
     Models relationships between track length (duration) and other attributes or
     outcomes.
@@ -162,7 +31,7 @@ def analyze_lengths(data, pkl_dir='../files/output/'):
         plt.ylabel('Frequency')
         plt.grid(True, which="both", ls="--", linewidth=0.5)
         plt.tight_layout()
-        plt.savefig(os.path.join(pkl_dir, 'track_duration_histogram.png'))
+        plt.savefig(os.path.join(file_dir, 'track_duration_histogram.png'))
         plt.close()
 
     def _plot_boxplot(df):
@@ -174,7 +43,7 @@ def analyze_lengths(data, pkl_dir='../files/output/'):
         plt.ylabel('Track Duration (seconds)')
         plt.grid(True, which='both', ls='--')
         plt.tight_layout()
-        plt.savefig(os.path.join(pkl_dir, 'duration-vs-ids_boxplot.png'))
+        plt.savefig(os.path.join(file_dir, 'duration-vs-ids_boxplot.png'))
         plt.close()
 
     def _plot_identity_bins(df):
@@ -200,7 +69,7 @@ def analyze_lengths(data, pkl_dir='../files/output/'):
         plt.ylabel('Fraction with Identity')
         plt.xlabel('Track Duration Bin (seconds)')
         plt.tight_layout()
-        plt.savefig(os.path.join(pkl_dir, 'duration-vs-ids_barchart.png'))
+        plt.savefig(os.path.join(file_dir, 'duration-vs-ids_barchart.png'))
         plt.close()
 
     def _plot_heatmap(df):
@@ -236,7 +105,7 @@ def analyze_lengths(data, pkl_dir='../files/output/'):
         plt.xlabel('Face Frame Count (binned)')
         plt.ylabel('Track Duration (binned)')
         plt.tight_layout()
-        plt.savefig(os.path.join(pkl_dir, 'cos_dist_heatmap.png'))
+        plt.savefig(os.path.join(file_dir, 'cos_dist_heatmap.png'))
         plt.close()
 
     durations = []
@@ -268,41 +137,51 @@ def analyze_lengths(data, pkl_dir='../files/output/'):
     if not durations:
         return 'No valid track durations found'
 
-    df = pd.DataFrame({
+    trackwise_stats = pd.DataFrame({
         'duration_sec': durations,
         'has_identity': identifications,
         'num_face_frames': num_face_frames,
         'avg_min_cos_dist': avg_min_cos_dists
     })
 
-    X = np.log(df['duration_sec'].values + 1)[:, None]
+    X = np.log(trackwise_stats['duration_sec'].values + 1)[:, None]
     X = sm.add_constant(X)
-    y = df['has_identity'].astype(int)
+    y = trackwise_stats['has_identity'].astype(int)
 
-    model = sm.Logit(y, X).fit()
-    print(model.summary())
+    model = sm.Logit(y, X).fit(disp=0)
 
-    stats = {
+    ols_output = pd.DataFrame([{
+        'feature': 'duration_sec',
+        'coef': model.params[1],
+        'intercept': model.params[0],
+        'p_value': model.pvalues[1],
+        'r_squared': None,
+        'model_type': 'Logit',
+        'module': 'duration'
+    }])
+
+    overall_stats = pd.DataFrame([{
         'average_duration_sec': np.mean(durations),
         'median_duration_sec': np.median(durations),
         'min_duration_sec': np.min(durations),
         'max_duration_sec': np.max(durations),
-        'with_identity': df['has_identity'].sum(),
-        'without_identity': len(df) - df['has_identity'].sum(),
-        'total_tracks': len(df)
-    }
+        'with_identity': trackwise_stats['has_identity'].sum(),
+        'without_identity': len(trackwise_stats) - trackwise_stats['has_identity'].sum(),
+        'total_tracks': len(trackwise_stats),
+        'module': 'duration'
+    }])
 
     _plot_duration_histogram(durations)
-    _plot_boxplot(df)
-    _plot_identity_bins(df)
-    _plot_heatmap(df)
+    _plot_boxplot(trackwise_stats)
+    _plot_identity_bins(trackwise_stats)
+    _plot_heatmap(trackwise_stats)
 
-    return stats, df
+    return trackwise_stats, overall_stats, ols_output
 
 
-def analyze_bbox_areas(data, pkl_dir='../files/output/'):
+def analyze_bbox_areas(data, file_dir='../files/output/'):
 
-    def _chart_area_histogram(df, pkl_dir):
+    def _chart_area_histogram(df, file_dir):
         plt.figure()
         plt.hist(df['avg_bbox_area'], bins=30, edgecolor='black')
         plt.yscale('log')
@@ -311,10 +190,10 @@ def analyze_bbox_areas(data, pkl_dir='../files/output/'):
         plt.ylabel('Frequency (log scale)')
         plt.grid(True, which="both", ls="--", linewidth=0.5)
         plt.tight_layout()
-        plt.savefig(os.path.join(pkl_dir, 'avg-area__histogram.png'))
+        plt.savefig(os.path.join(file_dir, 'avg-area__histogram.png'))
         plt.close()
 
-    def _chart_area_boxplot(df, pkl_dir):
+    def _chart_area_boxplot(df, file_dir):
         plt.figure()
         sns.boxplot(x='has_identity', y='avg_bbox_area', data=df)
         plt.yscale('log')
@@ -323,10 +202,10 @@ def analyze_bbox_areas(data, pkl_dir='../files/output/'):
         plt.ylabel('Average BBox Area (pixels²)')
         plt.grid(True, which='both', ls='--')
         plt.tight_layout()
-        plt.savefig(os.path.join(pkl_dir, 'avg-area_vs_ids__boxplot.png'))
+        plt.savefig(os.path.join(file_dir, 'avg-area_vs_ids__boxplot.png'))
         plt.close()
 
-    def _chart_area_bins(df, pkl_dir):
+    def _chart_area_bins(df, file_dir):
         bin_max = utils.logceil_round(df['avg_bbox_area'].max())
         bins = sorted(set([0] + [bin_max // i for i in range(10, 0, -1)]))
 
@@ -350,18 +229,26 @@ def analyze_bbox_areas(data, pkl_dir='../files/output/'):
         plt.ylabel('Fraction with Identity')
         plt.xlabel('Avg. BBox Area Bin (pixels²)')
         plt.tight_layout()
-        plt.savefig(os.path.join(pkl_dir, 'avg-area_vs_ids__barchart.png'))
+        plt.savefig(os.path.join(file_dir, 'avg-area_vs_ids__barchart.png'))
         plt.close()
-    
-    def _chart_area_vs_duration(df, pkl_dir):
-        def _run_loglog_regression(x_column, suffix):
+
+    def _chart_area_vs_duration(df, file_dir):
+        def _run_loglog_regression(x_column, suffix, records):
             X = np.log(df[x_column] + 1).values
             y = np.log(df['duration_sec'] + 1).values
             X = sm.add_constant(X)
 
             model = sm.OLS(y, X).fit()
-            print(f'\n===== OLS summary using {x_column} =====')
-            print(model.summary())
+
+            records.append({
+                'feature': x_column,
+                'coef': model.params[1],
+                'intercept': model.params[0],
+                'p_value': model.pvalues[1],
+                'r_squared': model.rsquared,
+                'model_type': 'OLS',
+                'module': 'bbox_area'
+            })
 
             x_vals = np.linspace(df[x_column].min(), df[x_column].max(), 100)
             X_plot = sm.add_constant(np.log(x_vals + 1))
@@ -379,21 +266,26 @@ def analyze_bbox_areas(data, pkl_dir='../files/output/'):
             plt.grid(True, which='both', ls='--')
             plt.tight_layout()
             filename = f'{suffix}-area_vs_duration__regression.png'
-            plt.savefig(os.path.join(pkl_dir, filename))
+            plt.savefig(os.path.join(file_dir, filename))
             plt.close()
 
-        _run_loglog_regression('avg_bbox_side_length', 'avg')
-        _run_loglog_regression('q75_bbox_side_length', 'q75')
+            return records
+        
+        ols_records = []
+        ols_records = _run_loglog_regression(
+            'avg_bbox_side_length', 'avg', ols_records
+        )
+        ols_records = _run_loglog_regression(
+            'q75_bbox_side_length', 'q75', ols_records
+        )
 
+        return pd.DataFrame(ols_records)
 
     identifications = []
-
     avg_areas = []
     q75_areas = []
-
     side_lengths = []
     q75_side_lengths = []
-
     durations = []
 
     for fps, all_tracks in data:
@@ -402,7 +294,7 @@ def analyze_bbox_areas(data, pkl_dir='../files/output/'):
             areas = [box[2] * box[3] for box in boxes if len(box) >= 4]
             if not areas:
                 continue
-            
+
             if not hasattr(trk, 'span') or not isinstance(trk.span, list):
                 continue
 
@@ -422,7 +314,7 @@ def analyze_bbox_areas(data, pkl_dir='../files/output/'):
     if not avg_areas:
         return 'No valid track data found'
 
-    df = pd.DataFrame({
+    trackwise_stats = pd.DataFrame({
         'avg_bbox_area': avg_areas,
         'q75_bbox_area': q75_areas,
         'avg_bbox_side_length': side_lengths,
@@ -431,12 +323,12 @@ def analyze_bbox_areas(data, pkl_dir='../files/output/'):
         'has_identity': identifications
     })
 
-    _chart_area_histogram(df, pkl_dir)
-    _chart_area_boxplot(df, pkl_dir)
-    _chart_area_bins(df, pkl_dir)
-    _chart_area_vs_duration(df, pkl_dir)
+    _chart_area_histogram(trackwise_stats, file_dir)
+    _chart_area_boxplot(trackwise_stats, file_dir)
+    _chart_area_bins(trackwise_stats, file_dir)
+    ols_output = _chart_area_vs_duration(trackwise_stats, file_dir)
 
-    return df
+    return trackwise_stats, ols_output
 
 
 if __name__ == '__main__':
@@ -457,26 +349,35 @@ if __name__ == '__main__':
     min_length = args.min_length or 1.0
     var_percentile = args.var_percentile or 5
 
-    download_tracking_pkls()
+    test_utils.download_tracking_pkls()
 
     print(f'min_length={min_length}')
     print(f'var_percentile={var_percentile}')
 
-    data = prepare_tracking_data(
+    data = test_utils.prepare_tracking_data(
         min_duration_sec=min_length,
         var_percentile=var_percentile
     )
 
+    all_trackwise_stats = []
+    all_overall_stats = []
+    all_ols_output = []
+
     if analyze_track_lengths:
-        length_stats, _ = analyze_lengths(data)
-        print('\n')
-        print('========== Track Lengths (Duration) vs Identification ==========')
-        for k, v in length_stats.items():
-            print(f'{k}: {v}')
-        print('\n')
+        len_trackwise, len_overall, len_ols = analyze_lengths(data)
+
+        all_trackwise_stats.append(len_trackwise)
+        all_overall_stats.append(len_overall)
+        all_ols_output.append(len_ols)
+
     if analyze_track_bbox_areas:
-        print('\n')
-        print('========== Track Bbox Areas vs Identification ==========')
-        bbox_area_stats = analyze_bbox_areas(data)
-        print(bbox_area_stats)
-        print('\n')
+        bbox_trackwise, bbox_ols = analyze_bbox_areas(data)
+
+        all_trackwise_stats.append(bbox_trackwise)
+        all_ols_output.append(bbox_ols)
+
+    test_utils.export_tracking_analysis(
+        all_trackwise_stats=all_trackwise_stats,
+        all_overall_stats=all_overall_stats,
+        all_ols_output=all_ols_output
+    )
