@@ -208,7 +208,11 @@ def read_embeddings(hdf5_file, target_frame, device):
             print(f"Found 0 indices for frame {target_frame}")
 
         target_embeddings = file['embeddings'][sorted(indices)]
-        target_embeddings = torch.from_numpy(target_embeddings).to(device)
+        target_embeddings = (
+            torch.from_numpy(target_embeddings)
+            .to(device)
+            .detach()
+        )
 
         return target_embeddings
 

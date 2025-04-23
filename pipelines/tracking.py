@@ -448,6 +448,8 @@ class TrackingPipeline:
                 )
                 if memory_snapshot > threshold:
                     threshold = memory_snapshot * 1.5
+                    if torch.cuda.is_available():
+                        logger.info(f'GPU Mem: {torch.cuda.memory_allocated() / 1024**2:.2f} MB')
 
             if self.f_num % 100 == 0:
                 io_utils.clear_memory()
@@ -1188,7 +1190,6 @@ class Track(KalmanFilter):
         self.face_detections = {}
         
         self.keypoints = {}
-        self.embedding_cache = deque(maxlen=20)
         self.span = [args[0], args[0]]
 
         self.track_id = None
@@ -1210,7 +1211,6 @@ class Track(KalmanFilter):
         'Prepare object state for pickling by moving tensors off of the GPU'
         state = self.__dict__.copy()
 
-        state['embedding_cache'] = [emb.to('cpu') for emb in state['embedding_cache']]
         state['embedding_cache_tensor'] = state['embedding_cache_tensor'].to('cpu')
         return state
 
@@ -1223,21 +1223,26 @@ class Track(KalmanFilter):
 
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-        self.embedding_cache = deque([emb.to(device) for emb in state['embedding_cache']], maxlen=20)
         self.embedding_cache_tensor = self.embedding_cache_tensor.to(device)
 
     def set_id(self, track_id):
         self.track_id = track_id
 
-    def add_embedding(self, embedding):
-        self.embedding_cache.append(embedding)
+    def add_embedding(self, embedding, max_len=20):
+        embedding = embedding.detach().unsqueeze(0)  # shape: [1, D]
 
-        if hasattr(self, 'embedding_cache_tensor'):
-            del self.embedding_cache_tensor
-        
-        press_stopwatch(self, 'tensor_conversion')
-        self.embedding_cache_tensor = torch.stack(list(self.embedding_cache))
-        press_stopwatch(self, 'tensor_conversion')
+        if not hasattr(self, 'embedding_cache_tensor'):
+            self.embedding_cache_tensor = embedding
+        else:
+            if self.embedding_cache_tensor.size(0) < max_len:
+                self.embedding_cache_tensor = torch.cat(
+                    [self.embedding_cache_tensor, embedding], dim=0
+                )
+            else:
+                # rolling buffer:
+                self.embedding_cache_tensor = torch.cat(
+                    [self.embedding_cache_tensor[1:], embedding], dim=0
+                )
 
     def add_detection(self, new_detection, frame_number):
         self.object_detections[frame_number] = new_detection
