@@ -37,7 +37,6 @@ def handle_early_termination(signum, frame):
 def run_processing_pipelines(
         row, model_info, device, credentials, save_all_data=False
     ):
-    gc.set_debug(gc.DEBUG_SAVEALL)
 
     io_utils.clear_memory()
 
@@ -85,8 +84,7 @@ def run_processing_pipelines(
         )
 
         del inference_pipeline, inference_output
-        io_utils.clear_memory()
-
+        
         tracking_pipeline.run()
         if save_all_data:
             pass    # tracking pipeline data is already saved for continuation
@@ -101,7 +99,8 @@ def run_processing_pipelines(
     except Exception as e:
         logger.exception(f'Error occurred while processing {video_file}')   # logs the traceback automatically, so
         return False                                                        # no need for traceback.format_exc()
-
+    finally:
+        io_utils.clear_memory()
 
 def run_master_process(
         device: torch.device,
