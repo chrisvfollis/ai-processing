@@ -80,20 +80,20 @@ def analyze_lengths(data, file_dir='../files/output/'):
         filename = io_utils.get_unique_filename(file_dir, 'cos_dist_heatmap.png')
         heatmap_df = df.copy()
 
-        heatmap_df['duration_bin'] = pd.cut(df['duration_sec'], bins=10)
-        heatmap_df['face_frame_bin'] = pd.cut(df['num_face_frames'], bins=10)
+        heatmap_df['duration_bin'] = pd.cut(df['duration_sec'], bins=5)
+        heatmap_df['bbox_area_bin'] = pd.cut(df['median_bbox_area'], bins=5)
 
-        row_labels = [
+        col_labels = [
             f"{int(b.left)}-{int(b.right)}" for b in
             heatmap_df['duration_bin'].cat.categories
         ]
-        col_labels = [
+        row_labels = [
             f"{int(b.left)}-{int(b.right)}" for b in
-            heatmap_df['face_frame_bin'].cat.categories
+            heatmap_df['bbox_area_bin'].cat.categories
         ]
 
         pivot = (
-            heatmap_df.groupby(['duration_bin', 'face_frame_bin'], observed=False)
+            heatmap_df.groupby(['bbox_area_bin', 'duration_bin'], observed=False)
             ['avg_min_cos_dist']
             .mean().unstack()
         )
@@ -106,9 +106,9 @@ def analyze_lengths(data, file_dir='../files/output/'):
             pivot, annot=True, cmap='coolwarm', fmt=".3f",
             cbar_kws={'label': 'Mean Min Cosine Distance'}
         )
-        plt.title('Mean Cosine Distance by Duration and Face Detection Count')
-        plt.xlabel('Face Frame Count (binned)')
-        plt.ylabel('Track Duration (binned)')
+        plt.title('Mean Cosine Distance by BBox Area and Duration')
+        plt.xlabel('Track Duration (seconds)')
+        plt.ylabel('Median BBox Area (pixels)')
         plt.tight_layout()
         plt.savefig(os.path.join(file_dir, filename))
         plt.close()
@@ -116,6 +116,7 @@ def analyze_lengths(data, file_dir='../files/output/'):
     durations = []
     identifications = []
     num_face_frames = []
+    median_bbox_areas = []
     avg_min_cos_dists = []
 
     for fps, all_tracks in data:
@@ -124,6 +125,12 @@ def analyze_lengths(data, file_dir='../files/output/'):
                 start, end = trk.span
                 duration = max(0, end - start) / fps
 
+                boxes = list(trk.object_detections.values())
+                areas = [box[2] * box[3] for box in boxes if len(box) >= 4]
+                side_lengths = np.sqrt(areas)
+
+                median_area = np.median(areas) if areas else np.nan
+
                 face_frames = trk.face_detections.keys()
                 num_faces = len(face_frames)
 
@@ -131,13 +138,13 @@ def analyze_lengths(data, file_dir='../files/output/'):
                 for df in trk.face_detections.values():
                     if 'distance' in df:
                         dists.append(df['distance'].min())
-
                 mean_min_cos_dist = np.mean(dists) if dists else np.nan
 
                 durations.append(duration)
                 identifications.append(bool(getattr(trk, 'identity', None)))
-                num_face_frames.append(num_faces)
+                median_bbox_areas.append(median_area)
                 avg_min_cos_dists.append(mean_min_cos_dist)
+                num_face_frames.append(num_faces)
 
     if not durations:
         return 'No valid track durations found'
@@ -146,7 +153,8 @@ def analyze_lengths(data, file_dir='../files/output/'):
         'duration_sec': durations,
         'has_identity': identifications,
         'num_face_frames': num_face_frames,
-        'avg_min_cos_dist': avg_min_cos_dists
+        'avg_min_cos_dist': avg_min_cos_dists,
+        'median_bbox_area': median_bbox_areas,
     })
 
     X = np.log(trackwise_stats['duration_sec'].values + 1)[:, None]
@@ -194,7 +202,7 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
 
         plt.figure()
         plt.hist(df['avg_bbox_side_length'], bins=30, edgecolor='black')
-        # plt.yscale('log')
+        plt.yscale('log')
         plt.title('Trackwise Avg BBox Areas')
         plt.xlabel('avg bbox area (√pixels)')
         plt.ylabel('frequency')
@@ -298,12 +306,43 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
 
         return pd.DataFrame(ols_records)
 
+    def _chart_area_vs_cosdist_barchart(df, file_dir):
+        filename = io_utils.get_unique_filename(file_dir, 'avg-area_vs_median-cosdist__barchart.png')
+
+        bin_max = utils.logceil_round(df['avg_bbox_side_length'].max())
+        bins = sorted(set([0] + [bin_max // i for i in range(10, 0, -1)]))
+
+        df['bbox_bin'] = pd.cut(
+            df['avg_bbox_side_length'],
+            bins=bins,
+            include_lowest=True,
+            right=False
+        )
+
+        bin_summary = (
+            df.groupby('bbox_bin', observed=False)['median_min_cos_dist']
+            .mean().reset_index()
+        )
+
+        plt.figure()
+        sns.barplot(x='bbox_bin', y='median_min_cos_dist', data=bin_summary)
+        plt.xticks(rotation=45)
+        plt.ylim(0, 1)
+        plt.title('Median Cosine Distance by Avg BBox Area Bin')
+        plt.ylabel('median cosine distance')
+        plt.xlabel('avg bbox area (√pixels, binned)')
+        plt.tight_layout()
+        plt.savefig(os.path.join(file_dir, filename))
+        plt.close()
+
+
     identifications = []
     avg_areas = []
     q75_areas = []
     avg_side_lengths = []
     q75_side_lengths = []
     durations = []
+    median_min_cos_dists = []
 
     for fps, all_tracks in data:
         for trk in all_tracks.values():
@@ -318,6 +357,14 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
             start, end = trk.span
             duration = max(0, end - start) / fps
             durations.append(duration)
+
+            dists = []
+            for df in trk.face_detections.values():
+                if 'distance' in df:
+                    dists.append(df['distance'].min())
+            median_cos_dist = np.median(dists) if dists else np.nan
+            median_min_cos_dists.append(median_cos_dist)
+
 
             avg_area = np.mean(areas)
             q75_area = np.percentile(areas, 75)
@@ -337,12 +384,14 @@ def analyze_bbox_areas(data, file_dir='../files/output/'):
         'avg_bbox_side_length': avg_side_lengths,
         'q75_bbox_side_length': q75_side_lengths,
         'duration_sec': durations,
-        'has_identity': identifications
+        'has_identity': identifications,
+        'median_min_cos_dist': median_min_cos_dists
     })
 
     _chart_area_histogram(trackwise_stats, file_dir)
     _chart_area_boxplot(trackwise_stats, file_dir)
     _chart_area_bins(trackwise_stats, file_dir)
+    _chart_area_vs_cosdist_barchart(trackwise_stats, file_dir)
     ols_output = _chart_area_vs_duration(trackwise_stats, file_dir)
 
     return trackwise_stats, ols_output

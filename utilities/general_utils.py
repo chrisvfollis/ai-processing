@@ -253,7 +253,6 @@ def log_low_memory_warnings(stop_event, threshold, interval):
                 print(f'\n[WARNING] MEMORY CRITICAL: {free_mb} MB free')
 
                 memory_usage('processes')
-                memory_usage('allocation_lines')
                 memory_usage('objects')
 
                 gc.collect()
