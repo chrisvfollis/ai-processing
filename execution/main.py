@@ -102,6 +102,7 @@ def run_processing_pipelines(
     finally:
         io_utils.clear_memory()
 
+
 def run_master_process(
         device: torch.device,
         model_info: list,
