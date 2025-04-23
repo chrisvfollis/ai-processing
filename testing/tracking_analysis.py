@@ -3,6 +3,7 @@ import pickle
 import os
 import re
 import argparse
+from typing import Union
 
 # 3rd-party dependencies
 import numpy as np
@@ -58,23 +59,96 @@ def download_tracking_pkls(
                 s3.download_file(bucket_name, key, local_path)
 
 
-def load_tracking_data(pkl_dir='../files/output/'):
-    tracking_data = []
-    
+def prepare_tracking_data(
+        pkl_dir='../files/output/',
+        min_duration_sec: Union[float, int] = 1.0,
+        var_percentile: int = 5
+    ):
+    '''
+    Loads and cleans pickled tracking data.
+
+    Args:
+        min_duration_sec: Filters short-lived tracks likely caused by transient
+                          object detector noise. Tracks with durations below this
+                          threshold are discarded.
+
+        var_percentile: Filters stationary objects erroneously tracked as people
+                        for extended periods. A track's average [x, y, w, h] variance
+                        must fall above this percentile within the distribution of
+                        all track-wise variances.
+
+    Returns:
+        List of (fps, cleaned_tracks) tuples.
+    '''
+
+    all_variances = []
+    loaded_data = []
+
+    len_filtered = 0
+    var_filtered = 0
+
+    # load and compute variances
     for fname in os.listdir(pkl_dir):
         if fname.endswith('.pkl') and not fname.endswith('inference_data.pkl'):
             path = os.path.join(pkl_dir, fname)
             try:
                 with open(path, 'rb') as f:
                     pipeline = pickle.load(f)
-                tracking_data.append((pipeline.fps, pipeline.all_trks))
+
+                fps = pipeline.fps
+                track_variances = []
+
+                for trk in pipeline.all_trks.values():
+                    if not hasattr(trk, 'span') or not isinstance(trk.span, list):
+                        continue
+                    start, end = trk.span
+                    duration = max(0, end - start) / fps
+                    if duration <= min_duration_sec:
+                        len_filtered += 1
+                        continue  # filter short, irrelevant tracks
+
+                    boxes = list(trk.object_detections.values())
+                    if len(boxes) < 2:
+                        continue
+
+                    arr = np.array([[box[0], box[1], box[2], box[3]]
+                                    for box in boxes if len(box) >= 4])
+                    if arr.shape[0] < 2:
+                        continue
+
+                    var = np.var(arr, axis=0).mean()
+                    track_variances.append((trk, var))
+
+                if track_variances:
+                    loaded_data.append((fps, track_variances))
+                    all_variances.extend([v for _, v in track_variances])
+
             except Exception as e:
                 print(f'Failed to process {fname}: {e}')
+
+    if not all_variances:
+        return []
     
-    return tracking_data
+    # filter using variance threshold
+    var_cutoff = np.percentile(all_variances, var_percentile)
+    cleaned_data = []
+    for fps, trk_var_pairs in loaded_data:
+        cleaned_tracks = {}
+        for trk, var in trk_var_pairs:
+            if var > var_cutoff:
+                cleaned_tracks[trk.track_id] = trk
+            else:
+                var_filtered += 1
+        if cleaned_tracks:
+            cleaned_data.append((fps, cleaned_tracks))
+    
+    print(f'{len_filtered} short-lived tracks filtered')
+    print(f'{var_filtered} tracked stationary objects filtered')
+
+    return cleaned_data
 
 
-def analyze_lengths(pkl_dir='../files/output/'):
+def analyze_lengths(data, pkl_dir='../files/output/'):
     '''
     Models relationships between track length (duration) and other attributes or
     outcomes.
@@ -124,15 +198,12 @@ def analyze_lengths(pkl_dir='../files/output/'):
     def _plot_heatmap(df):
         heatmap_df = df.copy()
 
-        # Bin duration and face frame counts
         heatmap_df['duration_bin'] = pd.cut(df['duration_sec'], bins=10)
         heatmap_df['face_frame_bin'] = pd.cut(df['num_face_frames'], bins=10)
 
-        # Bin labels formatted as integers
         row_labels = [f"{int(b.left)}-{int(b.right)}" for b in heatmap_df['duration_bin'].cat.categories]
         col_labels = [f"{int(b.left)}-{int(b.right)}" for b in heatmap_df['face_frame_bin'].cat.categories]
 
-        # Group by bins and compute mean of average minimum cosine distance
         pivot = (
             heatmap_df
             .groupby(['duration_bin', 'face_frame_bin'])['avg_min_cos_dist']
@@ -140,11 +211,9 @@ def analyze_lengths(pkl_dir='../files/output/'):
             .unstack()
         )
 
-        # Replace bin edges with formatted labels
         pivot.index = row_labels
         pivot.columns = col_labels
 
-        # Plot
         plt.figure(figsize=(10, 6))
         sns.heatmap(
             pivot, annot=True, cmap='coolwarm', fmt=".3f",
@@ -162,7 +231,7 @@ def analyze_lengths(pkl_dir='../files/output/'):
     num_face_frames = []
     avg_min_cos_dists = []
 
-    for fps, all_tracks in load_tracking_data(pkl_dir):
+    for fps, all_tracks in data:
         for trk in all_tracks.values():
             if hasattr(trk, 'span') and isinstance(trk.span, list):
                 start, end = trk.span
@@ -218,7 +287,7 @@ def analyze_lengths(pkl_dir='../files/output/'):
     return stats, df
 
 
-def analyze_bbox_areas(pkl_dir='../files/output/'):
+def analyze_bbox_areas(data, pkl_dir='../files/output/'):
 
     def _chart_area_histogram(df, pkl_dir):
         plt.figure()
@@ -294,7 +363,43 @@ def analyze_bbox_areas(pkl_dir='../files/output/'):
         plt.savefig(os.path.join(pkl_dir, 'duration_vs_bbox_size_regression.png'))
         plt.close()
 
-    data = load_tracking_data(pkl_dir)
+    def _chart_face_bbox_area_boxplot(data, pkl_dir):
+        face_bbox_areas = []
+        has_identity_flags = []
+
+        for _, all_tracks in data:
+            for trk in all_tracks.values():
+                if not hasattr(trk, 'face_detections'):
+                    continue
+
+                identity_assigned = bool(getattr(trk, 'identity', None))
+
+                for frame in trk.face_detections.keys():
+                    box = trk.object_detections.get(frame, None)
+                    if box and len(box) >= 4:
+                        area = box[2] * box[3]
+                        face_bbox_areas.append(area)
+                        has_identity_flags.append(identity_assigned)
+
+        if not face_bbox_areas:
+            print('No face-associated bounding boxes found.')
+            return
+
+        df = pd.DataFrame({
+            'face_bbox_area': face_bbox_areas,
+            'has_identity': has_identity_flags
+        })
+
+        plt.figure()
+        sns.boxplot(x='has_identity', y='face_bbox_area', data=df)
+        plt.yscale('log')
+        plt.title('BBox Area in Face-Detected Frames by Identity Assignment')
+        plt.xlabel('Has Identity')
+        plt.ylabel('BBox Area (pixels²)')
+        plt.grid(True, which='both', ls='--')
+        plt.tight_layout()
+        plt.savefig(os.path.join(pkl_dir, 'face_bbox_area_boxplot.png'))
+        plt.close()
 
     avg_areas = []
     side_lengths = []
@@ -336,6 +441,7 @@ def analyze_bbox_areas(pkl_dir='../files/output/'):
     _chart_area_boxplot(df, pkl_dir)
     _chart_area_bins(df, pkl_dir)
     _chart_area_vs_duration(df, pkl_dir)
+    _chart_face_bbox_area_boxplot(data, pkl_dir)
 
     return df
 
@@ -343,18 +449,30 @@ def analyze_bbox_areas(pkl_dir='../files/output/'):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--all', action='store_true')
     parser.add_argument('--track-lengths', action='store_true')
     parser.add_argument('--bbox-areas', action='store_true')
 
+    parser.add_argument('--min-length', type=float)
+    parser.add_argument('--var-percentile', type=int)
+
     args = parser.parse_args()
 
-    analyze_track_lengths = args.track_lengths
-    analyze_track_bbox_areas = args.bbox_areas
+    analyze_track_lengths = args.all or args.track_lengths
+    analyze_track_bbox_areas = args.all or args.bbox_areas
+
+    min_length = args.min_length or 1.0
+    var_percentile = args.var_percentile or 5
 
     download_tracking_pkls()
 
+    data = prepare_tracking_data(
+        min_duration_sec=min_length,
+        var_percentile=var_percentile
+    )
+
     if analyze_track_lengths:
-        length_stats, _ = analyze_lengths()
+        length_stats, _ = analyze_lengths(data)
         print('\n')
         print('========== Track Lengths (Duration) vs Identification ==========')
         print(length_stats)
@@ -362,6 +480,6 @@ if __name__ == '__main__':
     if analyze_track_bbox_areas:
         print('\n')
         print('========== Track Bbox Areas vs Identification ==========')
-        bbox_area_stats = analyze_bbox_areas()
+        bbox_area_stats = analyze_bbox_areas(data)
         print(bbox_area_stats)
         print('\n')
