@@ -48,14 +48,16 @@ def get_video_info(source, release=True):
     
     resolution = (int(source.get(cv2.CAP_PROP_FRAME_WIDTH)),
                   int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-    
+    frame_diag = math.dist([0, 0], resolution)
+
     total_frames = int(source.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = int(source.get(cv2.CAP_PROP_FPS))
+
 
     if release:
         source.release()
 
-    return resolution, fps, total_frames
+    return resolution, frame_diag, fps, total_frames
 
 
 def centroid(coordinates, reverse=False):

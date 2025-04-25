@@ -28,48 +28,47 @@ class InferencePipeline:
         def _instantiate_models(model_info, device, yolo_params, osnet_params,
                                 faceiq_params):
             if not yolo_params:
-                yolov4 = YOLOv4(model_info[0], device)
+                self.yolov4 = YOLOv4(model_info[0], device)
             else:
-                yolov4 = YOLOv4(model_info[0], device, **yolo_params)
+                self.yolov4 = YOLOv4(model_info[0], device, **yolo_params)
             
             if not osnet_params:
-                osnet = OSNet(model_info[1], device)
+                self.osnet = OSNet(model_info[1], device)
             else:
-                osnet = OSNet(model_info[1], device, **osnet_params)
+                self.osnet = OSNet(model_info[1], device, **osnet_params)
             
-            osnet.activate_buffers(video_file)
+            self.osnet.activate_buffers(video_file)
             
             if not faceiq_params:
-                face_iq = FaceIq(*model_info[2], device=device)
+                self.face_iq = FaceIq(*model_info[2], device=device)
             else:
-                face_iq = FaceIq(*model_info[2], device=device, **faceiq_params)
-            
-            return yolov4, osnet, face_iq
+                self.face_iq = FaceIq(*model_info[2], device=device, **faceiq_params)
+                    
+        def _set_video_attrs(video_file, footage_dir):
+            self.video_file = video_file
+            self.video_path = os.path.join(footage_dir, video_file)
+
+            video_info = utils.get_video_info(self.video_path)
+
+            self.resolution = video_info[0]
+            self.frame_diag = video_info[1]
+            self.fps = video_info[2]
+            self.total_frames = video_info[3]
+
+            self.f_num = 0
         
         press_stopwatch(self, 'init_time')
 
-        self.video_file = video_file
-        self.video_path = os.path.join(footage_dir, video_file)
-
-        resolution, fps, total_frames = utils.get_video_info(self.video_path)
-        self.total_frames = total_frames
-        self.fps = fps
-        self.resolution = resolution
-        self.f_num = 0
-
-        yolov4, osnet, face_iq = _instantiate_models(
+        _set_video_attrs(video_file, footage_dir)
+        _instantiate_models(
             model_info, device, yolo_params, osnet_params, faceiq_params
         )
-
-        self.yolov4 = yolov4
-        self.osnet = osnet
-        self.face_iq = face_iq
-
+        
         self.track_stride = max(1, self.fps // 10)
         self.id_stride = (self.fps // self.track_stride) * self.track_stride
 
         self.progress_interval = (
-            ((total_frames // 4) // self.track_stride) * self.track_stride
+            ((self.total_frames // 4) // self.track_stride) * self.track_stride
         )
 
         self.object_detections = {}

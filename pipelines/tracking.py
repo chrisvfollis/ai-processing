@@ -25,86 +25,110 @@ logger = get_logger(__name__)
 
 
 class TrackingPipeline:
-    def __init__(self, video_file, time_prefix, detection_data, face_data,
-                 device, credentials, continuous_mode=True,
-                 conf_thresh=0.65):
-        self.active_trks, self.inactive_trks, self.filtered_trks = {}, {}, {}
-        self.trk_id = 0
+    def __init__(
+            self,
+            video_file,
+            time_prefix,
+            detection_data,
+            face_data,
+            credentials,
+            device: torch.device = None,
+            continuous_mode: bool = True,
+            conf_thresh: float = 0.65,
+            debug_level: int = 0
+        ):
+        '''
+        Args:
+            debug_level (int): Sets how detailed the logs should be.
+                - 0 = minimal logging, best for production
+                - 1 = includes lightweight aggregate memory usage logs
+                - 2 = includes extensive memory usage logs
+        '''
+        def _set_video_attrs(video_file, time_prefix):
+            self.video_file = video_file
+            self.video_path = os.path.join('../files/input/', video_file)
 
-        self.device = device
-        self.credentials = credentials
+            video_info = utils.get_video_info(self.video_path)
 
-        self.cam = video_file.split('.')[0].split('_')[-1]
+            self.resolution = video_info[0]
+            self.frame_diag = video_info[1]
+            self.fps = video_info[2]
+            self.total_frames = video_info[3]
 
-        self.video_file = video_file
-        self.video_path = os.path.join('../files/input/', video_file)
+            self.start_time = utils.frame_timestamp(time_prefix)
+            self.end_time = utils.frame_timestamp(
+                time_prefix, self.total_frames, self.fps
+            )
+            self.f_num = 0
 
-        resolution, fps, total_frames = utils.get_video_info(self.video_path)
-        self.total_frames = total_frames
-        self.fps = fps
-        self.resolution = resolution
+        def _set_timing_attrs():
+            self.primary_run_time = 0
+            self.persist_time = 0
 
-        self.frame_diag = math.dist([0, 0], self.resolution)
+            self.trk_creation = 0
+            self.prediction = 0
+            self.match_measurements = 0
+            self.match_identities = 0
+            self.spatial_analysis = 0
+            self.feature_analysis = 0
+            
+            self.pkl_io = 0
+            self.read_embeddings = 0
+            self.tensor_conversion = 0
+
+        def _set_track_attrs():
+            self.trk_id = 0
+
+            self.active_trks = {}
+            self.inactive_trks = {}
+            self.filtered_trks = {}
+
+            self.min_lifespan = self.fps * 15
+            self.max_absence = self.fps * 3
+
+            self.persisted = 0
+            self.lifespan_filtered = 0
+            self.size_filtered = 0
+            self.no_images = 0
         
-        self.start_time = utils.frame_timestamp(time_prefix)
-        self.end_time = utils.frame_timestamp(
-            time_prefix, self.total_frames, self.fps
+        def _set_parameters(conf_thresh):
+            self.conf_thresh = conf_thresh
+
+            self.dt = 1/self.fps
+            self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
+            self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
+                                                                # with an arbitrary dt of 0.5
+
+            self.initial_uncertainty = [5] * 8
+            self.m_noise = [250 * self.variance_scaling_factor] * 4
+            self.p_noise = [
+                (50 * self.timestep_scaling_factor) * self.variance_scaling_factor
+            ] * 4
+
+            # self.m_noise = [500] * 4
+        
+        self.continuous_mode = continuous_mode
+        self.prior_pkl = ''
+
+        self.debug_level = debug_level
+        self.device = device or torch.device(
+            'cuda:0' if torch.cuda.is_available() else 'cpu'
         )
-        self.f_num = 0
+        self.credentials = credentials
+        self.progress_interval = self.total_frames // 4
 
-        self.progress_interval = total_frames // 4
-
-        self.min_lifespan = self.fps * 15
-        self.max_absence = self.fps * 3
-
-        self.persisted = 0
-        self.lifespan_filtered = 0
-        self.size_filtered = 0
-        self.no_images = 0
-
+        _set_video_attrs(video_file, time_prefix)
+        _set_timing_attrs()
+        _set_track_attrs()
+        _set_parameters(conf_thresh)
 
         self.detection_data = detection_data
         self.face_data = face_data
         self.embedding_path = os.path.join(
             "../files/output/",
-            f"{os.path.splitext(video_file)[0]}_embeddings.hdf5"
+            f"{os.path.splitext(self.video_file)[0]}_embeddings.hdf5"
         )
-
-        self.unmatched = []
-        self.cost_method_data = []
-
-        self.dt = 1/self.fps
-        self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
-        self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
-                                                            # with an arbitrary dt of 0.5
-
-        self.initial_uncertainty = [5] * 8
-        self.m_noise = [250 * self.variance_scaling_factor] * 4
-        self.p_noise = [
-            (50 * self.timestep_scaling_factor) * self.variance_scaling_factor
-        ] * 4
-
-        # self.m_noise = [500] * 4
         
-        self.conf_thresh = conf_thresh
-
-        self.primary_run_time = 0
-        self.persist_time = 0
-
-        self.trk_creation = 0
-        self.prediction = 0
-        self.match_measurements = 0
-        self.match_identities = 0
-        self.spatial_analysis = 0
-        self.feature_analysis = 0
-        
-        self.pkl_io = 0
-        self.read_embeddings = 0
-        self.tensor_conversion = 0
-
-        self.continuous_mode = continuous_mode
-        self.prior_pkl = ''
-    
         if continuous_mode == True:
             self.persist_prior_tracks()
 
@@ -122,7 +146,7 @@ class TrackingPipeline:
     @property
     def all_trks(self):
         return {**self.active_trks, **self.inactive_trks}
-
+    
     def persist_prior_tracks(self):
         def _reset_trk_ids(prior_pipeline):
             active_trks = {}
@@ -277,7 +301,8 @@ class TrackingPipeline:
                 press_stopwatch(self, 'tensor_conversion')
                 tensorized_costs = torch.stack(cost_list)
                 cost_matrix = tensorized_costs.cpu().numpy()
-                log_utils.dump_native_usage('after-cost-matrix', logger=logger)
+                if self.debug_level >= 1:
+                    log_utils.dump_native_usage('after-cost-matrix', logger=logger)
                 press_stopwatch(self, 'tensor_conversion')
 
                 del tensorized_costs
@@ -421,16 +446,20 @@ class TrackingPipeline:
                 self.active_trks[trk_id].add_face_detection(f_matches, self.f_num)
             press_stopwatch(self, 'match_identities')
         
-        tracemalloc.start()
         press_stopwatch(self, 'primary_run_time')
 
         if not prior_pipeline:
             logger.info(f"Running tracking pipeline for {self.video_file}...")
-        
-        memory_snapshot = log_utils.memory_usage('allocation_lines')
-        threshold = memory_snapshot * 1.2
 
-        log_utils.dump_native_usage('run-start', logger=logger)
+        if self.debug_level >= 1:
+            log_utils.dump_native_usage('run-start', logger=logger)
+        if self.debug_level == 2:
+            tracemalloc.start()
+            memory_snapshot = log_utils.memory_usage('allocation_lines')
+            threshold = memory_snapshot * 1.2
+
+        self.unmatched = []
+        self.cost_method_data = []
 
         while self.f_num < self.total_frames:
             if self.f_num % self.progress_interval == 0:
@@ -441,7 +470,8 @@ class TrackingPipeline:
                 _predict_or_cache()
 
             new_measurements = _get_measurements()
-            log_utils.dump_native_usage('after-getting-measurements', logger=logger)
+            if self.debug_level >= 1:
+                log_utils.dump_native_usage('after-getting-measurements', logger=logger)
             if new_measurements and self.active_trks:
                 _match_and_update(*new_measurements)
 
@@ -451,18 +481,19 @@ class TrackingPipeline:
             _create_new_tracks()
             _associate_faces()
 
-            if (self.f_num % (self.fps * 2)) == 0:
-                memory_snapshot = log_utils.memory_usage(
-                    'allocation_lines', threshold=threshold
-                )
-                if memory_snapshot > threshold:
-                    threshold = memory_snapshot * 1.2
-                    if torch.cuda.is_available():
-                        logger.info(f'GPU memory allocated: {torch.cuda.memory_allocated() / 1024**2:.2f} MB')
-                        total_trk_memory = 0
-                        for trk in self.all_trks.values():
-                            total_trk_memory += sys.getsizeof(trk)
-                        print(f'Total track memory allocated: {total_trk_memory}') 
+            if self.debug_level == 2:
+                if (self.f_num % (self.fps * 2)) == 0:
+                    memory_snapshot = log_utils.memory_usage(
+                        'allocation_lines', threshold=threshold
+                    )
+                    if memory_snapshot > threshold:
+                        threshold = memory_snapshot * 1.2
+                        if torch.cuda.is_available():
+                            logger.info(f'GPU memory allocated: {torch.cuda.memory_allocated() / 1024**2:.2f} MB')
+                            total_trk_memory = 0
+                            for trk in self.all_trks.values():
+                                total_trk_memory += sys.getsizeof(trk)
+                            print(f'Total track memory allocated: {total_trk_memory}') 
 
             if self.f_num % 100 == 0:
                 io_utils.clear_memory()
@@ -478,7 +509,8 @@ class TrackingPipeline:
             self.assign_identities(target)
             self.filter_tracks(target)
 
-            log_utils.dump_native_usage('before-get-track-images', logger=logger)
+            if self.debug_level >= 1:
+                log_utils.dump_native_usage('before-get-track-images', logger=logger)
 
             self.get_track_images('all_trks')
 
@@ -487,11 +519,14 @@ class TrackingPipeline:
             
             press_stopwatch(self, 'primary_run_time')
 
-            log_utils.dump_native_usage('save-runtime-start', logger=logger)
+            if self.debug_level >= 1:
+                log_utils.dump_native_usage('save-runtime-start', logger=logger)
             self.save_runtime_data()
-            log_utils.dump_native_usage('after-excel', logger=logger)
+            if self.debug_level >= 1:
+                log_utils.dump_native_usage('after-excel', logger=logger)
 
-        tracemalloc.stop()
+        if self.debug_level == 2:
+            tracemalloc.stop()
 
     def assign_identities(self, target):
         def _group_tracks(trk_ids, target_trks):

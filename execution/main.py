@@ -36,7 +36,7 @@ def handle_early_termination(signum, frame):
 
 
 def run_processing_pipelines(
-        row, model_info, device, credentials, save_all_data=False
+        row, model_info, device, credentials, debug_level=0, save_all_data=False
     ):
 
     io_utils.clear_memory()
@@ -80,8 +80,9 @@ def run_processing_pipelines(
         tracking_pipeline = TrackingPipeline(
             video_file, time_prefix,
             *inference_output,
+            credentials,
             device,
-            credentials
+            debug_level=debug_level
         )
 
         del inference_pipeline, inference_output
@@ -109,6 +110,7 @@ def run_master_process(
         model_info: list,
         shop_id: str,
         credentials: dict,
+        debug_level: int = 0,
         retain_footage: bool = False,
         save_all_data: bool = False,
         start_from=None
@@ -158,7 +160,7 @@ def run_master_process(
         time_logger.start()
 
         tasks = [
-            (row, model_info, device, credentials, save_all_data)
+            (row, model_info, device, credentials, debug_level, save_all_data)
             for row in queue_block
         ]
         with multiprocessing.Pool(processes=3) as pool:
@@ -191,11 +193,13 @@ if __name__ == '__main__':
     parser.add_argument('--retain-footage', action='store_true')
     parser.add_argument('--save-all-data', action='store_true')
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
+    parser.add_argument('--debug-level', type=int)
 
     args = parser.parse_args()
 
     retain_footage = args.retain_footage
     save_all_data = args.save_all_data
+    debug_level = args.debug_level or 0
 
     start_from = None
     if args.start_from:
@@ -205,8 +209,7 @@ if __name__ == '__main__':
         except Exception as e:
             logger.error(f'Invalid --start-from value: {args.start_from} ({e})')
             sys.exit(1)
-
-
+    
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model_info = [
         '../models/weights/YOLOv4.pth', '../models/weights/OSNet.pth.tar-250'
