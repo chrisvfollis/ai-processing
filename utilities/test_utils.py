@@ -86,6 +86,43 @@ def download_tracking_pkls(
                 s3.download_file(bucket_name, key, local_path)
 
 
+def download_event_imgs(
+        bucket_name='timemanager-event-imgs',
+        local_dir='../files/output/event-imgs',
+        prefix=''
+    ):
+    credentials = io_utils.get_aws_creds()
+
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=credentials[0],
+        aws_secret_access_key=credentials[1],
+        region_name='us-west-1'
+    )
+
+    os.makedirs(local_dir, exist_ok=True)
+
+    paginator = s3.get_paginator('list_objects_v2')
+    page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+
+    for page in page_iterator:
+        if 'Contents' not in page:
+            continue
+
+        for obj in page['Contents']:
+            key = obj['Key']
+            filename = os.path.basename(key)
+            if not filename:  # skip keys that end in '/' (folders)
+                continue
+
+            local_path = os.path.join(local_dir, filename)
+            if os.path.exists(local_path):
+                continue
+
+            print(f'Downloading {key} to {local_path}')
+            s3.download_file(bucket_name, key, local_path)
+
+
 def prepare_tracking_data(
         pkl_dir='../files/output/',
         min_duration_sec: Union[float, int] = 1.0,

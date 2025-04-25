@@ -429,14 +429,14 @@ class TrackingPipeline:
         memory_snapshot = log_utils.memory_usage('allocation_lines')
         threshold = memory_snapshot * 1.2
 
-        log_utils.dump_native_usage('run-start')
+        log_utils.dump_native_usage('run-start', logger=logger)
 
         while self.f_num < self.total_frames:
             if self.active_trks:
                 _predict_or_cache()
 
             new_measurements = _get_measurements()
-            log_utils.dump_native_usage('after-getting-measurements')
+            log_utils.dump_native_usage('after-getting-measurements', logger=logger)
             if new_measurements and self.active_trks:
                 _match_and_update(*new_measurements)
 
@@ -472,14 +472,19 @@ class TrackingPipeline:
 
             self.assign_identities(target)
             self.filter_tracks(target)
+
+            log_utils.dump_native_usage('before-get-track-images', logger=logger)
+
             self.get_track_images('all_trks')
 
             if self.continuous_mode == True:
                 self.save_pipeline_state()
             
             press_stopwatch(self, 'primary_run_time')
+            
+            log_utils.dump_native_usage('save-runtime-start', logger=logger)
             self.save_runtime_data()
-            log_utils.dump_native_usage('after-excel')
+            log_utils.dump_native_usage('after-excel', logger=logger)
 
         tracemalloc.stop()
 
