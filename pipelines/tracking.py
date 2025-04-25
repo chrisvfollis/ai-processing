@@ -899,12 +899,16 @@ class TrackingPipeline:
                 except KeyError:
                     continue
         
+        logger.info('Filtering tracks...')
+
         target_trks = getattr(self, target)
 
         _filter_by_lifespan(target_trks)
         _filter_by_size(target_trks)
 
     def get_track_images(self, target, vid_dir='../files/input/'):
+        logger.info('Getting track images...')
+    
         vid_path = os.path.join(vid_dir, self.video_file)
 
         cap = cv2.VideoCapture(vid_path)
@@ -998,6 +1002,8 @@ class TrackingPipeline:
         logger.info('Tracking pipeline saved')
 
     def save_runtime_data(self, output_dir='../files/output/runtime_data'):
+        logger.info('Saving runtime data...')
+    
         commit_hash, commit_datetime = utils.get_git_commit_info()
         clip_identifier = self.video_file.split('.')[0] + '_' + commit_hash
         os.makedirs(output_dir, exist_ok=True)
