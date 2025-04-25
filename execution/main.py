@@ -137,9 +137,10 @@ def run_master_process(
     
     logger.info(textwrap.dedent(f'''
         master process args:
-        retain_footage={retain_footage}
-        save_all_data={save_all_data}
-        start_from={start_from}
+        retain_footag = {retain_footage}
+        save_all_data = {save_all_data}
+        start_from = {start_from}
+        debug_level = {debug_level}
     '''))
 
     signal.signal(signal.SIGTERM, handle_early_termination)
