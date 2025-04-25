@@ -326,7 +326,7 @@ def track_bbox_charts(tracking_stats, file_dir='../files/output/'):
 
         plt.figure()
         sns.barplot(x='area_bin', y='has_identity', data=bin_summary, color='skyblue')
-        plt.plot(bin_summary['area_bin'], y_pred, color='black', marker='o', linestyle='-', label='Trendline')
+        plt.plot(bin_summary['bin_center'], y_pred, color='black', marker='o', linestyle='-', label='Trendline')
 
         plt.xticks(rotation=45)
         plt.ylim(0, 1)

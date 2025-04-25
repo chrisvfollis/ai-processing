@@ -183,7 +183,7 @@ if __name__ == '__main__':
                                        min_bytes=min_bytes)
 
         full_face_df, no_face_events = generate_id_data(id_cutoff=id_cutoff)
-        test_utils.export_face_df_with_images(full_face_df)
+        test_utils.export_face_event_spreadsheet(full_face_df)
     
     elif mode == 'analyze':
         output_dir = '../files/output/'
