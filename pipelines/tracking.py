@@ -696,7 +696,14 @@ class TrackingPipeline:
             
             all_orders = []
 
+            MAX_PERMUTATIONS = 40_320   # 8! (full search up to 8 tracks)
             for group in group_permutations:
+                if sum(len(p) for p in group) > MAX_PERMUTATIONS:
+                    # fall back to greedy: lowest-cost identity for each track
+                    if self.debug_level >= 1:
+                            log_utils.dump_native_usage('perm-greedy-fallback', logger)
+                    group = [tuple(sorted(group[0]))] 
+
                 group_orders = []
 
                 for meta_order in group:
@@ -767,13 +774,29 @@ class TrackingPipeline:
                 ]
                 permutation_to_original = {k: i for k, i in enumerate(permutation)}
 
+                GREEDY_THRESHOLD = 8        # fall back to greedy with >= 8 overlapping tracks
                 for k, matrix in enumerate(ordered_matrices):
+                    if matrix.shape[0] >= GREEDY_THRESHOLD:
+                        if self.debug_level >= 1:
+                            log_utils.dump_native_usage('ms-greedy-fallback', logger)
+                        # pick identity with min cost row-wise
+                        for r in range(matrix.shape[0]):
+                            c = np.argmin(matrix[r])
+                            if matrix[r, c] != np.inf:
+                                assigned[tracks[r]] = identities[c]
+                        continue
+
                     original_index = permutation_to_original[k]
                     tracks = track_mappings[original_index]
                     identities = identity_mappings[original_index]
 
                     matrix = _sync_prior_assignments(assigned, tracks,
                                                     identities, matrix)
+                    
+                    if np.isinf(matrix).all(axis=1).sum() == matrix.shape[0]-1:
+                        # only one viable identity left per track
+                        assigned.update({tracks[i]: identities[i] for i in range(len(tracks))})
+                        continue    # skip Hungarian call
 
                     viable_rows = ~np.isinf(matrix).all(axis=1)
                     viable_cols = ~np.isinf(matrix).all(axis=0)
