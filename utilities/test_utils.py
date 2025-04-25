@@ -275,6 +275,7 @@ def export_face_df_with_images(
             img.width = 80
             img_cell = f"{chr(65 + len(columns) + 1)}{excel_row_idx}"
             ws.add_image(img, img_cell)
+            os.remove(img_path)
 
         excel_row_idx += 1
 

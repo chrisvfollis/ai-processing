@@ -533,6 +533,7 @@ class TrackingPipeline:
     def assign_identities(self, target):
         def _group_tracks(trk_ids, target_trks):
             def _construct_track_graph(trk_ids):
+                logger.info('Constructing track graph...')
                 track_graph = np.diag([1] * len(trk_ids)).tolist()
 
                 for i in range(len(trk_ids)):
@@ -547,6 +548,7 @@ class TrackingPipeline:
                 return np.array(track_graph)
             
             def _construct_meta_graph(trk_sets):
+                logger.info('Constructing meta graph...')
                 set_graph = np.diag([1] * len(trk_sets)).tolist()
 
                 for i in range(len(trk_sets)):
@@ -557,7 +559,8 @@ class TrackingPipeline:
 
                 return np.array(set_graph)
 
-            def _build_sets(graph):
+            def _build_sets(graph, set_type='track'):
+                logger.info(f'Building {set_type} sets...')
                 num_tracks = len(graph)
                 visited = [False] * num_tracks
                 all_sets = []
@@ -576,6 +579,7 @@ class TrackingPipeline:
                 return all_sets
             
             def _isolate_groups(meta_sets):
+                logger.info('Isolating groups...')
                 grouped = [False] * len(meta_sets)
 
                 group_contents = []
@@ -601,10 +605,10 @@ class TrackingPipeline:
                 return groups
             
             track_graph = _construct_track_graph(trk_ids)
-            track_sets = _build_sets(track_graph)
+            track_sets = _build_sets(track_graph, set_type='track')
 
             meta_graph = _construct_meta_graph(track_sets)
-            meta_sets = _build_sets(meta_graph)
+            meta_sets = _build_sets(meta_graph, set_type='meta')
 
             groups = _isolate_groups(meta_sets)
 
@@ -684,7 +688,7 @@ class TrackingPipeline:
                     filtered_group_permutations.append(filtered_gm_permutations)
                 
                 return filtered_group_permutations
-
+            logger.info('Permuting constraint cascades...')
             group_permutations = []
 
             for group in groups:
@@ -762,6 +766,7 @@ class TrackingPipeline:
 
         unique_cascades = _permute_constraint_cascades(groups, meta_sets)
 
+        logger.info('Finding optimal assignments...')
         all_optimal_assignments = {}
         for group in unique_cascades:
             min_cost = float('inf')
