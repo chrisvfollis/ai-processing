@@ -251,7 +251,7 @@ def export_tracking_analysis(
     print(f'Exported results to: {output_path}')
 
 
-def export_face_df_with_images(
+def export_face_event_spreadsheet(
         full_face_df, excel_path='../files/output/event_img_face_data.xlsx'
     ):
     wb = Workbook()
@@ -277,7 +277,7 @@ def export_face_df_with_images(
 
     ws.sheet_format.defaultRowHeight = 160
 
-    for row_idx, row in full_face_df.iterrows():
+    for i, (_, row) in enumerate(full_face_df.iterrows()):
         values = [row[col] for col in columns]
         ws.append(values + ['', ''])
 
@@ -289,7 +289,7 @@ def export_face_df_with_images(
             if col_name == 'name':
                 cell.font = Font(bold=True)
 
-        img_path = image_paths['img_path'].iloc[row_idx]
+        img_path = image_paths['img_path'].iloc[i]
         if os.path.exists(img_path):
             img = XLImage(img_path)
             img.height = 160

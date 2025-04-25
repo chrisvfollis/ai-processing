@@ -340,7 +340,6 @@ def track_bbox_charts(tracking_stats, file_dir='../files/output/'):
 
         print(f"Trend R²: {model.rsquared:.3f}")
 
-
     def _chart_area_vs_duration(df, ols_output, file_dir):
         for prefix, column in [('avg', 'avg_bbox_side_length'), ('q75', 'q75_bbox_side_length')]:
             row = ols_output[
