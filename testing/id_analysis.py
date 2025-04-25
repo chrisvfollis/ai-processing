@@ -4,6 +4,7 @@ import argparse
 from typing import Union
 import sys
 from datetime import datetime
+import math
 
 # 3rd-party dependencies
 import numpy as np
@@ -11,6 +12,7 @@ import pandas as pd
 import cv2
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
+import seaborn as sns
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -20,7 +22,6 @@ from models.face_iq import FaceIq
 
 
 def generate_id_data(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
-    
     face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=False)
 
     all_images = [img for img in os.listdir(img_dir)
@@ -67,7 +68,44 @@ def generate_id_data(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
     return full_face_df, no_face_events
 
 
-def analyze_id_data(df, output_dir='../files/output'):
+def analyze_id_data(face_df, output_dir='../files/output'):
+    def _extract_additional_data(df):
+        df['img_area_root'] = df['img_area'].map(lambda x: math.sqrt(x))
+        df['face_area_root'] = df['face_area'].map(lambda x: math.sqrt(x))
+
+        return df
+
+    def _heatmap_area_vs_distance(df, output_dir):
+        df = df.copy()
+        df['img_bin'] = pd.cut(df['img_area_root'], bins=6)
+        df['face_bin'] = pd.cut(df['face_area_root'], bins=6)
+
+        pivot = (
+            df.groupby(['face_bin', 'img_bin'], observed=False)['distance']
+            .mean()
+            .unstack()
+        )
+
+        row_labels = [f'{int(b.left)}-{int(b.right)}' for b in df['face_bin'].cat.categories]
+        col_labels = [f'{int(b.left)}-{int(b.right)}' for b in df['img_bin'].cat.categories]
+
+        pivot.index = row_labels
+        pivot.columns = col_labels
+
+        plt.figure(figsize=(10, 6))
+        sns.heatmap(
+            pivot,
+            annot=True,
+            fmt=".3f",
+            cmap='viridis',
+            cbar_kws={'label': 'Mean Distance'}
+        )
+        plt.title('Mean Distance by Image Area and Face Area')
+        plt.xlabel('image area (√pixels)')
+        plt.ylabel('face area (√pixels)')
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'img_face_distance_heatmap.png'))
+        plt.close()
 
     def _roc_chart(df, output_dir):
         fpr, tpr, thresholds = roc_curve(df['correct_id'], -df['distance'])  # flip distance, since lower is better
@@ -105,7 +143,10 @@ def analyze_id_data(df, output_dir='../files/output'):
 
     os.makedirs(output_dir, exist_ok=True)
     
-    _roc_chart(df, output_dir)
+    face_df = _extract_additional_data(face_df)
+
+    _heatmap_area_vs_distance(df, output_dir)
+    _roc_chart(face_df, output_dir)
 
 
 if __name__ == '__main__':

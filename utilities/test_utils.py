@@ -296,6 +296,7 @@ def export_face_df_with_images(
             img.width = 160
             img_cell = f"{chr(65 + len(columns) + 1)}{excel_row_idx}"
             ws.add_image(img, img_cell)
+
             image_paths_to_remove.append(img_path)
 
         excel_row_idx += 1
@@ -303,4 +304,5 @@ def export_face_df_with_images(
     wb.save(excel_path)
 
     for img_path in image_paths_to_remove:
-        os.remove(img_path)
+        if os.path.exists(img_path):
+            os.remove(img_path)
