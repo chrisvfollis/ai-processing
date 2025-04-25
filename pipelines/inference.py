@@ -15,8 +15,7 @@ from models.osnet import OSNet
 from models.face_iq import FaceIq
 from utilities import general_utils as utils
 from utilities import io_utils
-from utilities.general_utils import press_stopwatch
-from utilities.logging_utils import get_logger
+from utilities.logging_utils import get_logger, press_stopwatch
 
 
 logger = get_logger(__name__)

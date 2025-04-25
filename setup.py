@@ -51,6 +51,7 @@ setup(
         'psutil',
         'jupyter',
         'matplotlib',
+        'pympler',
     ],
     python_requires='>=3.10,<3.11',
 )

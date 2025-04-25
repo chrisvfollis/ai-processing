@@ -176,33 +176,21 @@ def prepare_tracking_data(
 
 
 def export_tracking_analysis(
-        all_trackwise_stats: list[pd.DataFrame] = None,
-        all_overall_stats: list[pd.DataFrame] = None,
-        all_ols_output: list[pd.DataFrame] = None
+        trackwise_stats: pd.DataFrame = None,
+        overall_stats: pd.DataFrame = None,
+        ols_output: pd.DataFrame = None
     ):
 
-    merged_trackwise = (
-        pd.concat(all_trackwise_stats, ignore_index=True)
-        if all_trackwise_stats else pd.DataFrame()
-    )
-    merged_overall = (
-        pd.concat(all_overall_stats, ignore_index=True)
-        if all_overall_stats else pd.DataFrame()
-    )
-    merged_ols = (
-        pd.concat(all_ols_output, ignore_index=True)
-        if all_ols_output else pd.DataFrame()
-    )
 
     filename = io_utils.get_unique_filename('../files/output/', 'tracking_analysis_results.xlsx')
 
     output_path = os.path.join('../files/output/', filename)
     with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
-        if not merged_trackwise.empty:
-            merged_trackwise.to_excel(writer, sheet_name='Trackwise Stats', index=False)
-        if not merged_overall.empty:
-            merged_overall.to_excel(writer, sheet_name='Overall Stats', index=False)
-        if not merged_ols.empty:
-            merged_ols.to_excel(writer, sheet_name='OLS Models', index=False)
+        if not trackwise_stats.empty:
+            trackwise_stats.to_excel(writer, sheet_name='Trackwise Stats', index=False)
+        if not overall_stats.empty:
+            overall_stats.to_excel(writer, sheet_name='Overall Stats', index=False)
+        if not ols_output.empty:
+            ols_output.to_excel(writer, sheet_name='OLS Models', index=False)
 
     print(f'Exported results to: {output_path}')

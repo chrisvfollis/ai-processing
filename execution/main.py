@@ -20,6 +20,7 @@ import tensorflow as tf
 from utilities import io_utils
 from utilities import general_utils as utils
 from utilities.logging_utils import get_logger
+from utilities import logging_utils as log_utils
 
 
 logger = get_logger(__name__)
@@ -153,7 +154,7 @@ def run_master_process(
             time.sleep(60)
             continue
 
-        time_logger, stop_timing = utils.observability_thread('elapsed_time')
+        time_logger, stop_timing = log_utils.observability_thread('elapsed_time')
         time_logger.start()
 
         tasks = [
@@ -168,7 +169,7 @@ def run_master_process(
                 run_processing_pipelines, tasks
             )
 
-            worker_monitor = utils.observability_thread(
+            worker_monitor = log_utils.observability_thread(
                 'failed_workers', args=(pool, initial_pids, async_results)
             )
             worker_monitor.start()
@@ -215,7 +216,7 @@ if __name__ == '__main__':
     credentials = io_utils.get_aws_creds()
     shop_id, _ = io_utils.get_shop('../files/data.db')
 
-    memory_monitor, _ = utils.observability_thread('low_memory')
+    memory_monitor, _ = log_utils.observability_thread('low_memory')
     memory_monitor.start()
 
     run_master_process(

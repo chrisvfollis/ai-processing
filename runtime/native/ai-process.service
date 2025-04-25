@@ -9,7 +9,6 @@ Group=ubuntu
 Type=simple
 EnvironmentFile=/etc/default/ai-process
 ExecStart=/bin/bash -c '/home/ubuntu/.local/share/virtualenvs/ai-processing-cIZ_oGug/bin/python3 /home/ubuntu/ai-processing/execution/main.py $EXTRA_ARGS'
-Restart=on-failure
 KillMode=control-group
 WorkingDirectory=/home/ubuntu/ai-processing/execution
 Environment="PYTHONPATH=/home/ubuntu/.local/share/virtualenvs/ai-processing-cIZ_oGug/lib/python3.10/site-packages"

@@ -18,8 +18,8 @@ import torch.nn.functional as F
 # internal dependencies
 from utilities import io_utils
 from utilities import general_utils as utils
-from utilities.general_utils import press_stopwatch
-from utilities.logging_utils import get_logger
+from utilities.logging_utils import get_logger, press_stopwatch
+from utilities import logging_utils as log_utils
 
 
 logger = get_logger(__name__)
@@ -276,6 +276,7 @@ class TrackingPipeline:
                 press_stopwatch(self, 'tensor_conversion')
                 tensorized_costs = torch.stack(cost_list)
                 cost_matrix = tensorized_costs.cpu().numpy()
+                log_utils.dump_native_usage('after-cost-matrix', logger=logger)
                 press_stopwatch(self, 'tensor_conversion')
 
                 del tensorized_costs
@@ -425,14 +426,17 @@ class TrackingPipeline:
         if not prior_pipeline:
             logger.info(f"Running tracking pipeline for {self.video_file}...")
         
-        memory_snapshot = utils.memory_usage('allocation_lines')
-        threshold = memory_snapshot * 1.5
+        memory_snapshot = log_utils.memory_usage('allocation_lines')
+        threshold = memory_snapshot * 1.2
+
+        log_utils.dump_native_usage('run-start')
 
         while self.f_num < self.total_frames:
             if self.active_trks:
                 _predict_or_cache()
 
             new_measurements = _get_measurements()
+            log_utils.dump_native_usage('after-getting-measurements')
             if new_measurements and self.active_trks:
                 _match_and_update(*new_measurements)
 
@@ -443,11 +447,11 @@ class TrackingPipeline:
             _associate_faces()
 
             if (self.f_num % (self.fps * 2)) == 0:
-                memory_snapshot = utils.memory_usage(
+                memory_snapshot = log_utils.memory_usage(
                     'allocation_lines', threshold=threshold
                 )
                 if memory_snapshot > threshold:
-                    threshold = memory_snapshot * 1.5
+                    threshold = memory_snapshot * 1.2
                     if torch.cuda.is_available():
                         logger.info(f'GPU memory allocated: {torch.cuda.memory_allocated() / 1024**2:.2f} MB')
                         total_trk_memory = 0
@@ -475,6 +479,7 @@ class TrackingPipeline:
             
             press_stopwatch(self, 'primary_run_time')
             self.save_runtime_data()
+            log_utils.dump_native_usage('after-excel')
 
         tracemalloc.stop()
 
