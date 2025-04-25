@@ -155,7 +155,8 @@ class TrackingPipeline:
                 trk.set_id(self.trk_id)
                 self.trk_id += 1
             return active_trks
-            
+        
+        logger.info('Continuing prior tracks...')
         press_stopwatch(self, 'persist_time')
 
         output_dir = '../files/output'
@@ -733,6 +734,7 @@ class TrackingPipeline:
                         continue
             return matrix
         
+        logger.info('Assigning identities...')
         press_stopwatch(self, 'match_identities')
 
         target_trks = getattr(self, target)
@@ -982,6 +984,7 @@ class TrackingPipeline:
         cap.release()
 
     def save_pipeline_state(self, output_dir='../files/output'):
+        logger.info('Saving pipeline state...')
         os.makedirs(output_dir, exist_ok=True)
         file_prefix = self.video_file.split('.')[0]
 
