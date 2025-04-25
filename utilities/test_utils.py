@@ -3,6 +3,7 @@ import os
 import re
 from typing import Union
 import pickle
+from datetime import datetime
 
 # 3rd-party dependencies
 import pandas as pd
@@ -89,10 +90,11 @@ def download_tracking_pkls(
 def download_event_imgs(
         bucket_name='timemanager-event-imgs',
         local_dir='../files/output/event_imgs',
-        max_imgs=1000
+        max_imgs=1000,
+        start_from: Union[datetime, list] = None
     ):
-    credentials = io_utils.get_aws_creds()
 
+    credentials = io_utils.get_aws_creds()
     s3 = boto3.client(
         's3',
         aws_access_key_id=credentials[0],
@@ -101,6 +103,9 @@ def download_event_imgs(
     )
 
     os.makedirs(local_dir, exist_ok=True)
+
+    if isinstance(start_from, list):
+        start_from = datetime(*start_from)
 
     paginator = s3.get_paginator('list_objects_v2')
     page_iterator = paginator.paginate(Bucket=bucket_name)
@@ -113,6 +118,9 @@ def download_event_imgs(
             num_local_imgs = len(os.listdir(local_dir))
             if num_local_imgs >= max_imgs:
                 return
+            
+            if start_from and obj['LastModified'] < start_from:
+                continue
     
             key = obj['Key']
             filename = os.path.basename(key)

@@ -3,6 +3,8 @@ import os
 import argparse
 from typing import Union
 import uuid
+import sys
+from datetime import datetime
 
 # 3rd-party dependencies
 import numpy as np
@@ -50,16 +52,27 @@ def identify_event_imgs(img_dir='../files/output/event_imgs/'):
 
     return full_face_df
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--max-imgs', type=int)
+    parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
 
     args = parser.parse_args()
 
     max_imgs = args.max_imgs or 1000
+    start_from = args.start_from
 
-    test_utils.download_event_imgs(max_imgs=max_imgs)
+    if start_from:
+        try:
+            parts = [int(x) for x in args.start_from.split(',')]
+            start_from = datetime(*parts)
+        except Exception as e:
+            print(f'Invalid --start-from value: {args.start_from} ({e})')
+            sys.exit(1)
+
+    test_utils.download_event_imgs(max_imgs=max_imgs, start_from=start_from)
 
     full_face_df = identify_event_imgs()
     test_utils.export_face_df_with_images(full_face_df)
