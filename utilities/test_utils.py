@@ -105,7 +105,7 @@ def download_event_imgs(
     os.makedirs(local_dir, exist_ok=True)
 
     if isinstance(start_from, list):
-        start_from = datetime(*start_from)
+        start_from = datetime(*start_from).replace(tzinfo=None)
 
     paginator = s3.get_paginator('list_objects_v2')
     page_iterator = paginator.paginate(Bucket=bucket_name)

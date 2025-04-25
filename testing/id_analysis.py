@@ -67,7 +67,7 @@ if __name__ == '__main__':
     if start_from:
         try:
             parts = [int(x) for x in args.start_from.split(',')]
-            start_from = datetime(*parts)
+            start_from = datetime(*parts).replace(tzinfo=None)
         except Exception as e:
             print(f'Invalid --start-from value: {args.start_from} ({e})')
             sys.exit(1)
