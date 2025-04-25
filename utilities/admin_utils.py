@@ -234,7 +234,7 @@ def auto_scp(
 
             os.rename(temp_conflict_rename, conflict)
         else:
-            print(f'Destination clear: {conflict}')
+            print(f'Destination clear: {destination}')
             _scp_download(remote_path, local_path, instance_info, recursive)
 
     elif action == 'upload':

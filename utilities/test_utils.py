@@ -244,6 +244,12 @@ def export_face_df_with_images(
     ws = wb.active
     ws.title = 'Event Image Face Data'
 
+    full_face_df['a'] = full_face_df['w'] * full_face_df['h']
+
+    full_face_df = full_face_df.drop(
+        columns=['hash', 'designation', 'identity', 'x', 'y', 'w', 'h']
+    )
+
     columns = [col for col in full_face_df.columns if col != 'img_path']
     ws.append(columns + ['correct_id', 'image'])
 
