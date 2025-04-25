@@ -21,7 +21,7 @@ from models.clearface import ClearFace
 from utilities import face_utils
 from utilities import io_utils
 from utilities import general_utils as utils
-from utilities.general_utils import press_stopwatch
+from utilities.logging_utils import press_stopwatch
 
 
 class FaceIq:
