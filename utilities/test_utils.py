@@ -258,7 +258,6 @@ def export_face_df_with_images(
     ws.title = 'Event Image Face Data'
 
     full_face_df['a'] = full_face_df['w'] * full_face_df['h']
-
     full_face_df = full_face_df.drop(
         columns=['hash', 'designation', 'identity', 'x', 'y', 'w', 'h']
     )
@@ -267,6 +266,8 @@ def export_face_df_with_images(
     ws.append(columns + ['correct_id', 'image'])
 
     excel_row_idx = 2  # start after header
+
+    image_paths_to_remove = []
 
     for _, row in full_face_df.iterrows():
         values = [row[col] for col in columns]
@@ -279,8 +280,11 @@ def export_face_df_with_images(
             img.width = 80
             img_cell = f"{chr(65 + len(columns) + 1)}{excel_row_idx}"
             ws.add_image(img, img_cell)
-            os.remove(img_path)
+            image_paths_to_remove.append(img_path)
 
         excel_row_idx += 1
 
     wb.save(excel_path)
+
+    for img_path in image_paths_to_remove:
+        os.remove(img_path)
