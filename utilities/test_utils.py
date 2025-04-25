@@ -119,7 +119,8 @@ def download_event_imgs(
             if num_local_imgs >= max_imgs:
                 return
             
-            if start_from and obj['LastModified'] < start_from:
+            last_modified = obj['LastModified'].replace(tzinfo=None)
+            if start_from and (last_modified < start_from):
                 continue
     
             key = obj['Key']
