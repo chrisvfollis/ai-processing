@@ -296,6 +296,10 @@ def log_low_memory_warnings(stop_event, threshold, interval):
 
 
 def dump_native_usage(tag='', logger=None):
+    '''
+    Displays the process's resident set size (rss), shared memory segments (shm),
+    and pyTorch CPU usage.
+    '''
     p = psutil.Process(os.getpid())
     rss = p.memory_info().rss / 1024**2     # MB
     shm = sum(m.rss for m in p.memory_maps()

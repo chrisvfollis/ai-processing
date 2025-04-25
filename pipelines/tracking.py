@@ -2,7 +2,6 @@
 import os
 import tracemalloc
 import pickle
-import time
 import math
 from itertools import permutations
 import sys
@@ -481,7 +480,7 @@ class TrackingPipeline:
                 self.save_pipeline_state()
             
             press_stopwatch(self, 'primary_run_time')
-            
+
             log_utils.dump_native_usage('save-runtime-start', logger=logger)
             self.save_runtime_data()
             log_utils.dump_native_usage('after-excel', logger=logger)

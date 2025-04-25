@@ -2,14 +2,33 @@
 
 ARGS="$*"
 
-CMD=(sudo journalctl -u ai-process.service)
+USE_JOURNAL=false
+SHOW_ALLOC=false
+REVERSE=true
 
-if [[ "$ARGS" != *"--forward"* ]]; then
-    CMD+=("--reverse")
-fi
+[[ "$ARGS" == *"-j"* ]] && USE_JOURNAL=true
 
-if [[ "$ARGS" != *"--memory-traces"* ]]; then
-    "${CMD[@]}" | grep -v alloc | less
+[[ "$ARGS" == *"--memory-traces"* ]] && SHOW_ALLOC=true
+[[ "$ARGS" == *"--forward"* ]] && REVERSE=false
+
+if $USE_JOURNAL; then
+    CMD=(sudo journalctl -u ai-process.service)
+    $REVERSE && CMD+=("--reverse")
+    if $SHOW_ALLOC; then
+        "${CMD[@]}" | less
+    else
+        "${CMD[@]}" | grep -v alloc | less
+    fi
 else
-    "${CMD[@]}"
+    LOG_FILE="files/logs/app.log"
+    if $REVERSE; then
+        LOG_CMD=(tac "$LOG_FILE")
+    else
+        LOG_CMD=(cat "$LOG_FILE")
+    fi
+    if $SHOW_ALLOC; then
+        "${LOG_CMD[@]}" | less
+    else
+        "${LOG_CMD[@]}" | grep -v alloc | less
+    fi
 fi
