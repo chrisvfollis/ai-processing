@@ -8,7 +8,7 @@ else
 fi
 
 REMOTE_DIR="files/"
-RECURSIVE=false
+RECURSIVE="False"
 
 EXTRA_ARGS="$*"
 
@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
       shift 2  # consume key and value
       ;;
     -r)
-      RECURSIVE=true
+      RECURSIVE="True"
       shift
       ;;
     *)  # ignore unknown args

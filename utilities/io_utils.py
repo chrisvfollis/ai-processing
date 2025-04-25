@@ -115,6 +115,16 @@ def get_unique_filename(dir_path, base_name):
     return new_name
 
 
+def get_unique_path(dir_path, base_name):
+    base_name = base_name.strip('/')
+    counter = 1
+    candidate = os.path.join(dir_path, base_name)
+    while os.path.exists(candidate):
+        candidate = os.path.join(dir_path, f'{base_name}_{counter}')
+        counter += 1
+    return candidate
+
+
 def get_latest_file(dir_path, base_name):
     '''Find the latest version of a file by checking for appended digits.'''
 

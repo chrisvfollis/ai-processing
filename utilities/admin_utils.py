@@ -219,7 +219,24 @@ def auto_scp(
     instance_info = get_instance_info(nickname=nickname, shop_id=shop_id)
 
     if action == 'download':
-        _scp_download(remote_path, local_path, instance_info, recursive)
+        destination = os.path.join(local_path, remote_dir)
+        if os.path.exists(destination):
+            print(f'Conflicting path: {destination}')
+            conflict = destination
+            destination = io_utils.get_unique_path(local_path, remote_dir)
+
+            temp_conflict_rename = conflict[:-1] + '_z/'
+            os.rename(conflict, temp_conflict_rename)
+            print(f'Temporary path: {temp_conflict_rename}')
+
+            _scp_download(remote_path, conflict, instance_info, recursive)
+            os.rename(conflict, destination)
+
+            os.rename(temp_conflict_rename, conflict)
+        else:
+            print(f'Destination clear: {conflict}')
+            _scp_download(remote_path, local_path, instance_info, recursive)
+
     elif action == 'upload':
         _scp_upload(local_path, remote_path, instance_info)
 
