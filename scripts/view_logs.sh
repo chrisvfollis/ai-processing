@@ -17,7 +17,7 @@ if $USE_JOURNAL; then
     if $SHOW_ALLOC; then
         "${CMD[@]}" | less
     else
-        "${CMD[@]}" | grep -v alloc | less
+        "${CMD[@]}" | grep -v alloc | grep -v rss | less
     fi
 else
     LOG_FILE="files/logs/app.log"
@@ -29,6 +29,6 @@ else
     if $SHOW_ALLOC; then
         "${LOG_CMD[@]}" | less
     else
-        "${LOG_CMD[@]}" | grep -v alloc | less
+        "${LOG_CMD[@]}" | grep -v alloc | grep -v rss | less
     fi
 fi

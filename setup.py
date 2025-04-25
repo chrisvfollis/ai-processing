@@ -39,6 +39,8 @@ setup(
         'openpyxl',
         'xlsxwriter',
         'h5py',
+        'statsmodels',
+        'scikit-learn',
 
         # Networks, APIs, etc:
         'requests',
