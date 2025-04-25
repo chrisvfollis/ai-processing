@@ -160,25 +160,26 @@ def auto_scp(
         action: str = 'download',
         remote_base_path: str = '/home/ubuntu/ai-processing/',
         remote_dir: str = 'files/',
+        recursive: bool = False,
         local_base_path: str = 'user_home',
         local_dir: str = 'Downloads/',
-        nickname: str = None, shop_id: str = None
+        nickname: str = None,
+        shop_id: str = None
     ):
-    def _scp_download(remote_path, local_path, instance_info):
-
+    def _scp_download(remote_path, local_path, instance_info, recursive):
         key_path = os.path.join('files/keys/', instance_info['key_filename'])
         remote_user = instance_info['remote_user']
         public_dns = get_ec2_public_dns(instance_info)
         
-        scp_command = [
-            'scp',
-            '-i', key_path,
-            '-r',
+        scp_command = ['scp', '-i', key_path]
+
+        if recursive:
+            scp_command.append('-r')
+
+        scp_command.extend([
             f"{remote_user}@{public_dns}:{remote_path}",
             local_path
-        ]
-
-        scp_command = [arg for arg in scp_command if arg]
+        ])
 
         try:
             subprocess.run(scp_command, check=True)
@@ -218,7 +219,7 @@ def auto_scp(
     instance_info = get_instance_info(nickname=nickname, shop_id=shop_id)
 
     if action == 'download':
-        _scp_download(remote_path, local_path, instance_info)
+        _scp_download(remote_path, local_path, instance_info, recursive)
     elif action == 'upload':
         _scp_upload(local_path, remote_path, instance_info)
 
