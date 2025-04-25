@@ -34,15 +34,15 @@ class TrackingPipeline:
         self.device = device
         self.credentials = credentials
 
-        self.video_file = video_file
         self.cam = video_file.split('.')[0].split('_')[-1]
 
-        cap = cv2.VideoCapture(os.path.join('../files/input/', video_file))
-        self.fps = int(cap.get(cv2.CAP_PROP_FPS))
-        self.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.resolution = [cap.get(cv2.CAP_PROP_FRAME_WIDTH),
-                           cap.get(cv2.CAP_PROP_FRAME_HEIGHT)]
-        cap.release()
+        self.video_file = video_file
+        self.video_path = os.path.join('../files/input/', video_file)
+
+        resolution, fps, total_frames = utils.get_video_info(self.video_path)
+        self.total_frames = total_frames
+        self.fps = fps
+        self.resolution = resolution
 
         self.frame_diag = math.dist([0, 0], self.resolution)
         
@@ -51,6 +51,8 @@ class TrackingPipeline:
             time_prefix, self.total_frames, self.fps
         )
         self.f_num = 0
+
+        self.progress_interval = total_frames // 4
 
         self.min_lifespan = self.fps * 15
         self.max_absence = self.fps * 3
@@ -431,6 +433,10 @@ class TrackingPipeline:
         log_utils.dump_native_usage('run-start', logger=logger)
 
         while self.f_num < self.total_frames:
+            if self.f_num % self.progress_interval == 0:
+                progress = int(round((self.f_num / self.total_frames) * 100, 0))
+                logger.info(f'{progress}%')
+
             if self.active_trks:
                 _predict_or_cache()
 
