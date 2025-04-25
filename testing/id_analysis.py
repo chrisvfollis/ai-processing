@@ -21,7 +21,7 @@ from utilities import general_utils as utils
 from utilities import io_utils
 
 
-def identify_event_imgs(img_dir='../files/output/event_imgs/'):
+def identify_event_imgs(id_cutoff=0.7, img_dir='../files/output/event_imgs/'):
     
     face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
 
@@ -34,7 +34,7 @@ def identify_event_imgs(img_dir='../files/output/event_imgs/'):
         output_path = os.path.join('../files/output', image_name)
         
         best_detection = pd.DataFrame()
-        face_dfs = face_iq.identify_faces(image, id_cutoff=0.8)
+        face_dfs = face_iq.identify_faces(image, id_cutoff=id_cutoff)
         for face_df in face_dfs:
             best_match = face_df.loc[[face_df['distance'].idxmin()]]
 
@@ -59,11 +59,13 @@ if __name__ == '__main__':
     parser.add_argument('--max-imgs', type=int)
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
     parser.add_argument('--min-kb', type=int)
+    parser.add_argument('--id-cutoff', type=float)
 
     args = parser.parse_args()
 
     max_imgs = args.max_imgs or 1000
     start_from = args.start_from
+    id_cutoff = args.id_cutoff or 0.7
 
     min_kb = args.min_kb or 0
     min_bytes = (min_kb * 1000)
