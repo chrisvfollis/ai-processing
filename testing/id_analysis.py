@@ -2,7 +2,6 @@
 import os
 import argparse
 from typing import Union
-import uuid
 import sys
 from datetime import datetime
 
@@ -15,11 +14,11 @@ import statsmodels.api as sm
 from sklearn.metrics import roc_curve, auc
 import seaborn as sns
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 # internal dependencies
 from utilities import test_utils
 from models.face_iq import FaceIq
-from utilities import general_utils as utils
-from utilities import io_utils
 
 
 def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
@@ -29,6 +28,7 @@ def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
     all_images = [img for img in os.listdir(img_dir)
                   if not img.endswith('.gitkeep')]
     all_face_dfs = []
+    no_face_events = 0
     
     for image_name in all_images:
         image = cv2.imread(os.path.join(img_dir, image_name))
@@ -38,6 +38,7 @@ def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
         face_dfs = face_iq.identify_faces(image, id_cutoff=id_cutoff)
         for face_df in face_dfs:
             if face_df.empty:
+                no_face_events += 1
                 continue
             best_match = face_df.loc[[face_df['distance'].idxmin()]]
 
@@ -53,6 +54,7 @@ def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
     
     full_face_df = pd.concat(all_face_dfs)
 
+    print(f'{no_face_events} event images with no detected faces')
     return full_face_df
 
 
