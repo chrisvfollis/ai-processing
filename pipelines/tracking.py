@@ -115,15 +115,15 @@ class TrackingPipeline:
             'cuda:0' if torch.cuda.is_available() else 'cpu'
         )
         self.credentials = credentials
+        
+        _set_video_attrs(video_file, time_prefix)
         self.progress_interval = self.total_frames // 4
 
-        _set_video_attrs(video_file, time_prefix)
         _set_timing_attrs()
         _set_track_attrs()
         _set_parameters(conf_thresh)
 
-        self.detection_data = detection_data
-        self.face_data = face_data
+        self.detection_data, self.face_data = detection_data, face_data
         self.embedding_path = os.path.join(
             "../files/output/",
             f"{os.path.splitext(self.video_file)[0]}_embeddings.hdf5"
