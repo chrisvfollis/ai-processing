@@ -38,8 +38,8 @@ def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
         face_dfs = face_iq.identify_faces(image, id_cutoff=id_cutoff)
         for face_df in face_dfs:
             if face_df.empty:
-                no_face_events += 1
                 continue
+
             best_match = face_df.loc[[face_df['distance'].idxmin()]]
 
             distance = best_match['distance'].iloc[0]
@@ -51,7 +51,9 @@ def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
             all_face_dfs.append(best_detection)
         
             face_iq.visualize_identifications(image, [best_detection], output_path=output_path)
-    
+        else:
+            no_face_events += 1
+
     full_face_df = pd.concat(all_face_dfs)
 
     print(f'{no_face_events} event images with no detected faces')
