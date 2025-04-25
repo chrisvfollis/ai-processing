@@ -88,8 +88,8 @@ def download_tracking_pkls(
 
 def download_event_imgs(
         bucket_name='timemanager-event-imgs',
-        local_dir='../files/output/event-imgs',
-        prefix=''
+        local_dir='../files/output/event_imgs',
+        max_imgs=1000
     ):
     credentials = io_utils.get_aws_creds()
 
@@ -103,13 +103,17 @@ def download_event_imgs(
     os.makedirs(local_dir, exist_ok=True)
 
     paginator = s3.get_paginator('list_objects_v2')
-    page_iterator = paginator.paginate(Bucket=bucket_name, Prefix=prefix)
+    page_iterator = paginator.paginate(Bucket=bucket_name)
 
     for page in page_iterator:
         if 'Contents' not in page:
             continue
 
         for obj in page['Contents']:
+            num_local_imgs = len(os.listdir(local_dir))
+            if num_local_imgs >= max_imgs:
+                return
+    
             key = obj['Key']
             filename = os.path.basename(key)
             if not filename:  # skip keys that end in '/' (folders)
@@ -231,3 +235,28 @@ def export_tracking_analysis(
             ols_output.to_excel(writer, sheet_name='OLS Models', index=False)
 
     print(f'Exported results to: {output_path}')
+
+
+def export_face_df_with_images(
+        full_face_df, excel_path='../files/output/event_img_face_data.xlsx'
+    ):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Event Image Face Data'
+
+    columns = [col for col in full_face_df.columns if col != 'img_path']
+    ws.append(columns + ['correct_id', 'image'])
+
+    for idx, row in full_face_df.iterrows():
+        values = [row[col] for col in columns]
+        ws.append(values + ["", ""])
+
+        img_path = row['img_path']
+        if os.path.exists(img_path):
+            img = XLImage(img_path)
+            img.height = 80 
+            img.width = 80
+            img_cell = f"{chr(65 + len(columns) + 1)}{idx + 2}"
+            ws.add_image(img, img_cell)
+
+    wb.save(excel_path)

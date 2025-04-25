@@ -255,7 +255,14 @@ class FaceIq:
 
         return representations
 
-    def identify_faces(self, img, id_cutoff=None, regions=None, enhance=False, config=None):
+    def identify_faces(
+            self,
+            img,
+            id_cutoff=None,
+            regions=None,
+            enhance=False,
+            config=None
+        ) -> list[pd.DataFrame]:
         def _postprocess_output(all_face_dfs):
             press_stopwatch(self, 'other_processing_time')
     

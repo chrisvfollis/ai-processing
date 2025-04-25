@@ -44,10 +44,15 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
     detector.visualize_detections(image, face_detections, output_path=output_path)
 
 
-def recognize_faces_in_image(image: Union[str, np.ndarray],
-                             image_name: str = None, focus='global'):
+def recognize_faces_in_image(
+        image: Union[str, np.ndarray],
+        image_name: str = None,
+        focus='global',
+        face_iq=None
+    ):
     
-    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
+    if not face_iq:
+        face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
 
     if focus == 'local':
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')

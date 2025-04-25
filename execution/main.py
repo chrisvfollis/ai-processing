@@ -81,7 +81,7 @@ def run_processing_pipelines(
             video_file, time_prefix,
             *inference_output,
             credentials,
-            device,
+            device=device,
             debug_level=debug_level
         )
 

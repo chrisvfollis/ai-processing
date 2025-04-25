@@ -156,7 +156,6 @@ class TrackingPipeline:
                 self.trk_id += 1
             return active_trks
         
-        logger.info('Continuing prior tracks...')
         press_stopwatch(self, 'persist_time')
 
         output_dir = '../files/output'
@@ -182,6 +181,8 @@ class TrackingPipeline:
 
         prior_pipeline.active_trks = _reset_trk_ids(prior_pipeline)
         prior_pipeline.inactive_trks = {}
+
+        logger.info(f'Continuing {len(prior_pipeline.active_trks)} prior tracks...')
 
         self.persisted = len(prior_pipeline.active_trks.keys())
 
