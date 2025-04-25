@@ -744,7 +744,7 @@ def fetch_person_data(
     return person_data
 
 
-def get_queue_block(shop_id, start_from=None):
+def get_queue_block(shop_id, start_from=None, priority_camera=None):
     '''
     Returns:
         queue_block (List[List]):
@@ -767,7 +767,10 @@ def get_queue_block(shop_id, start_from=None):
         'Content-Type': 'application/json'
     }
 
-    params = {'shop_id': shop_id}
+    params = {
+        'shop_id': shop_id,
+        'priority_camera': priority_camera
+    }
     if start_from:
         try:
             if isinstance(start_from, list):

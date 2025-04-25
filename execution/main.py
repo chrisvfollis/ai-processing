@@ -113,7 +113,8 @@ def run_master_process(
         debug_level: int = 0,
         retain_footage: bool = False,
         save_all_data: bool = False,
-        start_from=None
+        start_from=None,
+        priority_cam=None,
     ):
     def _clear_local_data():
         io_utils.clear_track_info('all')
@@ -140,6 +141,7 @@ def run_master_process(
         retain_footag = {retain_footage}
         save_all_data = {save_all_data}
         start_from = {start_from}
+        priority_cam = {priority_cam}
         debug_level = {debug_level}
     '''))
 
@@ -151,7 +153,11 @@ def run_master_process(
     while True:
         io_utils.cleanup_semaphores()
 
-        queue_block = io_utils.get_queue_block(shop_id, start_from=start_from)
+        queue_block = io_utils.get_queue_block(
+            shop_id,
+            start_from=start_from,
+            priority_camera=priority_cam
+        )
 
         if not queue_block:
             time.sleep(60)
@@ -194,12 +200,14 @@ if __name__ == '__main__':
     parser.add_argument('--retain-footage', action='store_true')
     parser.add_argument('--save-all-data', action='store_true')
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
+    parser.add_argument('--priority-cam', type=str)
     parser.add_argument('--debug-level', type=int)
 
     args = parser.parse_args()
 
     retain_footage = args.retain_footage
     save_all_data = args.save_all_data
+    priority_camera = args.priority_cam
     debug_level = args.debug_level or 0
 
     start_from = None
@@ -228,5 +236,6 @@ if __name__ == '__main__':
         retain_footage=retain_footage,
         save_all_data=save_all_data,
         start_from=start_from,
+        priority_cam=priority_camera,
         debug_level=debug_level,
     )
