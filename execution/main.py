@@ -227,5 +227,6 @@ if __name__ == '__main__':
         device, model_info, shop_id, credentials,
         retain_footage=retain_footage,
         save_all_data=save_all_data,
-        start_from=start_from
+        start_from=start_from,
+        debug_level=debug_level,
     )
