@@ -247,16 +247,20 @@ def export_face_df_with_images(
     columns = [col for col in full_face_df.columns if col != 'img_path']
     ws.append(columns + ['correct_id', 'image'])
 
-    for idx, row in full_face_df.iterrows():
+    excel_row_idx = 2  # start after header
+
+    for _, row in full_face_df.iterrows():
         values = [row[col] for col in columns]
         ws.append(values + ["", ""])
 
         img_path = row['img_path']
         if os.path.exists(img_path):
             img = XLImage(img_path)
-            img.height = 80 
+            img.height = 80
             img.width = 80
-            img_cell = f"{chr(65 + len(columns) + 1)}{idx + 2}"
+            img_cell = f"{chr(65 + len(columns) + 1)}{excel_row_idx}"
             ws.add_image(img, img_cell)
+
+        excel_row_idx += 1
 
     wb.save(excel_path)
