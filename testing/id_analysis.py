@@ -100,7 +100,7 @@ def analyze_id_data(face_df, output_dir='../files/output'):
             cmap='viridis',
             cbar_kws={'label': 'Mean Distance'}
         )
-        plt.title('Mean Distance by Image Area and Face Area')
+        plt.title('Mean Cosine Distance by Image & Face Area')
         plt.xlabel('image area (√pixels)')
         plt.ylabel('face area (√pixels)')
         plt.tight_layout()

@@ -67,6 +67,7 @@ def generate_tracking_stats(data):
     durations = []
     identifications = []
     num_face_frames = []
+    overall_min_cos_dists = []
     avg_min_cos_dists = []
     median_min_cos_dists = []
 
@@ -97,6 +98,7 @@ def generate_tracking_stats(data):
             for df in trk.face_detections.values():
                 if 'distance' in df:
                     dists.append(df['distance'].min())
+            overall_min_cos_dist = min(dists) if dists else np.nan
             mean_min_cos_dist = np.mean(dists) if dists else np.nan
             median_cos_dist = np.median(dists) if dists else np.nan
 
@@ -107,6 +109,7 @@ def generate_tracking_stats(data):
             durations.append(duration)
             identifications.append(bool(getattr(trk, 'identity', None)))
             num_face_frames.append(num_faces)
+            overall_min_cos_dists.append(overall_min_cos_dist)
             avg_min_cos_dists.append(mean_min_cos_dist)
             median_min_cos_dists.append(median_cos_dist)
 
@@ -124,6 +127,7 @@ def generate_tracking_stats(data):
         'duration_sec': durations,
         'has_identity': identifications,
         'num_face_frames': num_face_frames,
+        'overall_min_cos_dist': overall_min_cos_dists,
         'avg_min_cos_dist': avg_min_cos_dists,
         'median_min_cos_dist': median_min_cos_dists,
         'avg_bbox_area': avg_areas,
@@ -256,12 +260,62 @@ def track_duration_charts(tracking_stats, file_dir='../files/output/'):
         plt.savefig(os.path.join(file_dir, filename))
         plt.close()
 
+    def _duration_vs_cosdist_barchart(df, file_dir):
+        filename = io_utils.get_unique_filename(file_dir, 'duration-vs-cosdist__barchart.png')
+
+        bin_max = utils.logceil_round(df['duration_sec'].max())
+        bins = sorted(set([0] + [bin_max // i for i in range(10, 0, -1)]))
+
+        df['duration_bin'] = pd.cut(
+            df['duration_sec'],
+            bins=bins,
+            include_lowest=True,
+            right=False
+        )
+
+        bin_summary = (
+            df.groupby('duration_bin', observed=False)['overall_min_cos_dist']
+            .mean().reset_index()
+        )
+
+        bin_summary['x'] = np.arange(len(bin_summary))
+
+        bin_summary['bin_center'] = [
+            (interval.left + interval.right) / 2 for interval in bin_summary['duration_bin']
+        ]
+
+        X = sm.add_constant(bin_summary['bin_center'])
+        y = bin_summary['overall_min_cos_dist']
+        model = sm.OLS(y, X).fit()
+        y_pred = model.predict(X)
+
+        plt.figure()
+        sns.barplot(x='x', y='overall_min_cos_dist', data=bin_summary, color='skyblue')
+        plt.plot(bin_summary['x'], y_pred, color='black', marker='o', linestyle='-', label='Trendline')
+
+        plt.xticks(
+            ticks=bin_summary['x'],
+            labels=bin_summary['duration_bin'].astype(str),
+            rotation=45
+        )
+        plt.ylim(0, 1)
+        plt.title('Min Cosine Distance by Track Duration')
+        plt.ylabel('min cosine distance')
+        plt.xlabel('track duration (seconds)')
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(file_dir, filename))
+        plt.close()
+
+        print(f"Trend R²: {model.rsquared:.3f}")
+
     trackwise_stats, _, _ = tracking_stats
 
     _plot_duration_histogram(trackwise_stats['duration_sec'])
     _plot_boxplot(trackwise_stats)
     _plot_identity_bins(trackwise_stats)
     _plot_heatmap(trackwise_stats)
+    _duration_vs_cosdist_barchart(trackwise_stats, file_dir)
 
 
 def track_bbox_charts(tracking_stats, file_dir='../files/output/'):
@@ -311,24 +365,24 @@ def track_bbox_charts(tracking_stats, file_dir='../files/output/'):
             .mean().reset_index()
         )
 
-        # Compute bin centers for regression
         bin_centers = [
             (interval.left + interval.right) / 2
             for interval in bin_summary['area_bin']
         ]
         bin_summary['bin_center'] = bin_centers
 
-        # Fit trendline using statsmodels
         X = sm.add_constant(bin_summary['bin_center'])
         y = bin_summary['has_identity']
         model = sm.OLS(y, X).fit()
         y_pred = model.predict(X)
 
-        plt.figure()
-        sns.barplot(x='area_bin', y='has_identity', data=bin_summary, color='skyblue')
-        plt.plot(bin_summary['bin_center'], y_pred, color='black', marker='o', linestyle='-', label='Trendline')
+        # assign ordinal positions for each bin:
+        bin_summary['x'] = np.arange(len(bin_summary))
 
-        plt.xticks(rotation=45)
+        plt.figure()
+        sns.barplot(x='x', y='has_identity', data=bin_summary, color='skyblue')
+        plt.plot(bin_summary['x'], y_pred, color='black', marker='o', linestyle='-', label='Trendline')
+        plt.xticks(ticks=bin_summary['x'], labels=bin_summary['area_bin'].astype(str), rotation=45)
         plt.ylim(0, 1)
         plt.title('Identification Rate by Avg BBox Area')
         plt.ylabel('identification rate')
@@ -400,6 +454,7 @@ def track_bbox_charts(tracking_stats, file_dir='../files/output/'):
         plt.tight_layout()
         plt.savefig(os.path.join(file_dir, filename))
         plt.close()
+
 
     trackwise_stats, _, ols_output = tracking_stats
 
