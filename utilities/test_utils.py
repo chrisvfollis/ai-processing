@@ -95,6 +95,7 @@ def download_event_imgs(
         min_bytes: int = 0
     ):
 
+    print('Downloading event images...')
     credentials = io_utils.get_aws_creds()
     s3 = boto3.client(
         's3',
@@ -136,7 +137,6 @@ def download_event_imgs(
             if os.path.exists(local_path):
                 continue
 
-            print(f'Downloading {key} to {local_path}')
             s3.download_file(bucket_name, key, local_path)
 
 

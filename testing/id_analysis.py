@@ -10,9 +10,7 @@ import numpy as np
 import pandas as pd
 import cv2
 import matplotlib.pyplot as plt
-import statsmodels.api as sm
 from sklearn.metrics import roc_curve, auc
-import seaborn as sns
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -21,7 +19,7 @@ from utilities import test_utils
 from models.face_iq import FaceIq
 
 
-def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
+def generate_id_data(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
     
     face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=False)
 
@@ -57,10 +55,10 @@ def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
     full_face_df = pd.concat(all_face_dfs)
 
     print(f'{no_face_events} event images with no detected faces')
-    return full_face_df
+    return full_face_df, no_face_events
 
 
-def generate_stats(df, output_dir='../files/output'):
+def analyze_id_data(df, output_dir='../files/output'):
     os.makedirs(output_dir, exist_ok=True)
 
     # ROC curve
@@ -129,9 +127,9 @@ if __name__ == '__main__':
                 sys.exit(1)
 
         test_utils.download_event_imgs(max_imgs=max_imgs, start_from=start_from,
-                                    min_bytes=min_bytes)
+                                       min_bytes=min_bytes)
 
-        full_face_df = identify_event_imgs()
+        full_face_df, no_face_events = generate_id_data(id_cutoff=id_cutoff)
         test_utils.export_face_df_with_images(full_face_df)
     
     elif mode == 'analyze':
@@ -141,4 +139,4 @@ if __name__ == '__main__':
         file_path = os.path.join(output_dir, filename)
 
         df = pd.read_excel(file_path)
-        generate_stats(df, output_dir=output_dir)
+        analyze_id_data(df, output_dir=output_dir)

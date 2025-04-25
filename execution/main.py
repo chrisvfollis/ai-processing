@@ -2,7 +2,6 @@
 import os
 import sys
 import signal
-import gc
 import multiprocessing
 import time
 import argparse
