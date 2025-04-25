@@ -3,7 +3,7 @@ import os
 import tracemalloc
 import pickle
 import math
-from itertools import permutations
+from itertools import permutations, islice
 import sys
 
 # 3rd-party dependencies
@@ -691,8 +691,11 @@ class TrackingPipeline:
             logger.info('Permuting constraint cascades...')
             group_permutations = []
 
+            MAX_PERMUTATIONS = 40_320   # 8! (full search up to 8 tracks)
+
             for group in groups:
-                group_permutations.append(list(set(permutations(group))))
+                capped = list(islice(permutations(group), MAX_PERMUTATIONS))
+                group_permutations.append(capped)
             
             group_permutations = _filter_redundant(
                 groups, group_permutations, meta_sets
@@ -700,12 +703,11 @@ class TrackingPipeline:
             
             all_orders = []
 
-            MAX_PERMUTATIONS = 40_320   # 8! (full search up to 8 tracks)
             for group in group_permutations:
-                if sum(len(p) for p in group) > MAX_PERMUTATIONS:
+                if len(group) > MAX_PERMUTATIONS:
                     # fall back to greedy: lowest-cost identity for each track
                     if self.debug_level >= 1:
-                            log_utils.dump_native_usage('perm-greedy-fallback', logger)
+                        log_utils.dump_native_usage('perm-greedy-fallback', logger)
                     group = [tuple(sorted(group[0]))] 
 
                 group_orders = []
@@ -715,7 +717,8 @@ class TrackingPipeline:
 
                     for meta_idx in meta_order:
                         meta_set = meta_sets[meta_idx]
-                        meta_set_permutations = list(permutations(meta_set))
+                        meta_set_permutations = list(islice(permutations(meta_set),
+                                                            MAX_PERMUTATIONS))
 
                         track_processing_permutations = [
                             existing_order + list(new_order)
@@ -723,13 +726,13 @@ class TrackingPipeline:
                             for new_order in meta_set_permutations
                         ]
 
-                    unique_orders = set()
-                    for track_order in track_processing_permutations:
-                        cleaned_track_order = tuple(_remove_duplicates(track_order))
-                        unique_orders.add(cleaned_track_order)
-
+                    unique_orders = {tuple(_remove_duplicates(t)) for t in track_processing_permutations}
                     group_orders.extend(list(unique_orders))
+
                 all_orders.append(group_orders)
+            
+            if self.debug_level >= 1:
+                log_utils.dump_native_usage('after-perm-build', logger)
 
             return all_orders
 

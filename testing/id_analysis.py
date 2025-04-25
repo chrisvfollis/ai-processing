@@ -21,9 +21,9 @@ from utilities import general_utils as utils
 from utilities import io_utils
 
 
-def identify_event_imgs(id_cutoff=0.7, img_dir='../files/output/event_imgs/'):
+def identify_event_imgs(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
     
-    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
+    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=False)
 
     all_images = [img for img in os.listdir(img_dir)
                   if not img.endswith('.gitkeep')]
@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
     max_imgs = args.max_imgs or 1000
     start_from = args.start_from
-    id_cutoff = args.id_cutoff or 0.7
+    id_cutoff = args.id_cutoff or 0.6
 
     min_kb = args.min_kb or 0
     min_bytes = (min_kb * 1000)
