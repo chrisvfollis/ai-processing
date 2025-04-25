@@ -36,6 +36,8 @@ def identify_event_imgs(id_cutoff=0.7, img_dir='../files/output/event_imgs/'):
         best_detection = pd.DataFrame()
         face_dfs = face_iq.identify_faces(image, id_cutoff=id_cutoff)
         for face_df in face_dfs:
+            if face_df.empty:
+                continue
             best_match = face_df.loc[[face_df['distance'].idxmin()]]
 
             distance = best_match['distance'].iloc[0]
