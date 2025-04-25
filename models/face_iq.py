@@ -793,22 +793,11 @@ class FaceIq:
                 continue
     
             best_match = face_df.loc[face_df['distance'].idxmin()]
-            name = best_match['name']
 
             x, y, w, h = best_match[['x', 'y', 'w', 'h']]
             x1, y1, x2, y2 = utils.xywh_xyxy([x, y, w, h])
 
             cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-
-            cv2.putText(
-                image, f'distance: {best_match["distance"]:.2f}', (x1, y1 - 5),
-                cv2.FONT_HERSHEY_SIMPLEX, 2, color, 2
-            )
-
-            cv2.putText(
-                image, f'name: {name}', (x2 - 5, y2 - 5),
-                cv2.FONT_HERSHEY_SIMPLEX, 2, color, 2
-            )
 
         if output_path:
             cv2.imwrite(output_path, image)

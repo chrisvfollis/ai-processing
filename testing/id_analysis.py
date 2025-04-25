@@ -28,9 +28,12 @@ def generate_id_data(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
     all_face_dfs = []
     no_face_events = 0
     
+    print(f'Identifying {len(all_images)} event images...')
     for image_name in all_images:
         image = cv2.imread(os.path.join(img_dir, image_name))
         output_path = os.path.join('../files/output', image_name)
+
+        image_area = np.prod(image.shape[:2])
         
         best_detection = pd.DataFrame()
         face_dfs = face_iq.identify_faces(image, id_cutoff=id_cutoff)
@@ -46,6 +49,12 @@ def generate_id_data(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
 
         if not best_detection.empty:
             best_detection['img_path'] = output_path
+            best_detection['img_area'] = image_area
+            best_detection['face_area'] = best_detection['w'] * best_detection['h']
+            best_detection['name'] = best_detection['name'].map(
+                lambda n: ' '.join(n.split('_')) if isinstance(n, str) else n
+            )
+
             all_face_dfs.append(best_detection)
         
             face_iq.visualize_identifications(image, [best_detection], output_path=output_path)
@@ -59,41 +68,44 @@ def generate_id_data(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
 
 
 def analyze_id_data(df, output_dir='../files/output'):
+
+    def _roc_chart(df, output_dir):
+        fpr, tpr, thresholds = roc_curve(df['correct_id'], -df['distance'])  # flip distance, since lower is better
+        roc_auc = auc(fpr, tpr)
+
+        # find optimal cutoff (maximizes TPR - FPR)
+        j_scores = tpr - fpr
+        j_idx = np.argmax(j_scores)
+        optimal_threshold = thresholds[j_idx]
+        optimal_fpr = fpr[j_idx]
+        optimal_tpr = tpr[j_idx]
+
+        fig, ax = plt.subplots()
+        ax.plot(fpr, tpr, color='blue', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
+        ax.plot([0, 1], [0, 1], color='gray', linestyle='--')
+
+        ax.plot(optimal_fpr, optimal_tpr, 'ro', label=f'Optimal threshold = {-1 * optimal_threshold:.3f}')
+        ax.annotate(
+            f'Thresh = {-1 * optimal_threshold:.3f}',
+            (optimal_fpr, optimal_tpr),
+            textcoords="offset points",
+            xytext=(10, -15),
+            ha='left',
+            fontsize=9,
+            color='red',
+            arrowprops=dict(arrowstyle='->', lw=1, color='red')
+        )
+
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        ax.set_title('ROC Curve')
+        ax.legend(loc='lower right')
+        fig.savefig(os.path.join(output_dir, 'roc_curve.png'))
+        plt.close(fig)
+
     os.makedirs(output_dir, exist_ok=True)
-
-    # ROC curve
-    fpr, tpr, thresholds = roc_curve(df['correct_id'], -df['distance'])  # flip distance, since lower is better
-    roc_auc = auc(fpr, tpr)
-
-    # find optimal cutoff (maximizes TPR - FPR)
-    j_scores = tpr - fpr
-    j_idx = np.argmax(j_scores)
-    optimal_threshold = thresholds[j_idx]
-    optimal_fpr = fpr[j_idx]
-    optimal_tpr = tpr[j_idx]
-
-    fig, ax = plt.subplots()
-    ax.plot(fpr, tpr, color='blue', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
-    ax.plot([0, 1], [0, 1], color='gray', linestyle='--')
-
-    ax.plot(optimal_fpr, optimal_tpr, 'ro', label=f'Optimal threshold = {-1 * optimal_threshold:.3f}')
-    ax.annotate(
-        f'Thresh = {-1 * optimal_threshold:.3f}',
-        (optimal_fpr, optimal_tpr),
-        textcoords="offset points",
-        xytext=(10, -15),
-        ha='left',
-        fontsize=9,
-        color='red',
-        arrowprops=dict(arrowstyle='->', lw=1, color='red')
-    )
-
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title('ROC Curve')
-    ax.legend(loc='lower right')
-    fig.savefig(os.path.join(output_dir, 'roc_curve.png'))
-    plt.close(fig)
+    
+    _roc_chart(df, output_dir)
 
 
 if __name__ == '__main__':
@@ -137,6 +149,6 @@ if __name__ == '__main__':
         filename = 'event_img_face_data.xlsx'
 
         file_path = os.path.join(output_dir, filename)
-
         df = pd.read_excel(file_path)
+        
         analyze_id_data(df, output_dir=output_dir)

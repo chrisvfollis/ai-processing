@@ -11,6 +11,7 @@ import numpy as np
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
 from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.styles import Alignment, Font
 import boto3
 
 
@@ -37,8 +38,8 @@ def add_imgs_to_spreadsheet(df):
         img_path = f'output/faces/{idx}.jpg' 
         if os.path.exists(img_path):
             img = XLImage(img_path)
-            img.height = 80
-            img.width = 80
+            img.height = 160
+            img.width = 160
             ws.add_image(img, f"{chr(65 + image_column - 1)}{idx + 2}")
 
     output_path = 'output/face_data.xlsx'
@@ -257,27 +258,42 @@ def export_face_df_with_images(
     ws = wb.active
     ws.title = 'Event Image Face Data'
 
-    full_face_df['a'] = full_face_df['w'] * full_face_df['h']
-    full_face_df = full_face_df.drop(
-        columns=['hash', 'designation', 'identity', 'x', 'y', 'w', 'h']
-    )
+    image_paths = pd.DataFrame(full_face_df['img_path'])
 
-    columns = [col for col in full_face_df.columns if col != 'img_path']
-    ws.append(columns + ['correct_id', 'image'])
+    full_face_df = full_face_df[['img_area', 'face_area', 'distance', 'name']]
+    columns = [col for col in full_face_df.columns]
+
+    header = columns + ['correct_id', 'image']
+    ws.append(header)
+
+    # format header:
+    for col_idx, _ in enumerate(header, start=1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center', vertical='center')
 
     excel_row_idx = 2  # start after header
-
     image_paths_to_remove = []
 
-    for _, row in full_face_df.iterrows():
-        values = [row[col] for col in columns]
-        ws.append(values + ["", ""])
+    ws.sheet_format.defaultRowHeight = 160
 
-        img_path = row['img_path']
+    for row_idx, row in full_face_df.iterrows():
+        values = [row[col] for col in columns]
+        ws.append(values + ['', ''])
+
+        # format row:
+        for col_idx, col_name in enumerate(header, start=1):
+            cell = ws.cell(row=excel_row_idx, column=col_idx)
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+
+            if col_name == 'name':
+                cell.font = Font(bold=True)
+
+        img_path = image_paths['img_path'].iloc[row_idx]
         if os.path.exists(img_path):
             img = XLImage(img_path)
-            img.height = 80
-            img.width = 80
+            img.height = 160
+            img.width = 160
             img_cell = f"{chr(65 + len(columns) + 1)}{excel_row_idx}"
             ws.add_image(img, img_cell)
             image_paths_to_remove.append(img_path)
