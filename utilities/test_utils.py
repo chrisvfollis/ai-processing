@@ -91,7 +91,8 @@ def download_event_imgs(
         bucket_name='timemanager-event-imgs',
         local_dir='../files/output/event_imgs',
         max_imgs=1000,
-        start_from: Union[datetime, list] = None
+        start_from: Union[datetime, list] = None,
+        min_bytes: int = 0
     ):
 
     credentials = io_utils.get_aws_creds()
@@ -121,6 +122,9 @@ def download_event_imgs(
             
             last_modified = obj['LastModified'].replace(tzinfo=None)
             if start_from and (last_modified < start_from):
+                continue
+
+            if obj['Size'] < min_bytes:
                 continue
     
             key = obj['Key']

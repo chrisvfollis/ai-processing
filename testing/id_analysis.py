@@ -58,11 +58,15 @@ if __name__ == '__main__':
 
     parser.add_argument('--max-imgs', type=int)
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
+    parser.add_argument('--min-kb', type=int)
 
     args = parser.parse_args()
 
     max_imgs = args.max_imgs or 1000
     start_from = args.start_from
+
+    min_kb = args.min_kb or 0
+    min_bytes = (min_kb * 1000)
 
     if start_from:
         try:
@@ -72,7 +76,8 @@ if __name__ == '__main__':
             print(f'Invalid --start-from value: {args.start_from} ({e})')
             sys.exit(1)
 
-    test_utils.download_event_imgs(max_imgs=max_imgs, start_from=start_from)
+    test_utils.download_event_imgs(max_imgs=max_imgs, start_from=start_from,
+                                   min_bytes=min_bytes)
 
     full_face_df = identify_event_imgs()
     test_utils.export_face_df_with_images(full_face_df)
