@@ -14,7 +14,6 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Alignment, Font
 import boto3
 
-
 # internal dependencies
 from utilities import io_utils
 

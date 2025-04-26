@@ -8,7 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.api as sm
-
+from scipy.stats import percentileofscore
 
 # internal dependencies
 from utilities import io_utils
@@ -16,7 +16,7 @@ import utilities.general_utils as utils
 from utilities import test_utils
 
 
-def generate_tracking_stats(data):
+def generate_tracking_stats(data, ideal_bbox_area=693):
     '''
     Extracts and computes all shared per-track statistics from tracking data.
 
@@ -73,6 +73,7 @@ def generate_tracking_stats(data):
 
     avg_areas = []
     q75_areas = []
+    avg_root_areas = []
     avg_side_lengths = []
     q75_side_lengths = []
     median_bbox_areas = []
@@ -104,6 +105,7 @@ def generate_tracking_stats(data):
 
             avg_area = np.mean(areas)
             q75_area = np.percentile(areas, 75)
+            avg_root_area = np.sqrt(avg_area)
             median_area = np.median(areas)
 
             durations.append(duration)
@@ -115,6 +117,7 @@ def generate_tracking_stats(data):
 
             avg_areas.append(avg_area)
             q75_areas.append(q75_area)
+            avg_root_areas.append(avg_root_area)
             median_bbox_areas.append(median_area)
             median_bbox_side_lengths.append(np.sqrt(median_area))
             avg_side_lengths.append(np.sqrt(avg_area))
@@ -132,6 +135,7 @@ def generate_tracking_stats(data):
         'median_min_cos_dist': median_min_cos_dists,
         'avg_bbox_area': avg_areas,
         'q75_bbox_area': q75_areas,
+        'avg_root_area': avg_root_areas,
         'median_bbox_area': median_bbox_areas,
         'median_bbox_side_lengths': median_bbox_side_lengths,
         'avg_bbox_side_length': avg_side_lengths,
@@ -149,6 +153,9 @@ def generate_tracking_stats(data):
         'total_tracks': len(durations),
         'average_bbox_area': np.mean(avg_areas),
         'median_bbox_area': np.median(median_bbox_areas),
+        'ideal_bbox_area_percentile': percentileofscore(
+            avg_root_areas, ideal_bbox_area, kind='weak'
+        ),
         'average_cos_dist': np.nanmean(avg_min_cos_dists),
         'median_cos_dist': np.nanmedian(median_min_cos_dists),
         'module': 'unified_summary'
@@ -454,7 +461,6 @@ def track_bbox_charts(tracking_stats, file_dir='../files/output/'):
         plt.tight_layout()
         plt.savefig(os.path.join(file_dir, filename))
         plt.close()
-
 
     trackwise_stats, _, ols_output = tracking_stats
 
