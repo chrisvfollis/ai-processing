@@ -162,7 +162,9 @@ def run_master_process(
             time.sleep(60)
             continue
 
-        time_logger, stop_timing = log_utils.observability_thread('elapsed_time')
+        time_logger, stop_timing = log_utils.observability_thread(
+            'elapsed_time', logger=logger
+        )
         time_logger.start()
 
         tasks = [
@@ -178,7 +180,8 @@ def run_master_process(
             )
 
             worker_monitor = log_utils.observability_thread(
-                'failed_workers', args=(pool, initial_pids, async_results)
+                'failed_workers', args=(pool, initial_pids, async_results),
+                logger=logger
             )
             worker_monitor.start()
 
@@ -227,7 +230,7 @@ if __name__ == '__main__':
     credentials = io_utils.get_aws_creds()
     shop_id, _ = io_utils.get_shop('../files/data.db')
 
-    memory_monitor, _ = log_utils.observability_thread('low_memory')
+    memory_monitor, _ = log_utils.observability_thread('low_memory', logger=logger)
     memory_monitor.start()
 
     run_master_process(

@@ -26,25 +26,26 @@ def configure_logging():
     MB = 1024 * 1024
 
     formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        fmt="%(asctime)s [%(levelname)s] %(name)s PID[%(process)d] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 
     file_handler = RotatingFileHandler(
         log_file,
-        maxBytes=(500 * MB),  # 500 MB per file
-        backupCount=4         # Up to 2 GB total
+        maxBytes=(500 * MB),
+        backupCount=4
     )
     file_handler.setFormatter(formatter)
 
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(name)s PID[%(process)d] %(message)s',
-        handlers=[file_handler, stream_handler]
-    )
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    root_logger.handlers.clear()
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(stream_handler)
 
 
 configure_logging()
@@ -74,7 +75,7 @@ def press_stopwatch(instance, target_attr: str):
         return False
 
 
-def observability_thread(target, args=None):
+def observability_thread(target, args=None, logger=None):
     """
     Initializes a thread for monitoring & logging some aspect of a process.
 
@@ -98,12 +99,13 @@ def observability_thread(target, args=None):
     
         time_logger = threading.Thread(
             target=log_elapsed_time,
-            args=(start_time, stop_event, frequency, timestamp),
+            args=(start_time, stop_event, frequency, logger, timestamp),
             daemon=True
         )
         return time_logger, stop_event
 
     elif target == 'failed_workers':
+        args += (logger,)
         worker_monitor = threading.Thread(
             target=log_failed_workers, args=args, daemon=True
         )
@@ -115,32 +117,37 @@ def observability_thread(target, args=None):
 
         low_memory_monitor = threading.Thread(
             target=log_low_memory_warnings,
-            args=(stop_event, threshold, interval),
+            args=(stop_event, threshold, interval, logger),
             daemon=True
         )
         return low_memory_monitor, stop_event
 
 
-def log_elapsed_time(start_time, stop_event, frequency, timestamp):
+def log_elapsed_time(start_time, stop_event, frequency, logger=None, timestamp=True):
     while not stop_event.is_set():
         elapsed = (time.time() - start_time) / 60
-        if timestamp == False:
-            print(f'Elapsed time: {elapsed:.2f} minutes')
-            time.sleep(frequency)
-        elif timestamp == True:
-            current_time = datetime.now().strftime('%H:%M:%S')
-            print(f'[{current_time}] Elapsed time: {elapsed:.2f} minutes')
-            time.sleep(frequency)
+        if logger:
+            logger.info(f'Elapsed time: {elapsed:.2f} minutes')
+        else:
+            if timestamp == True:
+                current_time = datetime.now().strftime('%H:%M:%S')
+                print(f'[{current_time}] Elapsed time: {elapsed:.2f} minutes')
+            else:
+                print(f'Elapsed time: {elapsed:.2f} minutes')
+        time.sleep(frequency)
 
     total_elapsed =  (time.time() - start_time) / 60
-    if timestamp == False:
-        print(f'Total elapsed time: {total_elapsed:.2f} minutes')
-    elif timestamp == True:
-        current_time = datetime.now().strftime('%H:%M:%S')
-        print(f'[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes')
+    if logger:
+        logger.info(f'Total elapsed time: {total_elapsed:.2f} minutes')
+    else:
+        if timestamp == True:
+            current_time = datetime.now().strftime('%H:%M:%S')
+            print(f'[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes')
+        else:
+            print(f'Total elapsed time: {total_elapsed:.2f} minutes')
 
 
-def log_failed_workers(pool, initial_pids, async_result):
+def log_failed_workers(pool, initial_pids, async_result, logger=None):
     '''
     Logs any potentially failed workers from a starmap_async() run of a
     multiprocessing.Pool
@@ -151,16 +158,19 @@ def log_failed_workers(pool, initial_pids, async_result):
         current_pids = {p.pid for p in pool._pool if p.is_alive()}
         disappeared = initial_pids - current_pids
         if disappeared:
-            print(f"[WARNING] Workers {disappeared} disappeared (possible crash)")
+            if logger:
+                logger.warning(f'Workers {disappeared} disappeared (possible crash)')
+            else:
+                print(f"[WARNING] Workers {disappeared} disappeared (possible crash)")
 
 
-def memory_usage(focus, n=5, threshold=None, log_filter_key=None):
+def memory_usage(focus, n=5, threshold=None, log_filter_key=None, logger=None):
     if focus == 'processes':
-        def _log_largest_processes(process_list, n):
+        def _log_largest_processes(process_list, n, logger):
             if process_list:
-                print(f'Largest processes:')
+                logger.info(f'Largest processes:')
                 for pid, name, mem in processes[:n]:
-                    print(f'PID {pid} - {name}: {mem:.2f} MB')
+                    logger.info(f'PID {pid} - {name}: {mem:.2f} MB')
 
         processes = []
         for p in psutil.process_iter(
@@ -186,12 +196,12 @@ def memory_usage(focus, n=5, threshold=None, log_filter_key=None):
     elif focus == 'objects':
         def _log_largest_objects(object_list, n, obj_category):
             if object_list:
-                print(f'Largest {obj_category} objects:')
+                logger.info(f'Largest {obj_category} objects:')
                 for obj, size in object_list[:n]:
-                    print(f'Size: {size} MB | Type: {type(obj)}')
+                    logger.info(f'Size: {size} MB | Type: {type(obj)}')
 
             else:
-                print(f'No {obj_category} objects found')
+                logger.info(f'No {obj_category} objects found')
 
         def _safe_sizeof(object):
             '''
@@ -228,13 +238,13 @@ def memory_usage(focus, n=5, threshold=None, log_filter_key=None):
             (total_obj_memory > (threshold))
         ):
 
-            print(f'Total standard object memory: {cpu_obj_totals[0]:.2f} MB')
+            logger.info(f'Total standard object memory: {cpu_obj_totals[0]:.2f} MB')
             _log_largest_objects(standard_objects, n, 'standard')
     
-            print(f'Total uncollectible object memory: {cpu_obj_totals[1]:.2f} MB')
+            logger.info(f'Total uncollectible object memory: {cpu_obj_totals[1]:.2f} MB')
             _log_largest_objects(uncollectible_objects, n, 'uncollectible')
 
-            print(f"Total pytorch object memory: {gpu_obj_totals[0]:.2f} MB")
+            logger.info(f"Total pytorch object memory: {gpu_obj_totals[0]:.2f} MB")
 
         return total_obj_memory
 
@@ -259,12 +269,12 @@ def memory_usage(focus, n=5, threshold=None, log_filter_key=None):
             (threshold is None) or
             (total_alloc_memory > threshold)
         ):
-            print(f'Total allocated memory: {round(total_alloc_memory, 2)} MB')
-            print('Top allocation lines:')
+            logger.info(f'Total allocated memory: {round(total_alloc_memory, 2)} MB')
+            logger.info('Top allocation lines:')
             for line_info in allocation_lines[:n]:
                 file, line_num, memory = line_info
 
-                print(
+                logger.info(
                     f'File {file}, line {line_num},' +
                     f'allocated {memory:.2f} MB'
                 )
@@ -272,7 +282,7 @@ def memory_usage(focus, n=5, threshold=None, log_filter_key=None):
         return total_alloc_memory
 
 
-def log_low_memory_warnings(stop_event, threshold, interval):
+def log_low_memory_warnings(stop_event, threshold, interval, logger=None):
     while not stop_event.is_set():
         try:
             memory_info = psutil.virtual_memory()
@@ -280,19 +290,28 @@ def log_low_memory_warnings(stop_event, threshold, interval):
 
             if free_mb < threshold:
                 free_mb = round(free_mb, 0) if free_mb >= 1 else round(free_mb, 2)
-                print(f'\n[WARNING] MEMORY CRITICAL: {free_mb} MB free')
+                if logger:
+                    logger.warning(f'\nMEMORY CRITICAL: {free_mb} MB free')
+                else:
+                    print(f'\n[WARNING] MEMORY CRITICAL: {free_mb} MB free')
 
-                memory_usage('processes')
-                memory_usage('objects')
+                memory_usage('processes', logger=logger)
+                memory_usage('objects', logger=logger)
 
                 gc.collect()
                 time.sleep(2)
-                print('[CRITICAL] Exiting due to low memory')
+                if logger:
+                    logger.critical('Exiting due to low memory')
+                else:
+                    print('[CRITICAL] Exiting due to low memory')
                 os._exit(1)
             else:
                 time.sleep(interval)
         except Exception as e:
-            print(f'Error while monitoring memory: {e}')
+            if logger:
+                logger.exception(f'Error while monitoring memory: {e}')
+            else:
+                print(f'Error while monitoring memory: {e}')
 
 
 def dump_native_usage(tag='', logger=None):
