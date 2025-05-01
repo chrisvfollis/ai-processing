@@ -39,12 +39,12 @@ def clear_memory():
     gc.collect()
 
 
-def cleanup_semaphores():
+def cleanup_semaphores(logger):
     '''
     Removes unused (stale or leaked) semaphores:
 
     - POSIX-named semaphores from /dev/shm/
-    - SysV IPC semaphores using ipcs -s
+    - SysV IPC semaphores using ipcs -s 
     '''
 
     try:
@@ -59,21 +59,21 @@ def cleanup_semaphores():
                     sem in p.open_files() for p in
                     psutil.process_iter(['open_files'])
                 ):
-                    print(f'Skipping active semaphore: {sem_path}')
+                    logger.info(f'Skipping active semaphore: {sem_path}')
                     continue
     
                 try:
                     os.unlink(sem_path)
-                    print(f'Removed unused POSIX semaphore: {sem_path}')
+                    logger.info(f'Removed unused POSIX semaphore: {sem_path}')
                 except FileNotFoundError:
-                    print(f'Skipped: {sem_path} already removed.')
+                    logger.error(f'Skipped: {sem_path} already removed.')
                 except Exception as e:
-                    print(f'Error removing {sem_path}: {e}')
+                    logger.error(f'Error removing {sem_path}: {e}')
         else:
-            print('No unused POSIX semaphores found.')
+            logger.info('No unused POSIX semaphores found.')
 
     except Exception as e:
-        print(f'Error checking POSIX semaphores: {e}')
+        logger.error(f'Error checking POSIX semaphores: {e}')
 
 
     user = getpass.getuser()
@@ -87,12 +87,12 @@ def cleanup_semaphores():
         if sysv_semaphores:
             for sem_id in sysv_semaphores:
                 os.system(f'ipcrm -s {sem_id}')
-                print(f'Removing unused SysV semaphore: {sem_id}')
+                logger.info(f'Removing unused SysV semaphore: {sem_id}')
         else:
-            print('No unused SysV semaphores found.')
+            logger.info('No unused SysV semaphores found.')
 
     except Exception as e:
-        print(f'Error checking SysV semaphores: {e}')
+        logger.error(f'Error checking SysV semaphores: {e}')
 
 
 # ============================================================================

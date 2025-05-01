@@ -18,7 +18,7 @@ import torch
 pass
 
 
-def configure_logging():
+def configure_logging(log_level=0):
     log_dir = os.path.abspath(os.path.join(os.getcwd(), '..', 'files', 'logs'))
     os.makedirs(log_dir, exist_ok=True)
 
@@ -26,7 +26,7 @@ def configure_logging():
     MB = 1024 * 1024
 
     formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s PID[%(process)d] %(message)s",
+        fmt="%(asctime)s [%(levelname)s] %(name)s PID[%(process)d]: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
 
@@ -46,9 +46,6 @@ def configure_logging():
     root_logger.handlers.clear()
     root_logger.addHandler(file_handler)
     root_logger.addHandler(stream_handler)
-
-
-configure_logging()
 
 
 def get_logger(name=None):

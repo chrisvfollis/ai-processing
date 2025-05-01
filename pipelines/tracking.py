@@ -1191,7 +1191,7 @@ class TrackingPipeline:
     def generate_output_vid(self, input_dir='../files/input/', output_dir='../files/output/videos'):
         logger.info(f'Generating output video for {self.video_file}')
 
-        all_trks = {**self.active_trks, **self.inactive_trks, **self.filtered_trks}
+        all_trks = self.all_trks
 
         cap = cv2.VideoCapture(os.path.join(input_dir, self.video_file))
         fps = cap.get(cv2.CAP_PROP_FPS)

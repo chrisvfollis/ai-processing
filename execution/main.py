@@ -18,11 +18,9 @@ import tensorflow as tf
 # internal dependencies
 from utilities import io_utils
 from utilities import general_utils as utils
-from utilities.logging_utils import get_logger
 from utilities import logging_utils as log_utils
 
-
-logger = get_logger(__name__)
+logger = log_utils.get_logger(__name__)
 
 
 def handle_early_termination(signum, frame):
@@ -35,9 +33,9 @@ def handle_early_termination(signum, frame):
 
 
 def run_processing_pipelines(
-        row, model_info, device, credentials, debug_level=0, save_all_data=False
+        row, model_info, device, credentials, log_level=0, save_all_data=False
     ):
-
+    log_utils.configure_logging(log_level=log_level)
     io_utils.clear_memory()
 
     gpus = tf.config.list_physical_devices('GPU')
@@ -81,7 +79,7 @@ def run_processing_pipelines(
             *inference_output,
             credentials,
             device=device,
-            debug_level=debug_level
+            log_level=log_level
         )
 
         del inference_pipeline, inference_output
@@ -109,7 +107,7 @@ def run_master_process(
         model_info: list,
         shop_id: str,
         credentials: dict,
-        debug_level: int = 0,
+        log_level: int = 0,
         retain_footage: bool = False,
         save_all_data: bool = False,
         start_from=None,
@@ -120,6 +118,11 @@ def run_master_process(
         io_utils.delete_local_files('all')
 
     def _finalize(shop_id, queue_block, retain_footage=False):
+        logger.info(textwrap.dedent(f'''
+            finalizing queue block...
+            retain_footage = {retain_footage}
+        '''))
+
         time_prefix = utils.parse_clip_filename(
             queue_block[0][0].split('/')[-1], data='time'
         )
@@ -135,13 +138,15 @@ def run_master_process(
         io_utils.clear_queue_block(shop_id, timestamp)
         io_utils.delete_local_files(time_prefix)
     
+    log_utils.configure_logging(log_level=log_level)
+
     logger.info(textwrap.dedent(f'''
         master process args:
         retain_footag = {retain_footage}
         save_all_data = {save_all_data}
         start_from = {start_from}
         priority_cam = {priority_cam}
-        debug_level = {debug_level}
+        log_level = {log_level}
     '''))
 
     signal.signal(signal.SIGTERM, handle_early_termination)
@@ -168,7 +173,7 @@ def run_master_process(
         time_logger.start()
 
         tasks = [
-            (row, model_info, device, credentials, debug_level, save_all_data)
+            (row, model_info, device, credentials, log_level, save_all_data)
             for row in queue_block
         ]
         with multiprocessing.Pool(processes=3) as pool:
@@ -210,7 +215,9 @@ if __name__ == '__main__':
     retain_footage = args.retain_footage
     save_all_data = args.save_all_data
     priority_camera = args.priority_cam
-    debug_level = args.debug_level or 0
+
+    log_level = args.log_level or 0
+    log_utils.configure_logging(log_level=log_level)
 
     start_from = None
     if args.start_from:
@@ -239,5 +246,5 @@ if __name__ == '__main__':
         save_all_data=save_all_data,
         start_from=start_from,
         priority_cam=priority_camera,
-        debug_level=debug_level,
+        log_level=log_level,
     )
