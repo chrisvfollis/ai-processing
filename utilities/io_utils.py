@@ -21,6 +21,7 @@ import boto3
 from botocore.exceptions import EndpointConnectionError, NoCredentialsError
 import requests
 import psutil
+import psycopg2
 
 # internal dependencies
 from utilities import general_utils as utils
@@ -913,3 +914,13 @@ def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
         print(f"Failed posting to webapp: {response.text}")
         print(response.status_code)
         return False
+
+
+def pg_db_connect(var_prefix='PG'):
+    return psycopg2.connect(
+        host=os.getenv(f'{var_prefix}_HOST'),
+        port=os.getenv(f'{var_prefix}_PORT'),
+        user=os.getenv(f'{var_prefix}_USER'),
+        password=os.getenv(f'{var_prefix}_PASSWORD'),
+        dbname=os.getenv(f'{var_prefix}_NAME')
+    )

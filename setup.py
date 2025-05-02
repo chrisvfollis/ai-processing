@@ -42,10 +42,11 @@ setup(
         'statsmodels',
         'scikit-learn',
 
-        # Networks, APIs, etc:
+        # Networking, APIs, Connections, etc:
         'requests',
         'boto3',
         'python-dotenv',
+        'psycopg2',
 
         # Other Libraries:
         'shapely',
