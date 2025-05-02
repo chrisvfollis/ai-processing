@@ -2,7 +2,6 @@
 import os
 from typing import Any, Dict, Set, List, IO, Union, Optional
 import pickle
-import time
 import gc
 import math
 
@@ -13,7 +12,7 @@ import cv2
 import torch
 from deepface.commons import image_utils
 from deepface.modules import detection, representation, verification, recognition
-from deepface.models.Detector import Detector, DetectedFace, FacialAreaRegion
+from deepface.models.Detector import DetectedFace, FacialAreaRegion
 
 # internal dependencies
 from models.centerface import CenterFace
@@ -21,7 +20,7 @@ from models.clearface import ClearFace
 from utilities import face_utils
 from utilities import io_utils
 from utilities import general_utils as utils
-from utilities.logging_utils import press_stopwatch
+from utilities.log_utils import press_stopwatch
 
 
 class FaceIq:

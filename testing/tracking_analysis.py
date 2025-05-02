@@ -13,7 +13,7 @@ from scipy.stats import percentileofscore
 # internal dependencies
 from utilities import io_utils
 import utilities.general_utils as utils
-from utilities import test_utils
+from testing import test_utils
 
 
 def generate_tracking_stats(data, ideal_bbox_area=693):

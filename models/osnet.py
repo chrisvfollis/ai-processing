@@ -19,7 +19,7 @@ from torchreid import models as reid
 
 # internal dependencies
 from utilities import io_utils
-from utilities.logging_utils import press_stopwatch
+from utilities.log_utils import press_stopwatch
 
 
 class OSNet:

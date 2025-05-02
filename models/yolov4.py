@@ -10,7 +10,7 @@ from torch import nn
 import torch.nn.functional as F
 
 # internal dependencies
-from utilities.logging_utils import press_stopwatch
+from utilities.log_utils import press_stopwatch
 
 
 class YOLOv4:

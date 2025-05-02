@@ -17,7 +17,7 @@ import seaborn as sns
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # internal dependencies
-from utilities import test_utils
+from testing import test_utils
 from models.face_iq import FaceIq
 
 
