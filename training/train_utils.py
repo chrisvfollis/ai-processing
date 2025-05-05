@@ -41,7 +41,7 @@ def get_approved_records(shop_id=None):
     try:
         with conn.cursor() as cursor:
             cursor.execute(query, params)
-            results = cursor.fetchal()
+            results = cursor.fetchall()
             return results
     finally:
         conn.close()
@@ -78,7 +78,7 @@ def get_approved_img_data(approved_records, bucket_name='timemanager-event-imgs'
             excel_path = os.path.join(output_dir, 'approved_img_data.xlsx')
 
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
-                img_data_df.to_excel(writer, sheet_name='Saved Image Data', index=False)
+                img_data_df.to_excel(writer, sheet_name='Approved Image Data', index=False)
 
 
         except Exception as e:

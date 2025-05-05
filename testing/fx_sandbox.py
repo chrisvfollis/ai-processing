@@ -3,8 +3,6 @@ import os
 import sys
 from typing import Union
 import uuid
-import time
-import math
 
 # 3rd-party dependencies
 import numpy as np
@@ -12,17 +10,16 @@ import cv2
 import torch
 
 # internal dependencies
-from models.face_iq import FaceIq
-from models.centerface import CenterFace
-from models.clearface import ClearFace
-from models.yolov4 import YOLOv4
+from models import YOLOv4, OSNet, FaceIq, CenterFace, ClearFace
 from utilities import general_utils as utils
 from utilities import io_utils
 
 
-# ----------------------------------------------------------------------------
-# Image Processing:
+# =============================================================================
+#                           - IMAGE PROCESSING -
+# -----------------------------------------------------------------------------
 
+# DETECTION:
 
 def detect_people_in_image():
     pass
@@ -43,6 +40,32 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
     print(f'{len(face_detections)} faces detected')
     detector.visualize_detections(image, face_detections, output_path=output_path)
 
+
+# FEATURE EXTRACTION:
+
+def embed_img_features():
+    pass
+
+
+# SUPER-RESOLUTION:
+
+def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
+    clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')
+
+    if isinstance(image, str):
+        image_name = image.split('/')[-1]
+        image = cv2.imread(image)
+
+    if not image_name:
+        image_name = str(uuid.uuid4())
+    output_path = os.path.join('../files/output', image_name)
+
+    enhanced_face = clearface.forward(image, is_rgb=True)
+
+    cv2.imwrite(output_path, enhanced_face)
+
+
+# RECOGNITION:
 
 def recognize_faces_in_image(
         image: Union[str, np.ndarray],
@@ -114,25 +137,11 @@ def recognize_faces_in_image(
     face_iq.visualize_identifications(image, face_dfs, output_path=output_path)
 
 
-def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
-    clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')
+# =============================================================================
+#                           - VIDEO PROCESSING -
+# -----------------------------------------------------------------------------
 
-    if isinstance(image, str):
-        image_name = image.split('/')[-1]
-        image = cv2.imread(image)
-
-    if not image_name:
-        image_name = str(uuid.uuid4())
-    output_path = os.path.join('../files/output', image_name)
-
-    enhanced_face = clearface.forward(image, is_rgb=True)
-
-    cv2.imwrite(output_path, enhanced_face)
-
-
-# ----------------------------------------------------------------------------
-# Video Processing:
-
+# DETECTION:
 
 def detect_people_in_video():
     pass
@@ -234,6 +243,61 @@ def detect_faces_in_video(
     detector.save_runtime_data()
 
 
+# SUPER-RESOLUTION:
+
+def test_enhanced_face_detections(
+        video: str, focus: str = 'global',
+        input_dir: str = '../files/input',
+        output_dir: str = '../files/output'
+    ):
+
+    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
+
+    if focus == 'local':
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        yolov4 = YOLOv4('../models/weights/YOLOv4.pth', device)
+
+    cap = cv2.VideoCapture(video)
+    resolution, fps, total_frames = utils.get_video_info(cap, release=False)
+
+    f_num = -1
+    face_iq.i = f_num
+
+    while f_num < total_frames:
+        f_num += 1
+        face_iq.i = f_num
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if f_num % 500 == 0:
+            print(f_num)
+
+        if (f_num % fps) == 0:
+            if focus == 'global':
+                face_objects = face_iq.detection_pipeline(
+                    frame, align=False, enhance=True, normalize_face=False
+                )
+    
+            elif focus == 'local':
+                bboxes = yolov4.detect(frame, 0)
+
+                if not bboxes:
+                    continue
+    
+                regions = utils.cluster_bboxes_into_regions(
+                    bboxes, *resolution
+                )
+                for region in regions:
+                    img_crop = utils.crop_region(frame, region)
+                    local_face_objects = face_iq.detection_pipeline(img_crop, normalize_face=False)
+    
+    cap.release()
+    face_iq.save_runtime_data()
+
+
+# RECOGNITION:
+
 def recognize_faces_in_video(
         video_file: str,
         focus: str = 'global',
@@ -320,58 +384,6 @@ def recognize_faces_in_video(
     
     cap.release()
     out.release()
-
-    face_iq.save_runtime_data()
-
-
-def test_enhanced_face_detections(
-        video: str, focus: str = 'global',
-        input_dir: str = '../files/input',
-        output_dir: str = '../files/output'
-    ):
-
-    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=True)
-
-    if focus == 'local':
-        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        yolov4 = YOLOv4('../models/weights/YOLOv4.pth', device)
-
-    cap = cv2.VideoCapture(video)
-    resolution, fps, total_frames = utils.get_video_info(cap, release=False)
-
-    f_num = -1
-    face_iq.i = f_num
-
-    while f_num < total_frames:
-        f_num += 1
-        face_iq.i = f_num
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        if f_num % 500 == 0:
-            print(f_num)
-
-        if (f_num % fps) == 0:
-            if focus == 'global':
-                face_objects = face_iq.detection_pipeline(
-                    frame, align=False, enhance=True, normalize_face=False
-                )
-    
-            elif focus == 'local':
-                bboxes = yolov4.detect(frame, 0)
-
-                if not bboxes:
-                    continue
-    
-                regions = utils.cluster_bboxes_into_regions(
-                    bboxes, *resolution
-                )
-                for region in regions:
-                    img_crop = utils.crop_region(frame, region)
-                    local_face_objects = face_iq.detection_pipeline(img_crop, normalize_face=False)
-    
-    cap.release()
 
     face_iq.save_runtime_data()
 

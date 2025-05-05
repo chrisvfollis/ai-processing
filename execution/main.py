@@ -48,8 +48,7 @@ def run_processing_pipelines(
         except RuntimeError as e:
             logger.exception(f'Error configuring TensorFlow GPU memory: {e}')
 
-    from pipelines.inference import InferencePipeline
-    from pipelines.tracking import TrackingPipeline
+    from pipelines import InferencePipeline, TrackingPipeline
 
     object_key = row[0]
     video_file = object_key.split('/')[-1]

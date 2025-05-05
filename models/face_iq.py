@@ -15,8 +15,7 @@ from deepface.modules import detection, representation, verification, recognitio
 from deepface.models.Detector import DetectedFace, FacialAreaRegion
 
 # internal dependencies
-from models.centerface import CenterFace
-from models.clearface import ClearFace
+from models import CenterFace, ClearFace
 from utilities import face_utils
 from utilities import io_utils
 from utilities import general_utils as utils

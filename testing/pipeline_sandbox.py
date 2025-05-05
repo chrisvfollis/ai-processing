@@ -19,8 +19,9 @@ from utilities import io_utils
 from utilities import general_utils as utils
 
 
-# ----------------------------------------------------------------------------
-# Inference:
+# =============================================================================
+#                         - INFERENCE PIPELINE -
+# -----------------------------------------------------------------------------
 
 
 def generate_inf_data(video_file, credentials, model_info, device, params=None,
@@ -40,7 +41,7 @@ def generate_inf_data(video_file, credentials, model_info, device, params=None,
         except RuntimeError as e:
             print(f"Error configuring TensorFlow GPU memory: {e}")
 
-    from pipelines.inference import InferencePipeline
+    from pipelines import InferencePipeline
 
     try:
         if not params:
@@ -110,8 +111,9 @@ def run_inference(vid_files='input_dir', params=None):
     time_logging.join()
 
 
-# ----------------------------------------------------------------------------
-# Tracking:
+# =============================================================================
+#                          - TRACKING PIPELINE -
+# -----------------------------------------------------------------------------
 
 
 def process_inf_output(video_file, device, output_dir='../files/output'):
@@ -125,7 +127,7 @@ def process_inf_output(video_file, device, output_dir='../files/output'):
     with open(data_path, 'rb') as f:
         inference_output = pickle.load(f)
 
-    from pipelines.tracking import TrackingPipeline
+    from pipelines import TrackingPipeline
 
     trk_pipeline = TrackingPipeline(
         video_file, t_prefix, *inference_output, device, continuity=False

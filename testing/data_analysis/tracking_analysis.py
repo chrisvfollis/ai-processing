@@ -173,7 +173,7 @@ def generate_tracking_stats(data, ideal_bbox_area=693):
     return (trackwise_stats, overall_stats, ols_output_df)
 
 
-def track_duration_charts(tracking_stats, file_dir='../files/output/'):
+def track_duration_charts(tracking_stats, file_dir='../../files/output/'):
     '''
     Models relationships between track length (duration) and other attributes or
     outcomes.
@@ -325,7 +325,7 @@ def track_duration_charts(tracking_stats, file_dir='../files/output/'):
     _duration_vs_cosdist_barchart(trackwise_stats, file_dir)
 
 
-def track_bbox_charts(tracking_stats, file_dir='../files/output/'):
+def track_bbox_charts(tracking_stats, file_dir='../../files/output/'):
 
     def _chart_area_histogram(df, file_dir):
         filename = io_utils.get_unique_filename(file_dir, 'avg-area__histogram.png')

@@ -10,9 +10,7 @@ import cv2
 import torch
 
 # internal dependencies
-from models.yolov4 import YOLOv4
-from models.osnet import OSNet
-from models.face_iq import FaceIq
+from models import YOLOv4, OSNet, FaceIq
 from utilities import general_utils as utils
 from utilities import io_utils
 from utilities.log_utils import get_logger, press_stopwatch

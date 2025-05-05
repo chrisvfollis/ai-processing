@@ -1,7 +1,6 @@
 # standard dependencies
 import os
 import argparse
-from typing import Union
 import sys
 from datetime import datetime
 import math
