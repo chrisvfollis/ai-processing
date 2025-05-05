@@ -1,9 +1,13 @@
 # standard dependencies
 import os
+from io import BytesIO
 
 # 3rd-party dependencies
 from dotenv import load_dotenv
 import psycopg2
+import boto3
+from PIL import Image
+import pandas as pd
 import cv2
 import torch
 from torchvision import transforms
@@ -14,7 +18,12 @@ from torchvision.io import read_image
 from utilities import io_utils
 
 
-def get_approved_img_data(shop_id=None):
+def get_approved_records(shop_id=None):
+    ''''
+    Retrieve approved employee event records to get accurate labeled image data
+    for training and/or fine tuning.
+    '''
+    
     conn = io_utils.pg_db_connect(var_prefix='WEBAPP_DB')
 
     query = """
@@ -36,3 +45,43 @@ def get_approved_img_data(shop_id=None):
             return results
     finally:
         conn.close()
+
+
+def get_approved_img_data(approved_records, bucket_name='timemanager-event-imgs',
+                          output_dir = '../files/output/'):
+    s3 = boto3.client('s3')
+    img_output_dir = os.path.join(output_dir, 'event_imgs/')
+
+    saved_image_data = []
+
+    for row in approved_records:
+        employee_id, shop_id, start_time, image_key, first_name, last_name = row
+
+        try:
+            s3_obj = s3.get_object(Bucket=bucket_name, Key=image_key)
+            img = Image.open(BytesIO(s3_obj['Body'].read()))
+
+            save_path = os.path.join(img_output_dir, image_key)
+
+            img.save(save_path)
+
+            saved_image_data.append({
+                'employee_id': employee_id,
+                'shop_id': shop_id,
+                'image_key': image_key,
+                'first_name': first_name,
+                'last_name': last_name,
+                'start_time': start_time,
+            })
+
+            img_data_df = pd.DataFrame(saved_image_data)
+            excel_path = os.path.join(output_dir, 'approved_img_data.xlsx')
+
+            with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+                img_data_df.to_excel(writer, sheet_name='Saved Image Data', index=False)
+
+
+        except Exception as e:
+            print(f'Error retrieving or saving image {image_key}: {e}')
+
+    return saved_image_data
