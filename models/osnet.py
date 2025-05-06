@@ -1,9 +1,9 @@
 # standard dependencies
 import os
-import time
 from collections import deque
 import gc
 import warnings
+from typing import Union
 
 # 3rd-party dependencies
 import numpy as np
@@ -51,10 +51,18 @@ class OSNet:
         self.embedding_time = 0
         self.flush_time = 0
     
-    def extract_features(self, image):
-        def _preprocess_img(image):
-            press_stopwatch(self, 'preprocess_time')
+    def preprocess_input(
+            self, input_data: Union[np.array, list[np.array]]
+        ) -> torch.Tensor:
+        '''
+        Args:
+            input_data: A single image (HWC ndarray) or a list of such images.
 
+        Returns:
+            A 4D tensor of shape (B, C, H, W), where B is the batch size (which
+            will be 1 if a single image is passed).
+        '''
+        def preprocess_image(image: np.array) -> torch.Tensor:
             image = cv2.resize(image, self.input_dims)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             image = image.astype(np.float32)
@@ -62,49 +70,43 @@ class OSNet:
             image_tensor = (
                 torch.from_numpy(image)
                 .permute(2, 0, 1)
-                .unsqueeze(0)
-                .to(self.device)
             )
-            press_stopwatch(self, 'preprocess_time')
-
             return image_tensor
+
+        press_stopwatch(self, 'preprocess_time')
+
+        if isinstance(input_data, list):
+            preprocessed_imgs = [preprocess_image(img) for img in input_data]
+            image_tensor = torch.stack(preprocessed_imgs)
+        else:
+            image_tensor = preprocess_image(input_data).unsqueeze(0)
         
-        def _postprocess_output(output):
-            return output.cpu().detach().numpy().flatten()
+        press_stopwatch(self, 'preprocess_time')
+
+        return image_tensor.to(self.device)
+
+    def postprocess_output(self, output_data, batched=False):
+        if not batched:
+            postprocessed = output_data.cpu().detach().numpy().flatten() 
+        else:
+            postprocessed = [
+                output.cpu().detach().numpy().flatten()
+                for output in output_data
+            ]
+        return postprocessed
         
-        image_tensor = _preprocess_img(image)
+    def extract_features(self, image):                
+        image_tensor = self.preprocess_input(image)
 
         press_stopwatch(self, 'embedding_time')
         with torch.no_grad():
             output = self.model(image_tensor)
         press_stopwatch(self, 'embedding_time')
 
-        embedding = _postprocess_output(output)
-        
+        embedding = self.postprocess_output(output)
         return embedding
 
-    def extraction_batch(self, img, detections, f_num):
-        def _preprocess(batch_images):
-            press_stopwatch(self, 'preprocess_time')
-
-            processed_imgs = []
-            for image in batch_images:
-                image = cv2.resize(image, self.input_dims)
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                image = image.astype(np.float32)
-
-                image_tensor = torch.from_numpy(image).permute(2, 0, 1)
-                processed_imgs.append(image_tensor)
-            
-            batch_tensor = torch.stack(processed_imgs).to(self.device)
-
-            press_stopwatch(self, 'preprocess_time')
-            
-            return batch_tensor
-        
-        def _postprocess(outputs):
-            return [output.cpu().detach().numpy().flatten() for output in outputs]
-
+    def extraction_batch(self, img, detections, f_num):        
         def _update_buffers(embeddings, f_num):
             num_embeddings = len(embeddings)
             if len(self.embedding_buffer) >= self.buffer_limit:
@@ -115,19 +117,18 @@ class OSNet:
             self.box_index_buffer.extend(list(range(num_embeddings)))
         
         batch_images = []
-
         for box in detections:
             x, y, w, h, = box[:4]
             batch_images.append(img[y:y+h, x:x+w])
 
-        batch_tensor = _preprocess(batch_images)
+        batch_tensor = self.preprocess_input(batch_images)
 
         press_stopwatch(self, 'embedding_time')
         with torch.no_grad():
             batch_output = self.model(batch_tensor)
         press_stopwatch(self, 'embedding_time')
 
-        embeddings = _postprocess(batch_output)
+        embeddings = self.postprocess_output(batch_output, batched=True)
         _update_buffers(embeddings, f_num)
 
     def activate_buffers(self, video_file, output_dir='../files/output',

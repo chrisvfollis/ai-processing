@@ -43,8 +43,12 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
 
 # FEATURE EXTRACTION:
 
-def embed_img_features():
-    pass
+def extract_event_img_embeddings(
+        file_dir='../files/',
+        weights_path='../models/weights/OSNet.pth.tar-250'
+    ):
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    osnet = OSNet(weights_path, device)
 
 
 # SUPER-RESOLUTION:
