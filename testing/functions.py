@@ -50,6 +50,8 @@ def extract_event_img_embeddings(
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     osnet = OSNet(weights_path, device)
 
+    
+
 
 # SUPER-RESOLUTION:
 

@@ -3,7 +3,7 @@ import os
 from collections import deque
 import gc
 import warnings
-from typing import Union
+from typing import Union, Optional
 
 # 3rd-party dependencies
 import numpy as np
@@ -18,7 +18,6 @@ warnings.filterwarnings(
 from torchreid import models as reid
 
 # internal dependencies
-from utilities import io_utils
 from utilities.log_utils import press_stopwatch
 
 
@@ -28,8 +27,11 @@ class OSNet:
                  buffer_limit=100):
         self.device = device
 
-        self.model = reid.osnet.osnet_x1_0(num_classes=num_classes,
-                                           pretrained=False, loss=loss)
+        self.model = reid.osnet.osnet_x1_0(
+            num_classes=num_classes,
+            loss=loss,
+            pretrained=False,
+        )
 
         checkpoint = torch.load(weights_path, map_location=device)
         state_dict = checkpoint['state_dict']
@@ -44,6 +46,7 @@ class OSNet:
 
         self.input_dims = input_dims
         self.output_shape = output_shape
+        self.n_features = output_shape[0]
 
         self.buffer_limit = buffer_limit
 
@@ -131,41 +134,74 @@ class OSNet:
         embeddings = self.postprocess_output(batch_output, batched=True)
         _update_buffers(embeddings, f_num)
 
-    def activate_buffers(self, video_file, output_dir='../files/output',
-                         buffer_limit=None):
-        self.output_path = os.path.join(
-            output_dir, video_file.split('.')[0] + '_embeddings.hdf5'
-        )
-        self.hdf5_file = h5py.File(self.output_path, 'a')
+    @property
+    def active_buffers(self):
+        buffer_attrs = [
+            'embedding_buffer',
+            'index_buffer',
+            'frame_buffer',
+            'box_index_buffer',
+        ]
+        return [getattr(self, b) for b in buffer_attrs if hasattr(self, b)]
 
+    def activate_buffers(
+            self,
+            output_file_prefix: str,
+            structure: str = 'standard',
+            output_dir: str = '../files/output',
+            buffer_limit: int = None,
+        ):
+        '''
+        Sets up the appropriate buffer attributes for the given output structure,
+        and creates a corresponding HDF5 file for dumping the buffered data.
+        '''
         self.buffer_limit = buffer_limit or self.buffer_limit
 
+        # create buffer output file:
+        filename = output_file_prefix + '_embeddings.hdf5'
+        self.output_path = os.path.join(output_dir, filename)
+        self.hdf5_file = h5py.File(self.output_path, 'a')
+
+        index_data_configs = {
+            'standard': {
+                'buffer_attrs': ['index_buffer'],
+                'datasets': ['indices'],
+            },
+            'video_data': {
+                'buffer_attrs': ['frame_buffer', 'box_index_buffer'],
+                'datasets': ['frames', 'box_indices'],
+            },
+        }
+        index_data_config = index_data_configs[structure]
+
+        # set up buffer attributes:
         self.embedding_buffer = deque(maxlen=None)
-        self.frame_buffer = deque(maxlen=None)
-        self.box_index_buffer = deque(maxlen=None)
+        for index_buffer in index_data_config['buffer_attrs']:
+            setattr(self, index_buffer, deque(maxlen=None))
 
-        n_features = self.output_shape[0]
-        idx_dataset_kwargs = {'shape': (0,), 'dtype': 'i', 'maxshape': (None,)}
+        embeddings_dataset_kwargs = {
+            'shape': (0, self.n_features),
+            'maxshape': (None, self.n_features),
+        }
+        index_dataset_kwargs = {
+            'shape': (0,),
+            'dtype': 'i',
+            'maxshape': (None,)
+        }
+        
+        # structure buffer output file:
+        self.hdf5_file.create_dataset('embeddings', **embeddings_dataset_kwargs)
+        for index_dataset in index_data_config['datasets']:
+            self.hdf5_file.create_dataset(index_dataset, **index_dataset_kwargs)
 
-        self.hdf5_file.create_dataset(
-            'embeddings', (0, n_features), maxshape=(None, n_features)
-        )
-        self.hdf5_file.create_dataset('frames', **idx_dataset_kwargs)
-        self.hdf5_file.create_dataset('box_indices', **idx_dataset_kwargs)
-
-    def flush_buffers(self, release=False):
+    def flush_buffers(self, structure='standard', release=False):
         press_stopwatch(self, 'flush_time')
 
-        unwritten_data = (len(self.embedding_buffer) > 0)
-        if unwritten_data:
-            io_utils.write_embeddings(
-                self.hdf5_file, self.embedding_buffer, self.frame_buffer,
-                self.box_index_buffer
-            )
-            self.embedding_buffer.clear()
-            self.frame_buffer.clear()
-            self.box_index_buffer.clear()
-
+        if len(self.embedding_buffer) > 0:
+            self.write_embeddings(structure)
+    
+        for buffer in self.active_buffers:
+            buffer.clear()
         if release:
             self.release_buffers()
             self.hdf5_file = h5py.File(self.output_path, 'a')
@@ -182,3 +218,66 @@ class OSNet:
 
         torch.cuda.empty_cache()
         gc.collect()
+
+    def write_embeddings(
+            self,
+            structure: str = 'standard',
+            hdf5_file: Optional[h5py.File] = None,
+            embeddings: Optional[np.ndarray] = None,
+            indices: Optional[np.ndarray] = None, 
+        ):
+        """
+        Writes embedding data out to an HDF5 file.
+
+        Args:
+            structure (str): Indicates how the data should be organized
+                for the HDF5 file. Options: 'standard', 'video_data'.
+
+            hdf5_file (h5py.File): The file object to write to. If left
+                unspecified, the self.hdf5_file attribute will be used instead.
+
+            embeddings (np.ndarray): A numpy array of embeddings. If left
+                unspecified, the self.embedding_buffer will be used instead.
+
+            indices (np.ndarray): A numpy array of index values corresponding to
+                the embeddings. If left unspecified, the self.index_buffer will
+                be used instead.
+        """
+
+        hdf5_file = hdf5_file or getattr(self, 'hdf5_file')
+        if not hdf5_file:
+            print('HDF5 file not found')
+            return
+
+        # organize data into appropriate structure:
+        if structure == 'standard':
+            new_embeddings = embeddings or np.array(self.embedding_buffer)
+            new_idxs = indices or np.array(self.index_buffer)
+
+            all_new_data = {
+                'embeddings': new_embeddings,
+                'indices': new_idxs,
+            }
+        elif structure == 'video_data':
+            new_embeddings = np.stack(self.embedding_buffer)
+            new_frames = np.array(self.frame_buffer)
+            new_box_idxs = np.array(self.box_index_buffer)
+
+            all_new_data = {
+                'embeddings': new_embeddings,
+                'frames': new_frames,
+                'box_indices': new_box_idxs,
+            }
+
+        # write data to hdf5 file:    
+        for dataset_name, new_data in all_new_data.items():
+            dataset = hdf5_file[dataset_name]
+
+            current_total, num_new = (
+                dataset.shape[0],
+                new_data.shape[0]
+            )
+            new_total = current_total + num_new
+
+            dataset.resize(new_total, axis=0)
+            dataset[-new_data.shape[0]:] = new_data

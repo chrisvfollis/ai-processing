@@ -190,27 +190,6 @@ def delete_local_files(identifier, file_types='any',
     return True
 
 
-def write_embeddings(hdf5_file, embeddings, frames, box_indices):
-    embeddings_array = np.stack(embeddings)
-    embeddings_dataset = hdf5_file['embeddings']
-
-    frames = np.array(frames)
-    frames_dataset = hdf5_file['frames']
-
-    box_indices = np.array(box_indices)
-    box_indices_dataset = hdf5_file['box_indices']
-
-    new_size = embeddings_dataset.shape[0] + embeddings_array.shape[0]
-
-    embeddings_dataset.resize(new_size, axis=0)
-    frames_dataset.resize(new_size, axis=0)
-    box_indices_dataset.resize(new_size, axis=0)
-
-    embeddings_dataset[-embeddings_array.shape[0]:] = embeddings_array
-    frames_dataset[-frames.shape[0]:] = frames
-    box_indices_dataset[-box_indices.shape[0]:] = box_indices
-
-
 def read_embeddings(hdf5_file, target_frame, device):
     with h5py.File(hdf5_file, 'r') as file:
         frames = file['frames'][:]

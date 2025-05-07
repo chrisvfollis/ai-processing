@@ -35,7 +35,8 @@ class InferencePipeline:
             else:
                 self.osnet = OSNet(model_info[1], device, **osnet_params)
             
-            self.osnet.activate_buffers(video_file)
+            file_prefix = video_file.split('.')[0]
+            self.osnet.activate_buffers(file_prefix, structure='video_data')
             
             if not faceiq_params:
                 self.face_iq = FaceIq(*model_info[2], device=device)
@@ -192,7 +193,7 @@ class InferencePipeline:
         cap.release()
 
         if len(self.osnet.embedding_buffer) > 0:
-            self.osnet.flush_buffers(release=True)
+            self.osnet.flush_buffers(structure='video_data', release=True)
         else:
             self.osnet.release_buffers()
 
