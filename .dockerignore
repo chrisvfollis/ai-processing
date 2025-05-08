@@ -73,6 +73,7 @@ __pycache__/
 # STRUCTURED DATA - GENERAL:
 *.pkl
 *.hdf5
+*.h5
 
 # TEXT DATA - GENERAL:
 *.txt
@@ -96,3 +97,10 @@ training/
 !runtime/docker/gpu/dependencies/installed-packages.txt
 !runtime/docker/gpu/dependencies/requirements.txt
 !runtime/docker/gpu/dependencies/dev-requirements.txt
+
+!runtime/docker/cpu/dependencies/installed-packages.txt
+!runtime/docker/cpu/dependencies/requirements.txt
+!runtime/docker/cpu/dependencies/dev-requirements.txt
+
+# STRUCTURED DATA:
+!models/weights/**/*.h5

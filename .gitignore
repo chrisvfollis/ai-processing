@@ -60,15 +60,16 @@ __pycache__/
 *.mp4
 *.MP4
 
+# STRUCTURED DATA - GENERAL:
+*.pkl
+*.hdf5
+*.h5
+
 # STRUCTURED DATA - TABULAR:
 *.db
 *.csv
 *.xlsx
 *.xls
-
-# STRUCTURED DATA - GENERAL:
-*.pkl
-*.hdf5
 
 # TEXT DATA - GENERAL:
 *.txt
@@ -89,3 +90,6 @@ __pycache__/
 !runtime/docker/cpu/dependencies/installed-packages.txt
 !runtime/docker/cpu/dependencies/requirements.txt
 !runtime/docker/cpu/dependencies/dev-requirements.txt
+
+# STRUCTURED DATA:
+!models/weights/**/*.h5
