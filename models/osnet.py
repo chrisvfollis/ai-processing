@@ -19,6 +19,7 @@ from torchreid import models as reid
 
 # internal dependencies
 from utilities.log_utils import press_stopwatch
+from utilities import io_utils
 
 
 class OSNet:
@@ -146,7 +147,7 @@ class OSNet:
 
     def activate_buffers(
             self,
-            output_file_prefix: str,
+            file_prefix: str,
             structure: str = 'standard',
             output_dir: str = '../files/output',
             buffer_limit: int = None,
@@ -157,9 +158,11 @@ class OSNet:
         '''
         self.buffer_limit = buffer_limit or self.buffer_limit
 
-        # create buffer output file:
-        filename = output_file_prefix + '_embeddings.hdf5'
-        self.output_path = os.path.join(output_dir, filename)
+        # set up buffer output file:
+        filename = file_prefix + '_embeddings.hdf5'
+        unique_filename = io_utils.get_unique_filename(output_dir, filename)
+
+        self.output_path = os.path.join(output_dir, unique_filename)
         self.hdf5_file = h5py.File(self.output_path, 'a')
 
         index_data_configs = {

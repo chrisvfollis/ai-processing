@@ -1,7 +1,7 @@
 # standard dependencies
 import os
 import sys
-from typing import Union
+from typing import Union, Optional
 import uuid
 
 # 3rd-party dependencies
@@ -13,6 +13,7 @@ import torch
 from models import YOLOv4, OSNet, FaceIq, CenterFace, ClearFace
 from utilities import general_utils as utils
 from utilities import io_utils
+from utilities import admin_utils
 
 
 # =============================================================================
@@ -44,13 +45,18 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
 # FEATURE EXTRACTION:
 
 def extract_event_img_embeddings(
-        file_dir='../files/',
-        weights_path='../models/weights/OSNet.pth.tar-250'
+        shop_id: Optional[str] = None,
+        file_dir: str = '../files/',
+        weights_path: str = '../models/weights/OSNet.pth.tar-250'
     ):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    osnet = OSNet(weights_path, device)
 
+    osnet = OSNet(weights_path, device)
+    osnet.activate_buffers('event_imgs')
     
+    approved_records = admin_utils.get_approved_records(shop_id=shop_id)
+    admin_utils.save_approved_img_data(approved_records)
+
 
 
 # SUPER-RESOLUTION:
