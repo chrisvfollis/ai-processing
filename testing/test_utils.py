@@ -52,7 +52,7 @@ def download_tracking_pkls(
         bucket_name='visionservice-data',
         local_dir='../files/output/'
     ):
-    credentials = io_utils.get_aws_creds()
+    credentials = io_utils.get_aws_credentials()
 
     s3 = boto3.client(
         's3',
@@ -96,7 +96,7 @@ def download_event_imgs(
     ):
 
     print('Downloading event images...')
-    credentials = io_utils.get_aws_creds()
+    credentials = io_utils.get_aws_credentials()
     s3 = boto3.client(
         's3',
         aws_access_key_id=credentials[0],

@@ -16,7 +16,12 @@ import psycopg2
 import pandas as pd
 
 # internal dependencies
-from utilities import io_utils
+from utilities import conn_utils, io_utils
+
+
+# =============================================================================
+#                             - GENERAL EC2 -
+# -----------------------------------------------------------------------------
 
 
 def get_instance_info(nickname: str = None, shop_id: str = None):
@@ -29,135 +34,57 @@ def get_instance_info(nickname: str = None, shop_id: str = None):
         shop_id (str): The ID of the shop associated with the instance.
 
     Returns:
-        dict or None: The instance info dictionary if found, None if not found,
-                      or False if an error occurs.
+        instance_info (dict or None): A dictionary of the instance information
+            if any was found, otherwise None.
     '''
-    load_dotenv()
+    instance_info = None
 
-    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
-    endpoint = 'api/service/get_instance_info/'
-
-    endpoint_url = base_url + endpoint
-
+    if (not nickname) and (not shop_id):
+        error_message = (
+            'At least one of `nickname` or `shop_id` must have an argument.'
+        )
+        raise ValueError(error_message)
+    
+    api_base_url, api_key = io_utils.get_internal_api_info()
+    endpoint_url = (api_base_url + 'api/service/get_instance_info/')
     headers = {
-        'X-Custom-API-Key': os.environ.get('INTERNAL_API_KEY'),
+        'X-Custom-API-Key': api_key,
         'Content-Type': 'application/json'
     }
-
-    params = {}
-    if nickname:
-        params['nickname'] = nickname
-    elif shop_id:
-        params['shop_id'] = shop_id
-    else:
-        raise TypeError("no arguments supplied to get_instance_info()") 
-
+    params = {
+        key: value for key, value in [
+            ('nickname', nickname), ('shop_id', shop_id)
+        ] if value
+    }
     try:
         response = requests.get(endpoint_url, headers=headers, params=params)
         data = response.json()
-
         if 'error' in data:
-            print(f"Error: {data['error']}")
-            return False
-
-        return data.get('results', None)
+            raise requests.exceptions.RequestException(data['error'])
+        
+        instance_info = data.get('results', None)
 
     except requests.exceptions.RequestException as e:
         print(f'Error making request: {e}')
-        return False
     except Exception as e:
         print(f'Unexpected error: {e}')
-        return False
-
-
-def validate_filepath(file_name, dir_path):
-    if not os.path.exists(dir_path):
-        raise FileNotFoundError(
-            f'The specified directory path does not exist: {dir_path}.'
-        )
-    file_path = os.path.join(dir_path, file_name)
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(
-            f'{file_name} does not exist in the specified directory:' +
-            dir_path
-        )
-    return file_path
-
-
-def read_aws_config(file_name, dir_path='resource_mgmt/configs'):
-    file_path = validate_filepath(file_name, dir_path)
     
-    config_dict = {}
-    with open(file_path, 'r') as file:
-        for line in file.readlines():
-            line = line.split('=')
-            config_dict[line[0].strip().lower()] = line[1].strip()
-
-    return config_dict
-
-
-def read_listfile(file_name, dir_path='resource_mgmt/lists'):
-    file_path = validate_filepath(file_name, dir_path)
-    items = []
-
-    with open(file_path, 'r') as file:
-        for line in file.readlines():
-            line = line.strip()
-            if line:
-                items.append(line)
-                print(line)
-
-    return items
-
-
-def initial_s3_setup(config, obj_keys=None, output_dir=None):
-    if isinstance(config, str):
-        config = read_aws_config(config)
-
-    region = config['region']
-    bucket = config['bucket']
-
-    load_dotenv()
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
-        aws_secret_access_key=os.environ.get('AWS_SECRET_KEY'),
-        region_name=region
-    )
-
-    if obj_keys is None:
-        return s3_client, bucket
-    else:
-        if isinstance(obj_keys, str):
-            obj_keys = read_listfile(obj_keys)
-    
-        if output_dir is not None:
-            os.makedirs(output_dir, exist_ok=True)
-        
-        return s3_client, bucket, obj_keys
+    return instance_info
 
 
 def get_ec2_public_dns(instance_info: dict):
-    
-    instance_id = instance_info['instance_id']
-    region = instance_info['region']
+    ec2 = conn_utils.ec2_connect(region=instance_info['region'])
 
-    ec2 = boto3.client(
-        'ec2',
-        aws_access_key_id=os.environ.get('AWS_ACCESS_KEY'),
-        aws_secret_access_key=os.environ.get('AWS_SECRET_KEY'),
-        region_name=region
-    )
-    
-    response = ec2.describe_instances(InstanceIds=[instance_id])
+    response = ec2.describe_instances(InstanceIds=[instance_info['instance_id']])
     reservations = response['Reservations']
-    
-    if reservations:
-        instance = reservations[0]['Instances'][0]
-        public_dns = instance.get('PublicDnsName')
-        return public_dns
-    else:
+
+    if not reservations:
         return None
+    
+    instance = reservations[0]['Instances'][0]
+    public_dns = instance.get('PublicDnsName')
+
+    return public_dns
 
 
 def auto_scp(
@@ -245,14 +172,16 @@ def auto_scp(
         _scp_upload(local_path, remote_path, instance_info)
 
 
+# =============================================================================
+#                              - GENERAL S3 -
+# -----------------------------------------------------------------------------
+
+
 def list_download(object_keys: Union[list, str], output_dir='resources/downloads',
-                  config: Union[dict, str] = None, existing_setup: list = None):
+                  config: Union[dict, str] = None, s3_client=None):
     
-    if existing_setup is None:
-        items = initial_s3_setup(config, object_keys, output_dir)
-        s3_client, bucket, object_keys = items
-    else:
-        s3_client, bucket = existing_setup
+    s3_client = s3_client or conn_utils.s3_connect(region=config['region'])
+    bucket = config['bucket']
 
     results = {'downloaded': [], 'failed': {}}
     for obj_key in object_keys:
@@ -273,13 +202,12 @@ def list_download(object_keys: Union[list, str], output_dir='resources/downloads
     return results
 
 
-def list_delete(object_keys: Union[list, str], config: Union[dict, str] = None,
-                existing_setup: list = None):
+def list_delete(
+        object_keys: Union[list, str], region: str = 'us-west-1',
+        bucket: str = None, s3_client=None,
+    ):
 
-    if existing_setup is None:
-        s3_client, bucket, object_keys = initial_s3_setup(config, object_keys)
-    else:
-        s3_client, bucket = existing_setup
+    s3_client = s3_client or conn_utils.s3_connect(region=region)
 
     results = {'deleted': [], 'failed': {}}
     for i in range(0, len(object_keys), 1000):
@@ -306,8 +234,8 @@ def list_delete(object_keys: Union[list, str], config: Union[dict, str] = None,
 
 def time_delete(
         start: Union[datetime, list] = None, end: Union[datetime, list] = None,
-        shop_id: str = None, config: Union[dict, str] = None,
-        existing_setup: list = None
+        shop_id: str = None, region: str = 'us-west-1', bucket: str = None,
+        s3_client: list = None
     ):
     '''
     Args:
@@ -328,14 +256,11 @@ def time_delete(
     
     if (start is None) and (end is None):
         raise ValueError(
-            "Both arguments for 'start' and 'end' are None. At least\n" +
-            "one of these parameters must reference a point in time."
+            'Both arguments for `start` and `end` are None. At least\n' +
+            'one of these parameters must reference a point in time.'
         )
 
-    if existing_setup is None:
-        s3_client, bucket = initial_s3_setup(config)
-    else:
-        s3_client, bucket = existing_setup
+    s3_client = s3_client or conn_utils.s3_connect(region=region)
 
     if isinstance(start, list):
         start = datetime(*start)
@@ -383,13 +308,18 @@ def time_delete(
     return results
 
 
-def get_approved_records(shop_id=None):
+# =============================================================================
+#                            - OUTPUT DATA -
+# -----------------------------------------------------------------------------
+
+
+def get_approved_records(shop_id=None) -> list[tuple]:
     ''''
     Retrieve approved employee event records to get accurate labeled image data
     for training and/or fine tuning.
     '''
     
-    conn = io_utils.pg_db_connect(var_prefix='WEBAPP_DB')
+    conn, cursor = conn_utils.pg_db_connect(var_prefix='WEBAPP_DB')
 
     query = """
         SELECT eel.employee_id, eel.shop_id, eel.start_time, eel.image,
@@ -404,12 +334,15 @@ def get_approved_records(shop_id=None):
         params = (shop_id,)
     
     try:
-        with conn.cursor() as cursor:
-            cursor.execute(query, params)
-            results = cursor.fetchall()
-            return results
+        cursor.execute(query, params)
+        approved_records = cursor.fetchall()
+    except Exception as e:
+        print(f'Error: {e}')
     finally:
+        cursor.close()
         conn.close()
+    
+    return approved_records
 
 
 def save_approved_img_data(
@@ -421,34 +354,42 @@ def save_approved_img_data(
     img_output_dir = os.path.join(output_dir, 'event_imgs/')
     s3 = boto3.client('s3')
     
+    spreadsheet_save_path = os.path.join(output_dir, 'approved_img_data.xlsx')
     saved_image_data = []
 
+    fields = [
+        'employee_id',
+        'shop_id',
+        'image_key',
+        'first_name',
+        'last_name',
+        'start_time',
+    ]
+
     for row in approved_records:
-        employee_id, shop_id, start_time, image_key, first_name, last_name = row
+        row_data = dict(zip(fields, row))
 
         try:
-            save_path = os.path.join(img_output_dir, image_key)
-            if not os.path.exists(save_path):
-                s3_obj = s3.get_object(Bucket=bucket_name, Key=image_key)
+            img_save_path = os.path.join(img_output_dir, row_data['image_key'])
+
+            if not os.path.exists(img_save_path):
+                s3_obj = s3.get_object(
+                    Bucket=bucket_name,
+                    Key=row_data['image_key']
+                )
                 img = Image.open(BytesIO(s3_obj['Body'].read()))
-                img.save(save_path)
+                img.save(img_save_path)
 
-            saved_image_data.append({
-                'employee_id': employee_id,
-                'shop_id': shop_id,
-                'image_key': image_key,
-                'first_name': first_name,
-                'last_name': last_name,
-                'start_time': start_time,
-            })
-
-            img_data_df = pd.DataFrame(saved_image_data)
-            excel_path = os.path.join(output_dir, 'approved_img_data.xlsx')
-
-            with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
-                img_data_df.to_excel(writer, sheet_name='Approved Image Data', index=False)
+            saved_image_data.append(row_data)
 
         except Exception as e:
-            print(f'Error retrieving or saving image {image_key}: {e}')
+            print(f'Error retrieving or saving {row_data['image_key']}: {e}')
+    
+    img_data_df = pd.DataFrame(saved_image_data)
+
+    with pd.ExcelWriter(spreadsheet_save_path, engine='xlsxwriter') as writer:
+        img_data_df.to_excel(
+            writer, sheet_name='Approved Image Data', index=False
+        )
 
     return saved_image_data

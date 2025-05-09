@@ -25,6 +25,7 @@ import psycopg2
 
 # internal dependencies
 from utilities import general_utils as utils
+from utilities import conn_utils
 
 
 # =============================================================================
@@ -94,6 +95,36 @@ def cleanup_semaphores(logger):
 
     except Exception as e:
         logger.error(f'Error checking SysV semaphores: {e}')
+
+
+# =============================================================================
+#                        - ENVIRONMENT VARIABLES -
+# -----------------------------------------------------------------------------
+
+
+def get_internal_api_info():
+    load_dotenv()
+    internal_api_url = os.getenv('INTERNAL_API_URL')
+    internal_api_key = os.getenv('INTERNAL_API_KEY')
+
+    if (not internal_api_url) or (not internal_api_key):
+        missing = ', '.join([
+            key for key, value in [
+                ('INTERNAL_API_URL', internal_api_url),
+                ('INTERNAL_API_KEY', internal_api_key)
+            ] if not value
+        ])
+        raise ValueError(f'{missing} not found in .env')
+
+    return internal_api_url, internal_api_key
+
+
+def get_aws_credentials():
+    load_dotenv()
+    access_key = os.environ.get('AWS_ACCESS_KEY')
+    secret_key = os.environ.get('AWS_SECRET_KEY')
+
+    return access_key, secret_key
 
 
 # =============================================================================
@@ -271,13 +302,6 @@ def upload_data(credentials, dir='../files/output/', max_workers=8):
 # -----------------------------------------------------------------------------
 
 
-def get_aws_creds():
-    load_dotenv()
-    access_key = os.environ.get('AWS_ACCESS_KEY')
-    secret_key = os.environ.get('AWS_SECRET_KEY')
-    return [access_key, secret_key]
-
-
 def download_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
     s3 = boto3.client(
         's3',
@@ -351,8 +375,7 @@ def download_s3_image(object_key, credentials, filename=None, img_dir='../files/
 
 
 def build_database(db_path='../files/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS people (
@@ -393,18 +416,19 @@ def build_database(db_path='../files/data.db'):
     ''')
 
     conn.commit()
-    conn.close()
+    conn_utils.close_sqlite_db(conn, cursor)
 
 
-def get_shop(db_path='../files/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+def get_shop(db_path='../files/data.db') -> tuple:
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
+
     cursor.execute('''
         SELECT * FROM shop
         LIMIT 1
     ''')
-    results = cursor.fetchall()[0]
-    conn.close()
+    results = cursor.fetchone()
+    
+    conn_utils.close_sqlite_db(conn, cursor)
     return results
 
 
@@ -587,6 +611,8 @@ def save_person_data(
         filename = img_url.rsplit('/', 1)[1]    # remove bucket/folder info
         return '.'.join(filename.rsplit('_', 1)[:2])    # format file extension
     
+    credentials = get_aws_credentials()
+    
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
@@ -635,8 +661,6 @@ def save_person_data(
             person['right_image'],
         ]
         for img_url in img_urls:
-            credentials = get_aws_creds()
-
             parsed = urlparse(img_url)
             object_key = parsed.path.lstrip('/')
             filename = _format_filename(img_url)
@@ -894,13 +918,3 @@ def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
         print(f"Failed posting to webapp: {response.text}")
         print(response.status_code)
         return False
-
-
-def pg_db_connect(var_prefix='PG'):
-    return psycopg2.connect(
-        host=os.getenv(f'{var_prefix}_HOST'),
-        port=os.getenv(f'{var_prefix}_PORT'),
-        user=os.getenv(f'{var_prefix}_USER'),
-        password=os.getenv(f'{var_prefix}_PASSWORD'),
-        dbname=os.getenv(f'{var_prefix}_NAME')
-    )

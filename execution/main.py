@@ -233,7 +233,7 @@ if __name__ == '__main__':
         , ('Facenet512', 'centerface_gpu')
     ]
 
-    credentials = io_utils.get_aws_creds()
+    credentials = io_utils.get_aws_credentials()
     shop_id, _ = io_utils.get_shop('../files/data.db')
 
     memory_monitor, _ = log_utils.observability_thread('low_memory', logger=logger)
