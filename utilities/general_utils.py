@@ -593,3 +593,16 @@ def logceil_round(x):
         if x <= rounded:
             return rounded
     return 10 * magnitude
+
+
+def query_param_placeholders(items: Union[list, tuple]) -> str:
+    '''
+    Returns:
+        str: A string of comma-separated question marks enclosed in parentheses,
+            with one question mark for each value in the argument for `items`.
+    
+    Example:
+        >>> query_param_placeholders([1, 2, 3])
+        '(?, ?, ?)'
+    '''
+    return f"({', '.join(['?'] * len(items))})"
