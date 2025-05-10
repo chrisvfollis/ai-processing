@@ -27,6 +27,7 @@ import psycopg2
 # internal dependencies
 from utilities import general_utils as utils
 from utilities import conn_utils
+from utilities.conn_utils import APIClient
 
 
 # =============================================================================
@@ -101,32 +102,6 @@ def cleanup_semaphores(logger):
 # =============================================================================
 #                        - ENVIRONMENT VARIABLES -
 # -----------------------------------------------------------------------------
-
-
-def get_internal_api_info():
-    load_dotenv()
-    internal_api_url = os.getenv('INTERNAL_API_URL')
-    internal_api_key = os.getenv('INTERNAL_API_KEY')
-
-    if (not internal_api_url) or (not internal_api_key):
-        missing = ', '.join([
-            key for key, value in [
-                ('INTERNAL_API_URL', internal_api_url),
-                ('INTERNAL_API_KEY', internal_api_key)
-            ] if not value
-        ])
-        raise ValueError(f'{missing} not found in .env')
-    
-    internal_api_headers = {
-        'X-Custom-API-Key': internal_api_key,
-        'Content-Type': 'application/json'
-    }
-
-    return {
-        'url': internal_api_url,
-        'api_key': internal_api_key,
-        'headers': internal_api_headers,
-    }
 
 
 def get_aws_credentials():
@@ -714,28 +689,17 @@ def get_api_tokens(credentials: dict = None) -> Union[tuple[str], tuple[None]]:
             'password': input('Enter account password: ')
         }
 
-    load_dotenv()
-    WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
-    headers = {
-        'x-custom-api-key': WEBAPP_API_KEY,
-        'Content-Type': 'application/json'
-    }
+    webapp_api = APIClient(var_prefix='WEBAPP_API')
+    response = webapp_api.post('accounts/login/', json=credentials)
 
-    base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
-    endpoint = 'accounts/login/'
-
-    endpoint_url = base_url + endpoint
-
-    r = requests.post(endpoint_url, json=credentials, headers=headers)
-
-    if r.status_code == 200:
-        access_token = r.json().get('access')
-        refresh_token = r.cookies.get('refresh_token')
+    if response.status_code == 200:
+        access_token = response.json().get('access')
+        refresh_token = response.cookies.get('refresh_token')
         
         api_tokens = (access_token, refresh_token)
     else:
         api_tokens = (None, None)
-        print(f'Error: {r.status_code}: {r.json()}')
+        print(f'Error: {response.status_code}: {response.json()}')
     
     return api_tokens
 
@@ -744,32 +708,25 @@ def fetch_person_data(
         shop_uuid: str = None, access_token: str = None, save_data: bool = True,
         db_path: str = '../files/data.db', img_dir: str = '../files/input/faces'
     ) -> list:
-
-    if not shop_uuid:
-        shop_uuid, _ = get_shop(db_path=db_path)
-    if not access_token:
-        access_token, _ = get_api_tokens()
+    shop_uuid = shop_uuid or get_shop(db_path=db_path)[0]
+    access_token = access_token or get_api_tokens()[0]
     
-    load_dotenv()
-    WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
+    webapp_api = APIClient(var_prefix='WEBAPP_API')
 
-    base_url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/'
-    endpoint = 'employees-json/'
-
-    endpoint_url = f"{base_url}{endpoint}?shop_uuid={shop_uuid}"
+    params = {'shop_uuid': shop_uuid}
     headers = {
-        'X-Custom-API-Key': WEBAPP_API_KEY,
+        'X-Custom-API-Key': webapp_api.api_key,
         'Authorization': f'Bearer {access_token}'
     }
-    r = requests.get(endpoint_url, headers=headers)
+    response = webapp_api.get('employees-json/', headers=headers, params=params)
 
-    if r.status_code == 200:
-        person_data = r.json().get('employees', [])
+    if response.status_code == 200:
+        person_data = response.json().get('employees', [])
         if save_data:
             save_person_data(person_data, db_path=db_path, img_dir=img_dir)
     else:
         person_data = []
-        print(f'Error: {r.status_code}: {r.text}')
+        print(f'Error: {response.status_code}: {response.text}')
     
     return person_data
 
@@ -786,27 +743,22 @@ def get_queue_block(shop_id: str, start_from: Union[list, datetime] = None,
             - timestamp
             - camera
     '''
+    internal_api = APIClient(var_prefix='INTERNAL_API')
 
-    api_base_url, api_key = get_internal_api_info()
-    endpoint_url = (api_base_url + 'api/service/get_queue_block/')
-
-    headers = {
-        'X-Custom-Api-Key': api_key,
-        'Content-Type': 'application/json'
-    }
     params = {'shop_id': shop_id, 'priority_camera': priority_camera}
-
     if start_from:
         try:
             if isinstance(start_from, list):
                 start_from = datetime(*start_from)
+
             params['start_from'] = start_from.isoformat(timespec='seconds')
+
         except Exception as e:
             print(f'Invalid start time input: {start_from} — {e}')
             return False
 
     try:
-        response = requests.get(endpoint_url, headers=headers, params=params)
+        response = internal_api.get('get_queue_block/', params=params)
         response.raise_for_status()
         try:
             data = response.json()
@@ -826,23 +778,14 @@ def get_queue_block(shop_id: str, start_from: Union[list, datetime] = None,
 
 
 def clear_queue_block(shop_id, timestamp) -> None:
-    load_dotenv()
-
-    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
-    endpoint = 'api/service/update_queue/'
-    endpoint_url = base_url + endpoint
-    
-    headers = {
-        'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
-        'Content-Type': 'application/json'
-    }
+    internal_api = APIClient(var_prefix='INTERNAL_API')
 
     payload = {
         'action': 'clear_section',
         'shop_id': shop_id,
         'timestamp': timestamp.isoformat()
     }
-    response = requests.post(endpoint_url, headers=headers, json=payload)
+    response = internal_api.post('update_queue/', json=payload)
 
     if response.status_code == 200:
         print('Successfully cleared queue block')
@@ -877,9 +820,7 @@ def post_events_to_webapp(
 
         return pd.DataFrame(merged)
 
-    load_dotenv()
-    WEBAPP_API_KEY = os.environ.get('WEBAPP_API_KEY')
-    url = 'https://timemanager-api-dev-b944386035a1.herokuapp.com/save_employee_event_logs/'
+    webapp_api = APIClient(var_prefix='WEBAPP_API')
 
     results = get_track_info(time_prefix, designation='tracked_employee')
     if (not results) or (len(results) == 0):
@@ -926,12 +867,8 @@ def post_events_to_webapp(
         data['duration'].append(0)
         data['image'].append(row['end_img'])
 
-    headers = {
-        'x-custom-api-key': WEBAPP_API_KEY,
-        'Content-Type': 'application/json'
-    }
+    response = webapp_api.post('save_employee_event_logs/', json=data)
     
-    response = requests.post(url, json=data, headers=headers)
     if response.status_code == 200:
         print(f"Success: posted {len(data['event']) / 2} tracks")
         clear_track_info(time_prefix)

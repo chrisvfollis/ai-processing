@@ -9,6 +9,7 @@ from io import BytesIO
 # 3rd-party dependencies
 from dotenv import load_dotenv
 import requests
+from requests.exceptions import RequestException
 import boto3
 from botocore.exceptions import ClientError
 from PIL import Image
@@ -17,6 +18,8 @@ import pandas as pd
 
 # internal dependencies
 from utilities import conn_utils, io_utils
+from utilities.conn_utils import APIClient
+
 
 
 # =============================================================================
@@ -39,33 +42,26 @@ def get_instance_info(nickname: str = None, shop_id: str = None):
     '''
     instance_info = None
 
-    if (not nickname) and (not shop_id):
-        error_message = (
-            'At least one of `nickname` or `shop_id` must have an argument.'
-        )
+    if not nickname and not shop_id:
+        error_message = ('At least one of `nickname` or `shop_id` must ' +
+                         'have an argument.')
         raise ValueError(error_message)
-    
-    internal_api_info = io_utils.get_internal_api_info()
-    endpoint_url = (
-        internal_api_info['base_url'] + 'api/service/get_instance_info/'
-    )
 
+    internal_api = APIClient(var_prefix='INTERNAL_API')
     params = {
         key: value for key, value in [
             ('nickname', nickname), ('shop_id', shop_id)
         ] if value
     }
     try:
-        response = requests.get(
-            endpoint_url, headers=internal_api_info['headers'], params=params
-        )
-        data = response.json()
+        r = internal_api.get('get_instance_info/', params=params)
+        data = r.json()
         if 'error' in data:
-            raise requests.exceptions.RequestException(data['error'])
+            raise RequestException(data['error'])
         
         instance_info = data.get('results', None)
 
-    except requests.exceptions.RequestException as e:
+    except RequestException as e:
         print(f'Error making request: {e}')
     except Exception as e:
         print(f'Unexpected error: {e}')

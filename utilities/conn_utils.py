@@ -6,9 +6,54 @@ import boto3
 from dotenv import load_dotenv
 import psycopg2
 import sqlite3
+import requests
 
 # internal dependencies
 from utilities import io_utils
+
+
+class APIClient:
+    def __init__(self, var_prefix: str = 'INTERNAL_API'):
+        load_dotenv()
+        self.base_url = os.getenv(f'{var_prefix}_URL')
+        self.api_key = os.getenv(f'{var_prefix}_KEY')
+
+        if (not self.base_url) or (not self.api_key):
+            missing = ', '.join([
+                key for key, value in [
+                    (f'{var_prefix}_URL', self.base_url),
+                    (f'{var_prefix}_KEY', self.api_key)
+                ] if not value
+            ])
+            raise ValueError(f'{missing} not found in .env')
+        
+        self.headers = {
+            'X-Custom-API-Key': self.api_key,
+            'Content-Type': 'application/json'
+        }
+    
+    def endpoint_url(self, endpoint: str):
+        return self.base_url + endpoint
+    
+    def get(
+            self, endpoint: str, headers: dict = None, params: dict = None,
+            json=None
+        ) -> requests.models.Response:
+
+        endpoint_url = self.endpoint_url(endpoint)
+        headers = headers or self.headers
+
+        return requests.get(endpoint_url, headers=headers, params=params, json=json)
+    
+    def post(
+            self, endpoint: str, headers: dict = None, params: dict = None,
+            json=None
+        ) -> requests.models.Response:
+
+        endpoint_url = self.endpoint_url(endpoint)
+        headers = headers or self.headers
+
+        return requests.get(endpoint_url, headers=headers, params=params, json=json)
 
 
 def sqlite_db_connect(db_path):
