@@ -797,46 +797,11 @@ def clear_queue_block(shop_id, timestamp) -> None:
 def post_events_to_webapp(
         time_prefix, db_path='../files/data.db'
     ) -> Union[bool, None]:
-    def _merge_tracks(df, max_continuation_gap=75):
-        merged = []
-        for identity, group in df.groupby('identity'):
-            if identity == '':
-                merged.extend(group.to_dict(orient='records'))
-                continue
-
-            group = group.sort_values('start_time').reset_index(drop=True)
-            current = group.iloc[0].to_dict()
-            for _, row in group.iloc[1:].iterrows():
-                gap = (row['start_time'] - current['end_time']).total_seconds()
-
-                if gap <= max_continuation_gap:
-                    current['end_time'] = max(current['end_time'], row['end_time'])
-                    current['end_img'] = row['end_img']
-                else:
-                    merged.append(current)
-                    current = row.to_dict()
-
-            merged.append(current)
-
-        return pd.DataFrame(merged)
 
     webapp_api = APIClient(var_prefix='WEBAPP_API')
 
-    results = get_track_info(time_prefix, designation='tracked_employee')
-    if (not results) or (len(results) == 0):
-        print('No tracked_employee tracks found')
-        return None
-    
-    columns = [
-        'id', 'track_id', 'camera', 'time_prefix', 'identity', 'id_method',
-        'id_cost', 'start_img', 'end_img', 'id_img',  'start_time', 'end_time',
-        'entry', 'exit', 'designation'
-    ]
-
-    df = pd.DataFrame(results, columns=columns)
-    df['start_time'] = pd.to_datetime(df['start_time'], format='mixed')
-    df['end_time'] = pd.to_datetime(df['end_time'], format='mixed')
-    df = _merge_tracks(df)
+    df = utils.create_track_df(time_prefix)
+    df = utils.merge_track_records(df)
 
     shop_uuid = get_shop(db_path)[0]
 

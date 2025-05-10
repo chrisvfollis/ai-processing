@@ -13,7 +13,7 @@ import cv2
 from shapely.geometry import Polygon, box
 
 # internal dependencies
-pass
+from utilities import io_utils
 
 
 def get_git_commit_info(cfg_dir_path='../config'):
@@ -618,3 +618,48 @@ def query_columns_string(columns: Union[list, tuple]) -> str:
     enclosed in parentheses, for use in query strings.
     '''
     return f"({', '.join(columns)})"
+
+
+def create_track_df(time_prefix: str) -> pd.DataFrame:
+    results = io_utils.get_track_info(time_prefix, designation='tracked_employee')
+    if (not results) or (len(results) == 0):
+        print('No tracked_employee tracks found')
+        return None
+    
+    columns = [
+        'id', 'track_id', 'camera', 'time_prefix', 'identity', 'id_method',
+        'id_cost', 'start_img', 'end_img', 'id_img',  'start_time', 'end_time',
+        'entry', 'exit', 'designation'
+    ]
+    track_df = pd.DataFrame(results, columns=columns)
+
+    track_df['start_time'] = pd.to_datetime(track_df['start_time'], format='mixed')
+    track_df['end_time'] = pd.to_datetime(track_df['end_time'], format='mixed')
+
+    return track_df
+
+
+def merge_track_records(
+        track_records: pd.DataFrame, max_gap: int = 75
+    ) -> pd.DataFrame:
+    merged = []
+    for identity, group in track_records.groupby('identity'):
+        if identity == '':
+            merged.extend(group.to_dict(orient='records'))
+            continue
+
+        group = group.sort_values('start_time').reset_index(drop=True)
+        current = group.iloc[0].to_dict()
+        for _, row in group.iloc[1:].iterrows():
+            gap = (row['start_time'] - current['end_time']).total_seconds()
+
+            if gap <= max_gap:
+                current['end_time'] = max(current['end_time'], row['end_time'])
+                current['end_img'] = row['end_img']
+            else:
+                merged.append(current)
+                current = row.to_dict()
+
+        merged.append(current)
+
+    return pd.DataFrame(merged)
