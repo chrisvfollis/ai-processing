@@ -45,19 +45,20 @@ def get_instance_info(nickname: str = None, shop_id: str = None):
         )
         raise ValueError(error_message)
     
-    api_base_url, api_key = io_utils.get_internal_api_info()
-    endpoint_url = (api_base_url + 'api/service/get_instance_info/')
-    headers = {
-        'X-Custom-API-Key': api_key,
-        'Content-Type': 'application/json'
-    }
+    internal_api_info = io_utils.get_internal_api_info()
+    endpoint_url = (
+        internal_api_info['base_url'] + 'api/service/get_instance_info/'
+    )
+
     params = {
         key: value for key, value in [
             ('nickname', nickname), ('shop_id', shop_id)
         ] if value
     }
     try:
-        response = requests.get(endpoint_url, headers=headers, params=params)
+        response = requests.get(
+            endpoint_url, headers=internal_api_info['headers'], params=params
+        )
         data = response.json()
         if 'error' in data:
             raise requests.exceptions.RequestException(data['error'])
@@ -339,8 +340,7 @@ def get_approved_records(shop_id=None) -> list[tuple]:
     except Exception as e:
         print(f'Error: {e}')
     finally:
-        cursor.close()
-        conn.close()
+        conn_utils.close_pg_db(conn, cursor)
     
     return approved_records
 
@@ -352,7 +352,7 @@ def save_approved_img_data(
     ) -> list[dict]:
 
     img_output_dir = os.path.join(output_dir, 'event_imgs/')
-    s3 = boto3.client('s3')
+    s3_client = conn_utils.s3_connect(region='us-west-1')
     
     spreadsheet_save_path = os.path.join(output_dir, 'approved_img_data.xlsx')
     saved_image_data = []
@@ -373,7 +373,7 @@ def save_approved_img_data(
             img_save_path = os.path.join(img_output_dir, row_data['image_key'])
 
             if not os.path.exists(img_save_path):
-                s3_obj = s3.get_object(
+                s3_obj = s3_client.get_object(
                     Bucket=bucket_name,
                     Key=row_data['image_key']
                 )

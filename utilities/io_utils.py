@@ -9,6 +9,7 @@ import uuid
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from typing import Union, Optional
 
 # 3rd-party dependencies
 import numpy as np
@@ -115,8 +116,17 @@ def get_internal_api_info():
             ] if not value
         ])
         raise ValueError(f'{missing} not found in .env')
+    
+    internal_api_headers = {
+        'X-Custom-API-Key': internal_api_key,
+        'Content-Type': 'application/json'
+    }
 
-    return internal_api_url, internal_api_key
+    return {
+        'url': internal_api_url,
+        'api_key': internal_api_key,
+        'headers': internal_api_headers,
+    }
 
 
 def get_aws_credentials():
@@ -302,19 +312,17 @@ def upload_data(credentials, dir='../files/output/', max_workers=8):
 # -----------------------------------------------------------------------------
 
 
-def download_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
-    s3 = boto3.client(
-        's3',
-        aws_access_key_id=credentials[0],
-        aws_secret_access_key=credentials[1],
-        region_name='us-west-1'
-    )
-
+def download_s3_footage(
+        object_key,
+        credentials=None,
+        bucket_name='ivakt-footage'
+    ) -> bool:
+    s3_client = conn_utils.s3_connect(region='us-west-1', credentials=credentials)
     video_file = object_key.split('/')[-1]
     local_path = os.path.join('../files/input', video_file)
 
     try:
-        s3.download_file(bucket_name, object_key, local_path)
+        s3_client.download_file(bucket_name, object_key, local_path)
         print(f'Downloaded {object_key}')
         return True
     except Exception as e:
@@ -324,16 +332,17 @@ def download_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
         return False
 
 
-def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
-    s3 = boto3.client(
-        's3',
-        aws_access_key_id=credentials[0],
-        aws_secret_access_key=credentials[1],
-        region_name='us-west-1'
+def delete_s3_footage(
+        object_key,
+        credentials=None,
+        bucket_name='ivakt-footage'
+    ) -> bool:
+    s3_client = conn_utils.s3_connect(
+        region='us-west-1', credentials=credentials
     )
 
     try:
-        s3.delete_object(Bucket=bucket_name, Key=object_key)
+        s3_client.delete_object(Bucket=bucket_name, Key=object_key)
         print(f'Deleted {object_key} from S3')
         return True
     except Exception as e:
@@ -341,15 +350,16 @@ def delete_s3_footage(object_key, credentials, bucket_name='ivakt-footage'):
         return False
 
 
-def download_s3_image(object_key, credentials, filename=None, img_dir='../files/input',
-                      bucket_name='ivakt-employee-photos'):
-    s3 = boto3.client(
-        's3',
-        aws_access_key_id=credentials[0],
-        aws_secret_access_key=credentials[1],
-        region_name='us-west-1'
+def download_s3_image(
+        object_key,
+        credentials=None,
+        filename=None,
+        img_dir='../files/input',
+        bucket_name='ivakt-employee-photos'
+    ) -> bool:
+    s3_client = conn_utils.s3_connect(
+        region='us-west-1', credentials=credentials
     )
-
     if not filename:
         filename = object_key.split('/')[-1]
     output_path = os.path.join(img_dir, filename)
@@ -359,7 +369,7 @@ def download_s3_image(object_key, credentials, filename=None, img_dir='../files/
             print('Image already saved')
             return False
         
-        s3.download_file(bucket_name, object_key, output_path)
+        s3_client.download_file(bucket_name, object_key, output_path)
         print(f'Downloaded {object_key}')
         return True
     except Exception as e:
@@ -374,7 +384,7 @@ def download_s3_image(object_key, credentials, filename=None, img_dir='../files/
 # -----------------------------------------------------------------------------
 
 
-def build_database(db_path='../files/data.db'):
+def build_database(db_path='../files/data.db') -> None:
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     cursor.execute('''
@@ -415,8 +425,7 @@ def build_database(db_path='../files/data.db'):
         );    
     ''')
 
-    conn.commit()
-    conn_utils.close_sqlite_db(conn, cursor)
+    conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
 def get_shop(db_path='../files/data.db') -> tuple:
@@ -427,12 +436,12 @@ def get_shop(db_path='../files/data.db') -> tuple:
         LIMIT 1
     ''')
     results = cursor.fetchone()
-    
+
     conn_utils.close_sqlite_db(conn, cursor)
     return results
 
 
-def lookup_identities(image_paths, db_path='../files/data.db'):
+def lookup_identities(image_paths, db_path='../files/data.db') -> list[tuple]:
     '''
     Returns:
         results (List[Tuple]):
@@ -445,62 +454,88 @@ def lookup_identities(image_paths, db_path='../files/data.db'):
             - last_name
             - designation: determines whether the person's data is reported 
     '''
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    filenames = [img_path.split('/')[-1] for img_path in image_paths]
-    placeholders = ', '.join(['?'] * len(filenames))
+    filenames = tuple(
+        [img_path.split('/')[-1] for img_path in image_paths]
+    )
+    param_placeholders = utils.query_param_placeholders(filenames)
 
     query = f'''
         SELECT people.*, faces.file
         FROM people
         JOIN faces ON people.id = faces.person
-        WHERE faces.file IN ({placeholders});
+        WHERE faces.file IN {param_placeholders};
     '''
-    cursor.execute(query, tuple(filenames))
+    cursor.execute(query, filenames)
+
     results = cursor.fetchall()
-    conn.close()
     results_map = {row[-1]: row[:-1] for row in results}
+
+    conn_utils.close_sqlite_db(conn, cursor)
 
     return [results_map.get(filename) for filename in filenames]
 
 
-def lookup_name(identity_uuid, db_path='../files/data.db'):
+def lookup_name(identity_uuid, db_path='../files/data.db') -> tuple:
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+    identity_uuid = (identity_uuid,)
+    param_placeholder = utils.query_param_placeholders(identity_uuid)
 
     query = f'''
         SELECT first_name, last_name FROM people
-        WHERE identity_uuid = ?;
-    '''
-    cursor.execute(query, (identity_uuid,))
-    results = cursor.fetchone() or [identity_uuid, identity_uuid]
-    conn.close()
-
-    return results
-
-
-def get_designation(identity, db_path='../files/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    query = '''
-        SELECT designation FROM people
-        WHERE identity_uuid = ?
+        WHERE identity_uuid = {param_placeholder}
         LIMIT 1;
     '''
-    cursor.execute(query, (identity,))
+    cursor.execute(query, identity_uuid)
+    result = cursor.fetchone() or ('', '')
+
+    conn_utils.close_sqlite_db(conn, cursor)
+    return result
+
+
+def get_designation(identity_uuid, db_path='../files/data.db') -> Union[str, None]:
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
+
+    identity_uuid = (identity_uuid,)
+    param_placeholder = utils.query_param_placeholders(identity_uuid)
+
+    query = f'''
+        SELECT designation FROM people
+        WHERE identity_uuid = {param_placeholder}
+        LIMIT 1;
+    '''
+    cursor.execute(query, identity_uuid)
     result = cursor.fetchone()
-    conn.close()
-    return result[0] if result else None
+    designation = result[0] if result else None
+
+    conn_utils.close_sqlite_db(conn, cursor)
+    return designation
 
 
-def save_track_info(time_prefix, camera, target_trks, fps=30,
-                    db_path='../files/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+def save_track_info(time_prefix: str, camera: str, target_trks: dict,
+                    fps: int = 30, db_path='../files/data.db') -> None:
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
+
+    columns = [
+        'time_prefix',
+        'camera',
+        'track_id',
+        'identity',
+        'start_img',
+        'end_img',
+        'start_time',
+        'end_time',
+    ]
+
+    query_columns = utils.query_columns_string(columns)
+    param_placeholders = utils.query_param_placeholders(columns)
+
+    query = f'''
+        INSERT INTO track_info {query_columns}
+        VALUES {param_placeholders}
+    '''
    
     for trk_id, trk in target_trks.items():
         identity = trk.identity or str(uuid.uuid4())
@@ -511,42 +546,25 @@ def save_track_info(time_prefix, camera, target_trks, fps=30,
         if not start_img and not end_img:
             continue    # skip tracks with no images
         
-        start_frame = trk.span[0]
-        end_frame = trk.span[-1]
+        start_frame, end_frame = trk.span[0], trk.span[-1]
 
         start_time = utils.frame_timestamp(time_prefix, start_frame, fps)
         end_time = utils.frame_timestamp(time_prefix, end_frame, fps)
 
-        query = '''
-            INSERT INTO track_info (
-                time_prefix, camera,
-                track_id, identity,
-                start_img, end_img,
-                start_time, end_time
-            )
-            VALUES (
-                ?, ?, ?, ?,
-                ?, ?, ?, ?
-            )
-        '''
-
         values = (
-            time_prefix, camera,
-            trk_id, identity,
-            start_img, end_img,
+            time_prefix, camera, trk_id, identity, start_img, end_img,
             start_time, end_time,
         )
 
         cursor.execute(query, values)
 
-    conn.commit()
-    conn.close()
+    conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
-def get_track_info(time_prefix, designation=None, db_path='../files/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
+def get_track_info(time_prefix: str, designation: Optional[str] = None,
+                   db_path: str = '../files/data.db') -> list[tuple]:
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
+    
     query = '''
         SELECT track_info.*, people.designation
         FROM track_info
@@ -558,17 +576,17 @@ def get_track_info(time_prefix, designation=None, db_path='../files/data.db'):
     if designation is not None:
         query += ' AND (people.designation = ? OR people.designation IS NULL)'
         params.append(designation)
+    params = tuple(params)
 
-    cursor.execute(query, tuple(params))
+    cursor.execute(query, params)
     results = cursor.fetchall()
-    conn.close()
 
+    conn_utils.close_sqlite_db(conn, cursor)
     return results
 
 
-def update_track_info(time_prefix, updates, db_path='../files/data.db'):
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+def update_track_info(time_prefix, updates, db_path='../files/data.db') -> None:
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
     
     for track_id, data in updates.items():
         camera, id = track_id.split('_')[0], track_id.split('_')[1].strip('trk')
@@ -582,15 +600,12 @@ def update_track_info(time_prefix, updates, db_path='../files/data.db'):
 
         cursor.execute(query, values)
 
-    conn.commit()
-    conn.close()
+    conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
-def clear_track_info(identifier, db_path='../files/data.db'):
+def clear_track_info(identifier, db_path='../files/data.db') -> None:
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
         if identifier == 'all':
             cursor.execute('DELETE FROM track_info')
         else:
@@ -598,49 +613,56 @@ def clear_track_info(identifier, db_path='../files/data.db'):
                 DELETE FROM track_info
                 WHERE time_prefix = ?
             ''', (identifier,))
-        conn.commit()
-        conn.close()
     except Exception as e:
         print(f'Unable to clear track_info: {e}')
+    finally:
+        conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
 def save_person_data(
         person_data, db_path='../files/data.db', img_dir='../files/input/faces'
-    ):
-    def _format_filename(img_url):
+    ) -> None:
+    def _format_filename(img_url) -> str:
         filename = img_url.rsplit('/', 1)[1]    # remove bucket/folder info
         return '.'.join(filename.rsplit('_', 1)[:2])    # format file extension
-    
-    credentials = get_aws_credentials()
-    
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
 
-    column_names__people = [
+    credentials = get_aws_credentials()
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
+
+    column_names_people = [
         'first_name',
         'last_name',
         'designation',
         'identity_uuid',
         'shop_uuid',
     ]
-    update_clause__people = ", ".join([
-        f"{col}=excluded.{col}" for col in column_names__people
+    query_columns_people = utils.query_columns_string(column_names_people)
+    param_placeholders_people = utils.query_param_placeholders(
+        column_names_people
+    )
+    update_clause_people = ", ".join([
+        f"{col}=excluded.{col}" for col in column_names_people
         if col != 'identity_uuid'
     ])
-    insert_query__people = f'''
-        INSERT INTO people ({", ".join(column_names__people)})
-        VALUES ({", ".join(["?"] * len(column_names__people))})
+    insert_query_people = f'''
+        INSERT INTO people {query_columns_people}
+        VALUES {param_placeholders_people}
         ON CONFLICT(identity_uuid) DO UPDATE SET
-            {update_clause__people}
+            {update_clause_people}
         RETURNING id
     '''
-    column_names__faces = [
+
+    column_names_faces = [
         'person',
         'file',
     ]
-    insert_query__faces = f'''
-        INSERT OR IGNORE INTO faces ({", ".join(column_names__faces)})
-        VALUES ({", ".join(["?"] * len(column_names__faces))})
+    query_columns_faces = utils.query_columns_string(column_names_faces)
+    param_placeholders_faces = utils.query_param_placeholders(
+        column_names_faces
+    )
+    insert_query_faces = f'''
+        INSERT OR IGNORE INTO faces {query_columns_faces}
+        VALUES {param_placeholders_faces}
     '''
 
     for person in person_data:
@@ -648,11 +670,15 @@ def save_person_data(
             designation = 'tracked_employee' if person['is_active'] else 'untracked'
         else:
             designation = 'tracked_employee'
-        cursor.execute(insert_query__people, (
-            person['first_name'], person['last_name'],
+        
+        values_people = (
+            person['first_name'],
+            person['last_name'],
             designation,
-            person['uuid'], person['shop_uuid'],
-        ))
+            person['uuid'],
+            person['shop_uuid'],
+        )
+        cursor.execute(insert_query_people, values_people)
         person_id = cursor.fetchone()[0]
 
         img_urls = [
@@ -661,17 +687,19 @@ def save_person_data(
             person['right_image'],
         ]
         for img_url in img_urls:
-            parsed = urlparse(img_url)
+            parsed, filename = urlparse(img_url), _format_filename(img_url)
             object_key = parsed.path.lstrip('/')
-            filename = _format_filename(img_url)
-            
-            cursor.execute(insert_query__faces, (person_id, filename))
+
+            values_faces = (
+                person_id,
+                filename
+            )
+            cursor.execute(insert_query_faces, values_faces)
             download_s3_image(
                 object_key, credentials, filename=filename, img_dir=img_dir
             )
 
-    conn.commit()
-    conn.close()
+    conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
 # =============================================================================
@@ -679,14 +707,11 @@ def save_person_data(
 # -----------------------------------------------------------------------------
 
 
-def get_api_tokens(credentials=None):
+def get_api_tokens(credentials: dict = None) -> Union[tuple[str], tuple[None]]:
     if not credentials:
-        email = input('Enter account email: ')
-        password = input('Enter account password: ')
-
         credentials = {
-            'email': email,
-            'password': password
+            'email': input('Enter account email: '),
+            'password': input('Enter account password: ')
         }
 
     load_dotenv()
@@ -749,7 +774,8 @@ def fetch_person_data(
     return person_data
 
 
-def get_queue_block(shop_id, start_from=None, priority_camera=None):
+def get_queue_block(shop_id: str, start_from: Union[list, datetime] = None,
+                    priority_camera: str = None) -> Union[list[list], None, False]:
     '''
     Returns:
         queue_block (List[List]):
@@ -760,22 +786,16 @@ def get_queue_block(shop_id, start_from=None, priority_camera=None):
             - timestamp
             - camera
     '''
-    load_dotenv()
 
-    base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
-    endpoint = 'api/service/get_queue_block/'
-
-    endpoint_url = base_url + endpoint
+    api_base_url, api_key = get_internal_api_info()
+    endpoint_url = (api_base_url + 'api/service/get_queue_block/')
 
     headers = {
-        'X-Custom-Api-Key': os.environ.get('INTERNAL_API_KEY'),
+        'X-Custom-Api-Key': api_key,
         'Content-Type': 'application/json'
     }
+    params = {'shop_id': shop_id, 'priority_camera': priority_camera}
 
-    params = {
-        'shop_id': shop_id,
-        'priority_camera': priority_camera
-    }
     if start_from:
         try:
             if isinstance(start_from, list):
@@ -805,7 +825,7 @@ def get_queue_block(shop_id, start_from=None, priority_camera=None):
         return False
 
 
-def clear_queue_block(shop_id, timestamp):
+def clear_queue_block(shop_id, timestamp) -> None:
     load_dotenv()
 
     base_url = 'https://ivaktvision-fe27c015e5ff.herokuapp.com/'
@@ -831,7 +851,9 @@ def clear_queue_block(shop_id, timestamp):
         print(response.status_code) 
 
 
-def post_events_to_webapp(time_prefix, db_path='../files/data.db'):
+def post_events_to_webapp(
+        time_prefix, db_path='../files/data.db'
+    ) -> Union[bool, None]:
     def _merge_tracks(df, max_continuation_gap=75):
         merged = []
         for identity, group in df.groupby('identity'):

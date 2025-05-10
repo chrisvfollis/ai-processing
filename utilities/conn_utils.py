@@ -39,17 +39,20 @@ def pg_db_connect(conn_args=None, var_prefix='PG'):
 
 
 def close_pg_db(conn, cursor):
-    cursor.close()
+    cursor.close()  # best practice to explicitly close the cursor
     conn.close()
 
 
-def close_sqlite_db(conn, cursor):
-    cursor.close()
+def close_sqlite_db(conn, cursor, commit: bool = False):
+    if commit:
+        conn.commit()
+
+    cursor.close()  # best practice to explicitly close the cursor
     conn.close()
 
 
-def s3_connect(region='us-west-1'):
-    access_key, secret_key = io_utils.get_aws_credentials()
+def s3_connect(region='us-west-1', credentials=None):
+    access_key, secret_key = credentials or io_utils.get_aws_credentials()
 
     s3_client = boto3.client(
         's3',
@@ -60,8 +63,8 @@ def s3_connect(region='us-west-1'):
     return s3_client
 
 
-def ec2_connect(region='us-west-1'):
-    access_key, secret_key = io_utils.get_aws_credentials()
+def ec2_connect(region='us-west-1', credentials=None):
+    access_key, secret_key = credentials or io_utils.get_aws_credentials()
 
     s3_client = boto3.client(
         'ec2',

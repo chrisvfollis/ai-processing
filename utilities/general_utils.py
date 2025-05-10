@@ -597,12 +597,24 @@ def logceil_round(x):
 
 def query_param_placeholders(items: Union[list, tuple]) -> str:
     '''
+    Args:
+        items (list or tuple): A collection of items such as column names.
+
     Returns:
         str: A string of comma-separated question marks enclosed in parentheses,
-            with one question mark for each value in the argument for `items`.
+            with one question mark for each value in `items`.
     
     Example:
-        >>> query_param_placeholders([1, 2, 3])
-        '(?, ?, ?)'
+        >>> query_param_placeholders(['col1', 'col2', 'col3'])
+        "(?, ?, ?)"
     '''
-    return f"({', '.join(['?'] * len(items))})"
+    question_marks = ['?'] * len(items)
+    return f"({', '.join(question_marks)})"
+
+
+def query_columns_string(columns: Union[list, tuple]) -> str:
+    '''
+    Converts a collection of table columns into a comma-separated string
+    enclosed in parentheses, for use in query strings.
+    '''
+    return f"({', '.join(columns)})"
