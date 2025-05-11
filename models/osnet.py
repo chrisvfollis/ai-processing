@@ -50,6 +50,8 @@ class OSNet:
         self.n_features = output_shape[0]
 
         self.buffer_limit = buffer_limit
+        self.buffer_type = None
+        self.embedding_idx = 0
 
         self.preprocess_time = 0
         self.embedding_time = 0
@@ -89,7 +91,9 @@ class OSNet:
 
         return image_tensor.to(self.device)
 
-    def postprocess_output(self, output_data, batched=False):
+    def postprocess_output(
+            self, output_data, batched=False
+        ) -> Union[np.ndarray, list[np.ndarray]]:
         if not batched:
             postprocessed = output_data.cpu().detach().numpy().flatten() 
         else:
@@ -108,18 +112,17 @@ class OSNet:
         press_stopwatch(self, 'embedding_time')
 
         embedding = self.postprocess_output(output)
+
+        if self.buffer_type:
+            self.update_buffers(
+                embedding,
+                self.embedding_idx,
+                structure=self.buffer_type
+            )
+        self.embedding_idx += 1
         return embedding
 
-    def extraction_batch(self, img, detections, f_num):        
-        def _update_buffers(embeddings, f_num):
-            num_embeddings = len(embeddings)
-            if len(self.embedding_buffer) >= self.buffer_limit:
-                self.flush_buffers()
-
-            self.embedding_buffer.extend(embeddings)
-            self.frame_buffer.extend([f_num] * num_embeddings)
-            self.box_index_buffer.extend(list(range(num_embeddings)))
-        
+    def extraction_batch(self, img, detections, f_num):                
         batch_images = []
         for box in detections:
             x, y, w, h, = box[:4]
@@ -133,7 +136,7 @@ class OSNet:
         press_stopwatch(self, 'embedding_time')
 
         embeddings = self.postprocess_output(batch_output, batched=True)
-        _update_buffers(embeddings, f_num)
+        self.update_buffers(embeddings, f_num, structure='video_data')
 
     @property
     def active_buffers(self):
@@ -156,6 +159,7 @@ class OSNet:
         Sets up the appropriate buffer attributes for the given output structure,
         and creates a corresponding HDF5 file for dumping the buffered data.
         '''
+        self.buffer_type = structure
         self.buffer_limit = buffer_limit or self.buffer_limit
 
         # set up buffer output file:
@@ -196,6 +200,27 @@ class OSNet:
         self.hdf5_file.create_dataset('embeddings', **embeddings_dataset_kwargs)
         for index_dataset in index_data_config['datasets']:
             self.hdf5_file.create_dataset(index_dataset, **index_dataset_kwargs)
+
+    def update_buffers(
+            self, embedding_data: Union[np.ndarray, list[np.ndarray]],
+            index: int, structure: str = 'standard'
+        ) -> None:
+
+        if isinstance(embedding_data, np.ndarray):
+            num_embeddings = 1
+        elif isinstance(embedding_data, list):
+            num_embeddings = len(embedding_data)
+
+        if (len(self.embedding_buffer) + num_embeddings) >= self.buffer_limit:
+            self.flush_buffers()
+
+        if structure == 'standard':
+            self.embedding_buffer.append(embedding_data)
+            self.index_buffer.append(index)
+        elif structure == 'video_data':
+            self.embedding_buffer.extend(embedding_data)
+            self.frame_buffer.extend([index] * num_embeddings)
+            self.box_index_buffer.extend(list(range(num_embeddings)))
 
     def flush_buffers(self, structure='standard', release=False):
         press_stopwatch(self, 'flush_time')

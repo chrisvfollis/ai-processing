@@ -797,13 +797,13 @@ def clear_queue_block(shop_id, timestamp) -> None:
 def post_events_to_webapp(
         time_prefix, db_path='../files/data.db'
     ) -> Union[bool, None]:
-
+    
     webapp_api = APIClient(var_prefix='WEBAPP_API')
+
+    shop_uuid = get_shop(db_path)[0]
 
     df = utils.create_track_df(time_prefix)
     df = utils.merge_track_records(df)
-
-    shop_uuid = get_shop(db_path)[0]
 
     data = {
         'shop_id': [],

@@ -345,7 +345,7 @@ def save_approved_img_data(
         approved_records,
         bucket_name='timemanager-event-imgs',
         output_dir = '../files/output/',
-    ) -> list[dict]:
+    ) -> pd.DataFrame:
 
     img_output_dir = os.path.join(output_dir, 'event_imgs/')
     s3_client = conn_utils.s3_connect(region='us-west-1')
@@ -356,7 +356,7 @@ def save_approved_img_data(
     fields = [
         'employee_id',
         'shop_id',
-        'image_key',
+        'image',
         'first_name',
         'last_name',
         'start_time',
@@ -366,12 +366,12 @@ def save_approved_img_data(
         row_data = dict(zip(fields, row))
 
         try:
-            img_save_path = os.path.join(img_output_dir, row_data['image_key'])
+            img_save_path = os.path.join(img_output_dir, row_data['image'])
 
             if not os.path.exists(img_save_path):
                 s3_obj = s3_client.get_object(
                     Bucket=bucket_name,
-                    Key=row_data['image_key']
+                    Key=row_data['image']
                 )
                 img = Image.open(BytesIO(s3_obj['Body'].read()))
                 img.save(img_save_path)
@@ -379,13 +379,13 @@ def save_approved_img_data(
             saved_image_data.append(row_data)
 
         except Exception as e:
-            print(f'Error retrieving or saving {row_data['image_key']}: {e}')
+            print(f'Error retrieving or saving {row_data['image']}: {e}')
     
-    img_data_df = pd.DataFrame(saved_image_data)
+    saved_img_data_df = pd.DataFrame(saved_image_data)
 
     with pd.ExcelWriter(spreadsheet_save_path, engine='xlsxwriter') as writer:
-        img_data_df.to_excel(
+        saved_img_data_df.to_excel(
             writer, sheet_name='Approved Image Data', index=False
         )
 
-    return saved_image_data
+    return saved_img_data_df

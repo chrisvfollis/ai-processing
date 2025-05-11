@@ -49,14 +49,32 @@ def extract_event_img_embeddings(
         file_dir: str = '../files/',
         weights_path: str = '../models/weights/OSNet.pth.tar-250'
     ):
+
+    output_dir = os.path.join(file_dir, 'output/')
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     osnet = OSNet(weights_path, device)
-    osnet.activate_buffers('event_imgs')
+    osnet.activate_buffers(
+        'event_imgs',
+        structure='standard',
+        output_dir=output_dir
+    )
     
     approved_records = admin_utils.get_approved_records(shop_id=shop_id)
-    admin_utils.save_approved_img_data(approved_records)
+    img_data_df = admin_utils.save_approved_img_data(
+        approved_records, output_dir=output_dir
+    )
 
+    for image in img_data_df['image']:
+        image_path = os.path.join(output_dir, image)
+        image = cv2.imread(image_path)
+
+        osnet.extract_features(image)
+
+    if len(osnet.embedding_buffer) > 0:
+        osnet.flush_buffers(structure='standard', release=True)
+    else:
+        osnet.release_buffers()
 
 
 # SUPER-RESOLUTION:
