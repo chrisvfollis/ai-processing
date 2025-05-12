@@ -6,6 +6,7 @@ import uuid
 
 # 3rd-party dependencies
 import numpy as np
+import pandas as pd
 import cv2
 import torch
 
@@ -75,6 +76,17 @@ def extract_event_img_embeddings(
         osnet.flush_buffers(structure='standard', release=True)
     else:
         osnet.release_buffers()
+
+    return osnet.output_path, img_data_df
+
+
+def calculate_embedding_distances(
+        embeddings_filepath: str,
+        img_data_df: Union[pd.DataFrame, str]
+    ) -> pd.DataFrame:
+    if isinstance(img_data_df, str):
+        img_data_df = pd.read_excel(img_data_df)
+    
 
 
 # SUPER-RESOLUTION:
