@@ -719,7 +719,7 @@ def fetch_person_data(
 
 
 def get_queue_block(shop_id: str, start_from: Union[list, datetime] = None,
-                    priority_camera: str = None) -> Union[list[list], None, False]:
+                    priority_camera: str = None) -> Union[list[list], None, bool]:
     '''
     Returns:
         queue_block (List[List]):
