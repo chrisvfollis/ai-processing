@@ -319,7 +319,7 @@ def get_approved_records(shop_id=None) -> list[tuple]:
 
     query = """
         SELECT eel.employee_id, eel.shop_id, eel.image, eel.start_time,
-            sel.first_name, sel.last_name,  
+            sel.first_name, sel.last_name
         FROM employee_event_log_employeeevent eel
         JOIN shop_employeelist sel ON eel.employee_id = sel.id
         WHERE eel.review_status = 'approved'
@@ -350,7 +350,7 @@ def save_approved_img_data(
     s3_client = conn_utils.s3_connect(region='us-west-1')
     
     spreadsheet_save_path = os.path.join(output_dir, 'approved_img_data.xlsx')
-    saved_image_data = []
+    saved_img_data = []
 
     fields = [
         'employee_id',
@@ -366,21 +366,28 @@ def save_approved_img_data(
 
         try:
             img_save_path = os.path.join(img_output_dir, row_data['image'])
-
             if not os.path.exists(img_save_path):
                 s3_obj = s3_client.get_object(
                     Bucket=bucket_name,
                     Key=row_data['image']
                 )
                 img = Image.open(BytesIO(s3_obj['Body'].read()))
-                img.save(img_save_path)
 
-            saved_image_data.append(row_data)
+                img.save(img_save_path)
+            saved_img_data.append(row_data)
 
         except Exception as e:
             print(f"Error retrieving or saving {row_data['image']}: {e}")
     
-    saved_img_data_df = pd.DataFrame(saved_image_data)
+    saved_img_data_df = pd.DataFrame(saved_img_data)
+
+    for col in (
+        saved_img_data_df.select_dtypes(
+            include=['datetime64[ns, tz]']
+        ).columns
+    ):
+        standardized = saved_img_data_df[col].dt.tz_convert('UTC')
+        saved_img_data_df[col] = standardized.dt.tz_localize(None)
 
     with pd.ExcelWriter(spreadsheet_save_path, engine='xlsxwriter') as writer:
         saved_img_data_df.to_excel(
