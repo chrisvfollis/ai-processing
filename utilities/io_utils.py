@@ -104,6 +104,20 @@ def cleanup_semaphores(logger):
 # -----------------------------------------------------------------------------
 
 
+def get_project_root() -> str:
+    '''Returns the absolute path of the project root'''
+
+    current_path = os.path.abspath(os.path.dirname(__file__))
+    
+    while current_path != os.path.dirname(current_path):
+        if os.path.exists(os.path.join(current_path, 'setup.py')):
+            return current_path
+
+        current_path = os.path.dirname(current_path)
+    
+    raise RuntimeError('Project root not found')
+
+
 def get_unique_filename(dir_path, base_name):
     '''Append a number to the filename if it already exists.'''
 

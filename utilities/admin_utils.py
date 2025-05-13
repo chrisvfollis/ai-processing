@@ -341,15 +341,20 @@ def get_approved_records(shop_id=None) -> list[tuple]:
 
 
 def save_approved_img_data(
-        approved_records,
-        bucket_name='timemanager-event-imgs',
-        output_dir = '../files/output/',
+        approved_records: list[tuple] = None,
+        bucket_name: str = 'timemanager-event-imgs',
+        output_dir: str = 'files/output/',
     ) -> pd.DataFrame:
+    approved_records = approved_records or get_approved_records()
 
-    img_output_dir = os.path.join(output_dir, 'event_imgs/')
+    project_root = io_utils.get_project_root()
+    output_path = os.path.join(project_root, output_dir)
+
+    img_dir_path = os.path.join(output_path, 'event_imgs/')
+    spreadsheet_path = os.path.join(output_path, 'approved_img_data.xlsx')
+
     s3_client = conn_utils.s3_connect(region='us-west-1')
-    
-    spreadsheet_save_path = os.path.join(output_dir, 'approved_img_data.xlsx')
+
     saved_img_data = []
 
     fields = [
@@ -365,7 +370,7 @@ def save_approved_img_data(
         row_data = dict(zip(fields, row))
 
         try:
-            img_save_path = os.path.join(img_output_dir, row_data['image'])
+            img_save_path = os.path.join(img_dir_path, row_data['image'])
             if not os.path.exists(img_save_path):
                 s3_obj = s3_client.get_object(
                     Bucket=bucket_name,
@@ -389,7 +394,7 @@ def save_approved_img_data(
         standardized = saved_img_data_df[col].dt.tz_convert('UTC')
         saved_img_data_df[col] = standardized.dt.tz_localize(None)
 
-    with pd.ExcelWriter(spreadsheet_save_path, engine='xlsxwriter') as writer:
+    with pd.ExcelWriter(spreadsheet_path, engine='xlsxwriter') as writer:
         saved_img_data_df.to_excel(
             writer, sheet_name='Approved Image Data', index=False
         )
