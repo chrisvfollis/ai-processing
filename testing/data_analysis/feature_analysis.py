@@ -58,7 +58,7 @@ def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
     )
 
     per_employee_stats = {}
-    for employee_id in pd.concat([id_col_1a,id_col_2a]).unique():
+    for employee_id in pd.concat([id_col_1a, id_col_2a]).unique():
         employee_distances = embedding_distances[
             (id_col_1a == employee_id) |
             (id_col_2a == employee_id)

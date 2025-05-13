@@ -10,6 +10,7 @@ import numpy as np
 import h5py
 import cv2
 import torch
+import torchvision.transforms.functional as TF
 
 warnings.filterwarnings(
     "ignore", message="Cython evaluation",
@@ -72,10 +73,17 @@ class OSNet:
             image = cv2.resize(image, self.input_dims)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             image = image.astype(np.float32)
+            image = image / 255.0
 
             image_tensor = (
                 torch.from_numpy(image)
                 .permute(2, 0, 1)
+            )
+
+            image_tensor = TF.normalize(
+                image_tensor,
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
             )
             return image_tensor
 
