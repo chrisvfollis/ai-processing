@@ -344,8 +344,9 @@ def save_approved_img_data(
         approved_records: list[tuple] = None,
         bucket_name: str = 'timemanager-event-imgs',
         output_dir: str = 'files/output/',
+        shop_id: str = None
     ) -> pd.DataFrame:
-    approved_records = approved_records or get_approved_records()
+    approved_records = approved_records or get_approved_records(shop_id)
 
     project_root = io_utils.get_project_root()
     output_path = os.path.join(project_root, output_dir)

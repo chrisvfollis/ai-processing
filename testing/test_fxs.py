@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import cv2
 import torch
+from sklearn.metrics.pairwise import cosine_distances
+import h5py
 
 # internal dependencies
 from models import YOLOv4, OSNet, FaceIq, CenterFace, ClearFace
@@ -47,46 +49,154 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
 
 def extract_event_img_embeddings(
         shop_id: Optional[str] = None,
-        file_dir: str = '../files/',
-        weights_path: str = '../models/weights/OSNet.pth.tar-250'
+        weights_file: str = 'OSNet.pth.tar-250'
     ):
+    project_root = io_utils.get_project_root()
 
-    output_dir = os.path.join(file_dir, 'output/')
+    img_dir_path = os.path.join(project_root, 'files/output/event_imgs/')
+    weights_path = os.path.join(project_root, 'models/weights/', weights_file)
+
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     osnet = OSNet(weights_path, device)
     osnet.activate_buffers(
         'event_imgs',
         structure='standard',
-        output_dir=output_dir
+        output_dir=img_dir_path
     )
     
-    approved_records = admin_utils.get_approved_records(shop_id=shop_id)
-    img_data_df = admin_utils.save_approved_img_data(
-        approved_records, output_dir=output_dir
-    )
+    img_data_df = admin_utils.save_approved_img_data(shop_id=shop_id)
 
-    for image in img_data_df['image']:
-        image_path = os.path.join(output_dir, image)
-        image = cv2.imread(image_path)
+    try:
+        for image in img_data_df['image']:
+            image_path = os.path.join(img_dir_path, image)
+            image = cv2.imread(image_path)
 
-        osnet.extract_features(image)
-
-    if len(osnet.embedding_buffer) > 0:
-        osnet.flush_buffers(structure='standard', release=True)
-    else:
-        osnet.release_buffers()
+            osnet.extract_features(image)
+    finally:
+        if len(osnet.embedding_buffer) > 0:
+            osnet.flush_buffers(structure='standard', release=True)
+        else:
+            osnet.release_buffers()
 
     return osnet.output_path, img_data_df
 
 
 def calculate_embedding_distances(
         embeddings_filepath: str,
-        img_data_df: Union[pd.DataFrame, str]
+        img_data_df: Union[pd.DataFrame, str],
+        chunk_size: int = 100
     ) -> pd.DataFrame:
+    project_root = io_utils.get_project_root()
+    distances_spreadsheet_path = os.path.join(
+        project_root, 'files/output/', 'cos_distances_data.xlsx'
+    )
+
     if isinstance(img_data_df, str):
         img_data_df = pd.read_excel(img_data_df)
+
+    distance_data = []
+
+    distance_data_cols = [
+        'image1',
+        'image2',
+        'employee_id1',
+        'employee_id2',
+        'shop_id1',
+        'shop_id2',
+        'first_name1',
+        'last_name1',
+        'first_name2',
+        'last_name2',
+        'start_time1',
+        'start_time2',
+        'distance',
+    ]
     
+    with h5py.File(embeddings_filepath, 'r') as f:
+        num_embeddings = f['embeddings'].shape[0]
+        indices = f['indices'][:]
+
+        metadata = []
+        for idx in indices:
+            row = img_data_df.iloc[idx]
+
+            metadata.append({
+                k: row[k] for k in [
+                    'image',
+                    'employee_id',
+                    'shop_id',
+                    'first_name',
+                    'last_name',
+                    'start_time',
+                ]
+            })
+
+        for start_idx in range(0, num_embeddings, chunk_size):
+            end_idx = min(start_idx + chunk_size, num_embeddings)
+
+            current_chunk = f['embeddings'][start_idx:end_idx]
+
+            distances_within = cosine_distances(current_chunk)
+            for i in range(len(current_chunk)):
+                for j in range(i + 1, len(current_chunk)):
+                    img_1 = metadata[start_idx + i]
+                    img_2 = metadata[start_idx + j]
+
+                    entry_values = [
+                        img_1['image'],
+                        img_2['image'],
+                        img_1['employee_id'],
+                        img_2['employee_id'],
+                        img_1['shop_id'],
+                        img_2['shop_id'],
+                        img_1['first_name'],
+                        img_1['last_name'],
+                        img_2['first_name'],
+                        img_2['last_name'],
+                        img_1['start_time'],
+                        img_2['start_time'],
+                        distances_within[i, j],
+                    ]
+
+                    distance_data.append(dict(
+                        zip(distance_data_cols, entry_values)
+                    ))
+
+            for next_idx in range(end_idx, num_embeddings):
+                next_embedding = f['embeddings'][next_idx]
+                distances_to_next = cosine_distances(
+                    current_chunk, next_embedding.reshape(1, -1)
+                )
+
+                for i in range(len(current_chunk)):
+                    img_1 = metadata[start_idx + i]
+                    img_2 = metadata[next_idx]
+
+                    entry_values.append({
+                        img_1['image'],
+                        img_2['image'],
+                        img_1['employee_id'],
+                        img_2['employee_id'],
+                        img_1['shop_id'],
+                        img_2['shop_id'],
+                        img_1['first_name'],
+                        img_1['last_name'],
+                        img_2['first_name'],
+                        img_2['last_name'],
+                        img_1['start_time'],
+                        img_2['start_time'],
+                        distances_to_next[i, 0],
+                    })
+
+    distances_df = pd.DataFrame(distance_data)
+
+    with pd.ExcelWriter(distances_spreadsheet_path, engine='xlsxwriter') as writer:
+        distances_df.to_excel(
+            writer, sheet_name='Cosine Distances', index=False
+        )
+
+    return distances_df
 
 
 # SUPER-RESOLUTION:
