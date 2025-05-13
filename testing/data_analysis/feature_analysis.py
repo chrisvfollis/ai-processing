@@ -96,4 +96,9 @@ def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
 
 
 if __name__ == '__main__':
-    pass
+    embeddings_filepath, img_data_df = test_fxs.extract_event_img_embeddings()
+    distances_df = test_fxs.calculate_embedding_distances(
+        embeddings_filepath, img_data_df
+    )
+
+    analyze_embedding_data(distances_df)

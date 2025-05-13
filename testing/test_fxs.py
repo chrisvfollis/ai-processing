@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import cv2
 import torch
-from sklearn.metrics.pairwise import cosine_distances
+import torch.nn.functional as F
 import h5py
 
 # internal dependencies
@@ -64,6 +64,7 @@ def extract_event_img_embeddings(
         structure='standard',
         output_dir=img_dir_path
     )
+    embeddings_filepath = osnet.output_path
     
     img_data_df = admin_utils.save_approved_img_data(shop_id=shop_id)
 
@@ -79,7 +80,7 @@ def extract_event_img_embeddings(
         else:
             osnet.release_buffers()
 
-    return osnet.output_path, img_data_df
+    return embeddings_filepath, img_data_df
 
 
 def calculate_embedding_distances(
@@ -87,7 +88,7 @@ def calculate_embedding_distances(
         img_data_df: Union[pd.DataFrame, str],
         chunk_size: int = 100
     ) -> pd.DataFrame:
-    def _structure_entry(img_1, img_2, i, j, distances):
+    def _structure_entry(img_1, img_2, distance):
         entry_data = {
             'image1': img_1['image'],
             'image2': img_2['image'],
@@ -101,7 +102,7 @@ def calculate_embedding_distances(
             'last_name2': img_2['last_name'],
             'start_time1': img_1['start_time'],
             'start_time2': img_2['start_time'],
-            'distance': distances[i, j],
+            'distance': distance,
         }
         return entry_data
 
@@ -137,32 +138,41 @@ def calculate_embedding_distances(
         for start_idx in range(0, num_embeddings, chunk_size):
             end_idx = min(start_idx + chunk_size, num_embeddings)
 
-            current_chunk = f['embeddings'][start_idx:end_idx]
+            current_chunk_np = f['embeddings'][start_idx:end_idx]
+            current_chunk = torch.from_numpy(current_chunk_np).float()
 
-            distances_within = cosine_distances(current_chunk)
             for i in range(len(current_chunk)):
                 for j in range(i + 1, len(current_chunk)):
+                    sim = F.cosine_similarity(
+                        current_chunk[i].unsqueeze(0),
+                        current_chunk[j].unsqueeze(0)
+                    ).item()
+                    distance = 1 - sim
+
                     img_1 = metadata[start_idx + i]
                     img_2 = metadata[start_idx + j]
 
-                    entry_values = _structure_entry(
-                        img_1, img_2, i, j, distances_within
-                    )
+                    entry_values = _structure_entry(img_1, img_2, distance)
                     distance_data.append(entry_values)
 
             for next_idx in range(end_idx, num_embeddings):
-                next_embedding = f['embeddings'][next_idx]
-                distances_to_next = cosine_distances(
-                    current_chunk, next_embedding.reshape(1, -1)
+                next_embedding_np = f['embeddings'][next_idx]
+
+                next_embedding = (
+                    torch.from_numpy(next_embedding_np).float()
+                    .unsqueeze(0)
                 )
 
+                sims = F.cosine_similarity(current_chunk, next_embedding, dim=1)
+                distances = 1 - sims
+
                 for i in range(len(current_chunk)):
+                    distance = distances[i].item()
+
                     img_1 = metadata[start_idx + i]
                     img_2 = metadata[next_idx]
 
-                    entry_values = _structure_entry(
-                        img_1, img_2, i, 0, distances_to_next
-                    )
+                    entry_values = _structure_entry(img_1, img_2, distance)
                     distance_data.append(entry_values)
 
     distances_df = pd.DataFrame(distance_data)
