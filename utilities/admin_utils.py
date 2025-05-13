@@ -386,11 +386,9 @@ def save_approved_img_data(
     
     saved_img_data_df = pd.DataFrame(saved_img_data)
 
-    for col in (
-        saved_img_data_df.select_dtypes(
-            include=['datetime64[ns, tz]']
-        ).columns
-    ):
+    for col in saved_img_data_df.columns:
+        if not pd.api.types.is_datetime64_any_dtype(saved_img_data_df[col]):
+            continue
         standardized = saved_img_data_df[col].dt.tz_convert('UTC')
         saved_img_data_df[col] = standardized.dt.tz_localize(None)
 
