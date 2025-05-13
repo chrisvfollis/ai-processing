@@ -16,9 +16,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 # internal dependencies
-from utilities import io_utils
+from utilities import io_utils, log_utils, conn_utils
 from utilities import general_utils as utils
-from utilities import log_utils
 
 logger = log_utils.get_logger(__name__)
 
@@ -233,7 +232,7 @@ if __name__ == '__main__':
         , ('Facenet512', 'centerface_gpu')
     ]
 
-    credentials = io_utils.get_aws_credentials()
+    credentials = conn_utils.get_aws_credentials()
     shop_id, _ = io_utils.get_shop('../files/data.db')
 
     memory_monitor, _ = log_utils.observability_thread('low_memory', logger=logger)

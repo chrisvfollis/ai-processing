@@ -100,19 +100,6 @@ def cleanup_semaphores(logger):
 
 
 # =============================================================================
-#                        - ENVIRONMENT VARIABLES -
-# -----------------------------------------------------------------------------
-
-
-def get_aws_credentials():
-    load_dotenv()
-    access_key = os.environ.get('AWS_ACCESS_KEY')
-    secret_key = os.environ.get('AWS_SECRET_KEY')
-
-    return access_key, secret_key
-
-
-# =============================================================================
 #                           - LOCAL FILES -
 # -----------------------------------------------------------------------------
 
@@ -601,7 +588,7 @@ def save_person_data(
         filename = img_url.rsplit('/', 1)[1]    # remove bucket/folder info
         return '.'.join(filename.rsplit('_', 1)[:2])    # format file extension
 
-    credentials = get_aws_credentials()
+    credentials = conn_utils.get_aws_credentials()
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     column_names_people = [

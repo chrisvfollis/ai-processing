@@ -9,7 +9,12 @@ import sqlite3
 import requests
 
 # internal dependencies
-from utilities import io_utils
+pass
+
+
+# =============================================================================
+#                                  - APIS -
+# -----------------------------------------------------------------------------
 
 
 class APIClient:
@@ -56,6 +61,11 @@ class APIClient:
         return requests.get(endpoint_url, headers=headers, params=params, json=json)
 
 
+# =============================================================================
+#                              - SQL DATABASES -
+# -----------------------------------------------------------------------------
+
+
 def sqlite_db_connect(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -96,8 +106,21 @@ def close_sqlite_db(conn, cursor, commit: bool = False):
     conn.close()
 
 
+# =============================================================================
+#                              - AWS RESOURCES -
+# -----------------------------------------------------------------------------
+
+
+def get_aws_credentials():
+    load_dotenv()
+    access_key = os.environ.get('AWS_ACCESS_KEY')
+    secret_key = os.environ.get('AWS_SECRET_KEY')
+
+    return access_key, secret_key
+
+
 def s3_connect(region='us-west-1', credentials=None):
-    access_key, secret_key = credentials or io_utils.get_aws_credentials()
+    access_key, secret_key = credentials or get_aws_credentials()
 
     s3_client = boto3.client(
         's3',
@@ -109,7 +132,7 @@ def s3_connect(region='us-west-1', credentials=None):
 
 
 def ec2_connect(region='us-west-1', credentials=None):
-    access_key, secret_key = credentials or io_utils.get_aws_credentials()
+    access_key, secret_key = credentials or get_aws_credentials()
 
     s3_client = boto3.client(
         'ec2',
