@@ -87,6 +87,24 @@ def calculate_embedding_distances(
         img_data_df: Union[pd.DataFrame, str],
         chunk_size: int = 100
     ) -> pd.DataFrame:
+    def _structure_entry(img_1, img_2, i, j, distances):
+        entry_data = {
+            'image1': img_1['image'],
+            'image2': img_2['image'],
+            'employee_id1': img_1['employee_id'],
+            'employee_id2': img_2['employee_id'],
+            'shop_id1': img_1['shop_id'],
+            'shop_id2': img_2['shop_id'],
+            'first_name1': img_1['first_name'],
+            'last_name1': img_1['last_name'],
+            'first_name2': img_2['first_name'],
+            'last_name2': img_2['last_name'],
+            'start_time1': img_1['start_time'],
+            'start_time2': img_2['start_time'],
+            'distance': distances[i, j],
+        }
+        return entry_data
+
     project_root = io_utils.get_project_root()
     distances_spreadsheet_path = os.path.join(
         project_root, 'files/output/', 'cos_distances_data.xlsx'
@@ -96,22 +114,6 @@ def calculate_embedding_distances(
         img_data_df = pd.read_excel(img_data_df)
 
     distance_data = []
-
-    distance_data_cols = [
-        'image1',
-        'image2',
-        'employee_id1',
-        'employee_id2',
-        'shop_id1',
-        'shop_id2',
-        'first_name1',
-        'last_name1',
-        'first_name2',
-        'last_name2',
-        'start_time1',
-        'start_time2',
-        'distance',
-    ]
     
     with h5py.File(embeddings_filepath, 'r') as f:
         num_embeddings = f['embeddings'].shape[0]
@@ -143,25 +145,10 @@ def calculate_embedding_distances(
                     img_1 = metadata[start_idx + i]
                     img_2 = metadata[start_idx + j]
 
-                    entry_values = [
-                        img_1['image'],
-                        img_2['image'],
-                        img_1['employee_id'],
-                        img_2['employee_id'],
-                        img_1['shop_id'],
-                        img_2['shop_id'],
-                        img_1['first_name'],
-                        img_1['last_name'],
-                        img_2['first_name'],
-                        img_2['last_name'],
-                        img_1['start_time'],
-                        img_2['start_time'],
-                        distances_within[i, j],
-                    ]
-
-                    distance_data.append(dict(
-                        zip(distance_data_cols, entry_values)
-                    ))
+                    entry_values = _structure_entry(
+                        img_1, img_2, i, j, distances_within
+                    )
+                    distance_data.append(entry_values)
 
             for next_idx in range(end_idx, num_embeddings):
                 next_embedding = f['embeddings'][next_idx]
@@ -173,21 +160,10 @@ def calculate_embedding_distances(
                     img_1 = metadata[start_idx + i]
                     img_2 = metadata[next_idx]
 
-                    entry_values.append({
-                        img_1['image'],
-                        img_2['image'],
-                        img_1['employee_id'],
-                        img_2['employee_id'],
-                        img_1['shop_id'],
-                        img_2['shop_id'],
-                        img_1['first_name'],
-                        img_1['last_name'],
-                        img_2['first_name'],
-                        img_2['last_name'],
-                        img_1['start_time'],
-                        img_2['start_time'],
-                        distances_to_next[i, 0],
-                    })
+                    entry_values = _structure_entry(
+                        img_1, img_2, i, 0, distances_to_next
+                    )
+                    distance_data.append(entry_values)
 
     distances_df = pd.DataFrame(distance_data)
 
