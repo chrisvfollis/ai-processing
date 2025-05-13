@@ -13,7 +13,6 @@ from requests.exceptions import RequestException
 import boto3
 from botocore.exceptions import ClientError
 from PIL import Image
-import psycopg2
 import pandas as pd
 
 # internal dependencies
@@ -319,8 +318,8 @@ def get_approved_records(shop_id=None) -> list[tuple]:
     conn, cursor = conn_utils.pg_db_connect(var_prefix='WEBAPP_DB')
 
     query = """
-        SELECT eel.employee_id, eel.shop_id, eel.start_time, eel.image,
-               sel.first_name, sel.last_name
+        SELECT eel.employee_id, eel.shop_id, eel.image, eel.start_time,
+            sel.first_name, sel.last_name,  
         FROM employee_event_log_employeeevent eel
         JOIN shop_employeelist sel ON eel.employee_id = sel.id
         WHERE eel.review_status = 'approved'
@@ -357,9 +356,9 @@ def save_approved_img_data(
         'employee_id',
         'shop_id',
         'image',
+        'start_time',
         'first_name',
         'last_name',
-        'start_time',
     ]
 
     for row in approved_records:
@@ -379,7 +378,7 @@ def save_approved_img_data(
             saved_image_data.append(row_data)
 
         except Exception as e:
-            print(f'Error retrieving or saving {row_data['image']}: {e}')
+            print(f"Error retrieving or saving {row_data['image']}: {e}")
     
     saved_img_data_df = pd.DataFrame(saved_image_data)
 
