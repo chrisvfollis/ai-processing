@@ -1,12 +1,10 @@
 # standard dependencies
 import os
-from typing import Union, Optional
 
 # 3rd-party dependencies
 import torch
 from torch.utils.data import DataLoader
 from torchreid import losses
-from PIL import Image
 
 # internal dependencies
 from models import OSNet
@@ -29,7 +27,7 @@ def event_img_finetune(num_epochs: int = 20):
         train_dataset,
         batch_size=32,
         shuffle=True,
-        num_workers=4
+        num_workers=4,
     )
 
     criterion = losses.TripletLoss(margin=0.3)
@@ -45,7 +43,7 @@ def event_img_finetune(num_epochs: int = 20):
             loader=train_loader,
             optimizer=optimizer,
             criterion=criterion,
-            device=device
+            device=device,
         )
         print(f'Epoch {epoch+1}/{num_epochs} - Loss: {loss:.4f}')
 
@@ -68,4 +66,3 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
         total_loss += loss.item()
 
     return total_loss / len(loader)
-

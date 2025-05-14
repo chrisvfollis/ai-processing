@@ -4,12 +4,12 @@ from typing import Union, Optional
 import re
 
 # 3rd-party dependencies
-import numpy as np
 import pandas as pd
 import cv2
 import torch
 import torch.nn.functional as F
 import h5py
+from openpyxl import load_workbook
 
 # internal dependencies
 from models import OSNet
@@ -26,7 +26,7 @@ def load_market1501_metadata(dataset_dir: str = 'market-1501/') -> pd.DataFrame:
 
     dataset_dir_path = os.path.join(project_root, 'files/datasets/', dataset_dir)
     spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'market1501_img_data.xlsx'
+        project_root, 'files/output/', 'market1501_data.xlsx'
     )
 
     all_images = []
@@ -50,10 +50,10 @@ def load_market1501_metadata(dataset_dir: str = 'market-1501/') -> pd.DataFrame:
 
     img_data_df = pd.DataFrame(all_images)
 
-    with pd.ExcelWriter(spreadsheet_path, engine='xlsxwriter') as writer:
-        img_data_df.to_excel(
-            writer, sheet_name='Market-1501 Image Data', index=False
-        )
+    with pd.ExcelWriter(
+        spreadsheet_path, engine='openpyxl', mode='a', if_sheet_exists='replace'
+    ) as writer:
+        img_data_df.to_excel(writer, sheet_name='Metadata', index=False)
 
     return img_data_df
 
@@ -110,8 +110,8 @@ def market1501_embedding_distances(
         }
 
     project_root = io_utils.get_project_root()
-    distances_spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'market1501_distances_data.xlsx'
+    spreadsheet_path = os.path.join(
+        project_root, 'files/output/', 'market1501_data.xlsx'
     )
     distance_data = []
 
@@ -153,10 +153,10 @@ def market1501_embedding_distances(
 
     distances_df = pd.DataFrame(distance_data)
 
-    with pd.ExcelWriter(distances_spreadsheet_path, engine='xlsxwriter') as writer:
-        img_data_df.to_excel(
-            writer, sheet_name='Cosine Distances', index=False
-        )
+    with pd.ExcelWriter(
+        spreadsheet_path, engine='openpyxl', mode='a', if_sheet_exists='replace'
+    ) as writer:
+        distances_df.to_excel(writer, sheet_name='CosineDistances', index=False)
 
     return distances_df
 
@@ -229,8 +229,8 @@ def event_img_embedding_distances(
         return entry_data
 
     project_root = io_utils.get_project_root()
-    distances_spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'event_img_distances_data.xlsx'
+    spreadsheet_path = os.path.join(
+        project_root, 'files/output/', 'event_img_data.xlsx'
     )
 
     if isinstance(img_data_df, str):
@@ -299,9 +299,9 @@ def event_img_embedding_distances(
 
     distances_df = pd.DataFrame(distance_data)
 
-    with pd.ExcelWriter(distances_spreadsheet_path, engine='xlsxwriter') as writer:
-        distances_df.to_excel(
-            writer, sheet_name='Cosine Distances', index=False
-        )
+    with pd.ExcelWriter(
+        spreadsheet_path, engine='openpyxl', mode='a', if_sheet_exists='replace'
+    ) as writer:
+        distances_df.to_excel(writer, sheet_name='CosineDistances', index=False)
 
     return distances_df

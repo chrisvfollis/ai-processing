@@ -1,15 +1,12 @@
 # standard dependencies
 import os
 import argparse
-import sys
-from datetime import datetime
-import math
 import argparse
 
 # 3rd-party dependencies
 import numpy as np
 import pandas as pd
-import cv2
+from openpyxl import load_workbook
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 import seaborn as sns
@@ -44,7 +41,7 @@ def analyze_embedding_data(
     
     project_root = io_utils.get_project_root()
     stats_spreadsheet_path = os.path.join(
-        project_root, 'files/output/', f'{dataset}_distances_stats.xlsx'
+        project_root, 'files/output/', f'{dataset}_data.xlsx'
     )
 
     summary = {}
@@ -92,8 +89,8 @@ def analyze_embedding_data(
     )
 
     with pd.ExcelWriter(stats_spreadsheet_path, engine='xlsxwriter') as writer:
-        global_df.to_excel(writer, sheet_name='Global Summary', index=True)
-        per_emp_df.to_excel(writer, sheet_name='Per Employee Summary', index=False)
+        global_df.to_excel(writer, sheet_name='GlobalStats', index=True)
+        per_emp_df.to_excel(writer, sheet_name='EmployeeStats', index=False)
 
     return summary
 

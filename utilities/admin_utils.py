@@ -398,10 +398,10 @@ def save_approved_img_data(
             continue
         standardized = saved_img_data_df[col].dt.tz_convert('UTC')
         saved_img_data_df[col] = standardized.dt.tz_localize(None)
-
-    with pd.ExcelWriter(spreadsheet_path, engine='xlsxwriter') as writer:
-        saved_img_data_df.to_excel(
-            writer, sheet_name='Approved Image Data', index=False
-        )
+    
+    with pd.ExcelWriter(
+        spreadsheet_path, engine='openpyxl', mode='a', if_sheet_exists='replace'
+    ) as writer:
+        saved_img_data_df.to_excel(writer, sheet_name='Metadata', index=False)
 
     return saved_img_data_df
