@@ -4,6 +4,7 @@ import argparse
 import sys
 from datetime import datetime
 import math
+import argparse
 
 # 3rd-party dependencies
 import numpy as np
@@ -18,7 +19,9 @@ from testing.execute import osnet_tests
 from utilities import io_utils
 
 
-def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
+def analyze_embedding_data(
+        dataset: str, embedding_distances: pd.DataFrame
+    ) -> dict:
     def _calculate_summary_stats(same, different, all) -> dict:
         datasets = [
             'same_employee',
@@ -41,7 +44,7 @@ def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
     
     project_root = io_utils.get_project_root()
     stats_spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'cos_distances_stats.xlsx'
+        project_root, 'files/output/', f'{dataset}_distances_stats.xlsx'
     )
 
     summary = {}
@@ -96,9 +99,20 @@ def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
 
 
 if __name__ == '__main__':
-    embeddings_filepath, img_data_df = osnet_tests.event_img_extraction()
-    distances_df = osnet_tests.event_img_embedding_distances(
-        embeddings_filepath, img_data_df
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', type=str, help='Which data to analyze')
+    args = parser.parse_args()
 
-    analyze_embedding_data(distances_df)
+    dataset = args.dataset
+    if dataset == 'market1501':
+        embeddings_filepath, img_data_df = osnet_tests.market1501_extraction()
+        distances_df = osnet_tests.market1501_embedding_distances(
+            embeddings_filepath, img_data_df
+        )
+    elif dataset == 'event_imgs':
+        embeddings_filepath, img_data_df = osnet_tests.event_img_extraction()
+        distances_df = osnet_tests.event_img_embedding_distances(
+            embeddings_filepath, img_data_df
+        )
+
+    analyze_embedding_data(dataset, distances_df)
