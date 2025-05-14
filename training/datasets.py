@@ -11,8 +11,8 @@ pass
 
 class EventImgs(Dataset):
     def __init__(self, img_data_df, transform=None):
-        self.image_paths = img_data_df['paths'].tolist()
-        self.labels = img_data_df['employee_id'].tolist()
+        self.image_paths = img_data_df['path'].tolist()
+        self.labels = img_data_df['person_id'].tolist()
         self.transform = transform
 
     def __len__(self):

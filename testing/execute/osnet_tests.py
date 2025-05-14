@@ -47,11 +47,14 @@ def load_market1501_metadata(dataset_dir: str = 'market-1501/') -> pd.DataFrame:
 
     img_data_df = pd.DataFrame(all_images)
 
-    spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'market1501_data.xlsx'
-    )
-    with pd.ExcelWriter(spreadsheet_path, engine='openpyxl', mode='w') as writer:
-        img_data_df.to_excel(writer, sheet_name='Metadata', index=False)
+    try:
+        spreadsheet_path = os.path.join(
+            project_root, 'files/output/', 'market1501_data.xlsx'
+        )
+        with pd.ExcelWriter(spreadsheet_path, engine='openpyxl', mode='w') as writer:
+            img_data_df.to_excel(writer, sheet_name='Metadata', index=False)
+    except ValueError:
+        print('Too many rows to save spreadsheet')
 
     return img_data_df
 
@@ -79,6 +82,9 @@ def market1501_extraction(
     embeddings_filepath = osnet.output_path
 
     try:
+        num_imgs = img_data_df['image'].shape[0]
+        print(f'Extracting feature embeddings from {num_imgs} images...')
+
         for image_path in img_data_df['path']:
             image = cv2.imread(image_path)
             osnet.extract_features(image)
@@ -94,7 +100,7 @@ def market1501_extraction(
 def market1501_embedding_distances(
         embeddings_filepath: str,
         img_data_df: pd.DataFrame,
-        chunk_size: int = 100
+        chunk_size: int = 100,
     ):
     def _structure_entry(img_1, img_2, distance):
         return {
@@ -117,6 +123,7 @@ def market1501_embedding_distances(
 
         metadata = [img_data_df.iloc[idx] for idx in indices]
 
+        print('Calculating cosine distances...')
         for start_idx in range(0, num_embeddings, chunk_size):
             end_idx = min(start_idx + chunk_size, num_embeddings)
             current_chunk_np = f['embeddings'][start_idx:end_idx]
@@ -149,14 +156,17 @@ def market1501_embedding_distances(
 
     distances_df = pd.DataFrame(distance_data)
 
-    spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'market1501_data.xlsx'
-    )
-    mode = 'a' if os.path.exists(spreadsheet_path) else 'w'
-    with pd.ExcelWriter(
-        spreadsheet_path, engine='openpyxl', mode=mode, if_sheet_exists='replace'
-    ) as writer:
-        distances_df.to_excel(writer, sheet_name='CosineDistances', index=False)
+    try:
+        spreadsheet_path = os.path.join(
+            project_root, 'files/output/', 'market1501_data.xlsx'
+        )
+        mode = 'a' if os.path.exists(spreadsheet_path) else 'w'
+        with pd.ExcelWriter(
+            spreadsheet_path, engine='openpyxl', mode=mode, if_sheet_exists='replace'
+        ) as writer:
+            distances_df.to_excel(writer, sheet_name='CosineDistances', index=False)
+    except ValueError:
+        print('Too many rows to save spreadsheet')
 
     return distances_df
 
@@ -191,6 +201,9 @@ def event_img_extraction(
     embeddings_filepath = osnet.output_path
 
     try:
+        num_imgs = img_data_df['image'].shape[0]
+        print(f'Extracting feature embeddings from {num_imgs} images...')
+
         for image in img_data_df['image']:
             image_path = os.path.join(img_dir_path, image)
             image = cv2.imread(image_path)
@@ -253,7 +266,8 @@ def event_img_embedding_distances(
                     'start_time',
                 ]
             })
-
+        
+        print('Calculating cosine distances...')
         for start_idx in range(0, num_embeddings, chunk_size):
             end_idx = min(start_idx + chunk_size, num_embeddings)
 
@@ -296,13 +310,16 @@ def event_img_embedding_distances(
 
     distances_df = pd.DataFrame(distance_data)
 
-    spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'event_imgs_data.xlsx'
-    )
-    mode = 'a' if os.path.exists(spreadsheet_path) else 'w'
-    with pd.ExcelWriter(
-        spreadsheet_path, engine='openpyxl', mode=mode, if_sheet_exists='replace'
-    ) as writer:
-        distances_df.to_excel(writer, sheet_name='CosineDistances', index=False)
+    try:
+        spreadsheet_path = os.path.join(
+            project_root, 'files/output/', 'event_imgs_data.xlsx'
+        )
+        mode = 'a' if os.path.exists(spreadsheet_path) else 'w'
+        with pd.ExcelWriter(
+            spreadsheet_path, engine='openpyxl', mode=mode, if_sheet_exists='replace'
+        ) as writer:
+            distances_df.to_excel(writer, sheet_name='CosineDistances', index=False)
+    except ValueError:
+        print('Too many rows to save spreadsheet')
 
     return distances_df

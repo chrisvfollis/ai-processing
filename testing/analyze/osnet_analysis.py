@@ -39,6 +39,8 @@ def analyze_embedding_data(
 
         return dict(zip(datasets, summary_stats))
     
+    print('Calculating summary stats...')
+
     project_root = io_utils.get_project_root()
 
     summary = {}
@@ -85,17 +87,25 @@ def analyze_embedding_data(
         .rename(columns={'level_0': 'person_id', 'level_1': 'category'})
     )
 
-    spreadsheet_path = os.path.join(
-        project_root, 'files/output/', f'{dataset}_data.xlsx'
-    )
-    with pd.ExcelWriter(spreadsheet_path, engine='xlsxwriter') as writer:
-        global_df.to_excel(writer, sheet_name='GlobalStats', index=True)
-        per_emp_df.to_excel(writer, sheet_name='EmployeeStats', index=False)
+    try:
+        spreadsheet_path = os.path.join(
+            project_root, 'files/output/', f'{dataset}_data.xlsx'
+        )
+        mode = 'a' if os.path.exists(spreadsheet_path) else 'w'
+        with pd.ExcelWriter(
+            spreadsheet_path, engine='openpyxl', mode=mode, if_sheet_exists='replace'
+        ) as writer:
+            global_df.to_excel(writer, sheet_name='GlobalStats', index=True)
+            per_emp_df.to_excel(writer, sheet_name='EmployeeStats', index=False)
+    except ValueError:
+        print('Too many rows to save spreadsheet')
 
     return summary
 
 
 def plot_distance_histograms(dataset: str, embedding_distances: pd.DataFrame):
+    print('Plotting distance histograms...')
+
     id_col_1 = embedding_distances['person_id1']
     id_col_2 = embedding_distances['person_id2']
 
@@ -137,3 +147,4 @@ if __name__ == '__main__':
         )
 
     analyze_embedding_data(dataset, distances_df)
+    plot_distance_histograms(dataset, distances_df)

@@ -54,9 +54,16 @@ class OSNet:
         new_state_dict = {}
         for key in state_dict.keys():
             new_key = key.replace('module.', '')
+
+            if (mode == 'train') and (
+                ('classifier.weight' in new_key) or
+                ('classifier.bias' in new_key)
+            ):
+                continue
+
             new_state_dict[new_key] = state_dict[key]
         
-        self.model.load_state_dict(new_state_dict)
+        self.model.load_state_dict(new_state_dict, strict=False)
         self.model.to(self.device)
 
         if mode == 'eval':
@@ -90,11 +97,10 @@ class OSNet:
                                 std=[0.229, 0.224, 0.225])
         ])
 
-        if num_classes < 100:   # freeze early layers
-            for name, param in self.model.base.named_parameters():
-                if 'layer3' not in name and 'layer4' not in name:
-                    param.requires_grad = False
-
+        # if num_classes < 100:   # freeze early layers
+        #     for name, param in self.model.named_parameters():
+        #         if 'layer3' not in name and 'layer4' not in name:
+        #             param.requires_grad = False
 
     def preprocess_input(
             self, input_data: Union[np.array, list[np.array]]
