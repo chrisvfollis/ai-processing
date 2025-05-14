@@ -1,0 +1,74 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[[source]]
+url = "https://download.pytorch.org/whl/cpu"
+verify_ssl = true
+name = "pytorch-cpu"
+
+
+# =============================================================================
+[packages]
+
+# =============================================================================
+#                         - DEEP LEARNING FRAMEWORKS -
+# -----------------------------------------------------------------------------
+
+torch = {version = "*", index = "pytorch-cpu"}
+onnx2torch = "*"
+tensorflow = "==2.15.0"
+keras = "==2.15.0"
+
+# =============================================================================
+#                          - IMAGE/VIDEO PROCESSING -
+# -----------------------------------------------------------------------------
+
+opencv-contrib-python = "*"
+pillow = "*"
+torchvision = {version = "*", index = "pytorch-cpu"}
+torchreid = "*"
+deepface = {git = "https://github.com/serengil/deepface.git", ref = "master"}
+facenet-pytorch = "*"
+
+# =============================================================================
+#                           - DATA MANIPULATION -
+# -----------------------------------------------------------------------------
+
+numpy = "*"
+pandas = "*"
+scipy = "*"
+openpyxl = "*"
+xlsxwriter = "*"
+h5py = "*"
+matplotlib = "*"
+scikit-learn = "*"
+statsmodels = "*"
+
+# =============================================================================
+#                  - CONNECTIONS (NETWORKING, APIS, ETC) -
+# -----------------------------------------------------------------------------
+
+requests = "*"
+boto3 = "*"
+python-dotenv = "*"
+psycopg2="*"
+
+# =============================================================================
+#                           - OTHER LIBRARIES -
+# -----------------------------------------------------------------------------
+
+shapely = "*"
+tqdm = "4.43.0"
+psutil = "*"
+jupyter = "*"
+pympler = "*"
+
+
+# =============================================================================
+[dev-packages]
+
+
+[requires]
+python_version = "3.10"

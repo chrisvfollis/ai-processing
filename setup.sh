@@ -24,6 +24,7 @@ else
     MACHINE="cpu"
 fi
 
+# Install:
 if [[ $1 == "--use-pipenv" ]]; then
     cp "runtime/native/$MACHINE/Pipfile" Pipfile
     pipenv install

@@ -97,6 +97,10 @@ models/weights/OSNet_finetuned.pth.tar
 !runtime/docker/cpu/dependencies/requirements.txt
 !runtime/docker/cpu/dependencies/dev-requirements.txt
 
+# PIPFILES:
+!runtime/native/cpu/Pipfile
+!runtime/native/gpu/Pipfile
+
 # STRUCTURED DATA:
 !models/weights/**/*.h5
 
