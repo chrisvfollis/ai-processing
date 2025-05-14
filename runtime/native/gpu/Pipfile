@@ -53,7 +53,7 @@ statsmodels = "*"
 requests = "*"
 boto3 = "*"
 python-dotenv = "*"
-psycopg2="*"
+psycopg2-binary = "*"
 
 # =============================================================================
 #                           - OTHER LIBRARIES -

@@ -46,7 +46,7 @@ setup(
         'requests',
         'boto3',
         'python-dotenv',
-        'psycopg2',
+        'psycopg2-binary',
 
         # Other Libraries:
         'shapely',

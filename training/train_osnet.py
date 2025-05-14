@@ -41,7 +41,7 @@ def event_img_finetune(num_epochs: int = 20):
     project_root = io_utils.get_project_root()
     weights_path = os.path.join(project_root, 'models/weights/', 'OSNet.pth.tar-250')
 
-    device = torch.device('gpu:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     osnet = OSNet(weights_path, device, num_classes=num_classes, mode='train')
 
     train_dataset = datasets.EventImgs(train_df, transform=osnet.transform)
