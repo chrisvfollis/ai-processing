@@ -228,7 +228,7 @@ if __name__ == '__main__':
     
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model_info = [
-        '../models/weights/YOLOv4.pth', '../models/weights/OSNet.pth.tar-250'
+        '../models/weights/YOLOv4.pth', 'OSNet.pth.tar-250'
         , ('Facenet512', 'centerface_gpu')
     ]
 

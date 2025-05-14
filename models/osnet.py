@@ -27,8 +27,8 @@ from utilities import io_utils
 class OSNet:
     def __init__(
             self,
-            weights_path: str,
-            device: torch.device,
+            weights_file: str = 'OSNet.pth.tar-250',
+            device: torch.device = None,
             input_dims: tuple[int, int] = (128, 256),
             output_shape: tuple[int] = (512,),
             num_classes: int = 751,
@@ -36,15 +36,20 @@ class OSNet:
             buffer_limit: int = 100,
             mode: str = 'eval'
         ):
-        self.device = device
+        self.project_root = io_utils.get_project_root()
+        self.weights_path = os.path.join(
+            self.project_root, 'models/weights/', weights_file
+        )
+        self.device = device or torch.device(
+            'gpu:0' if torch.cuda.is_available() else 'cpu'
+        )
 
         self.model = reid.osnet.osnet_x1_0(
             num_classes=num_classes,
             loss=loss,
             pretrained=False,
         )
-
-        checkpoint = torch.load(weights_path, map_location=device)
+        checkpoint = torch.load(self.weights_path, map_location=device)
         state_dict = checkpoint['state_dict']
         new_state_dict = {}
         for key in state_dict.keys():
@@ -67,12 +72,12 @@ class OSNet:
         self.buffer_type = None
         self.embedding_idx = 0
 
+    def eval_mode(self):
+        self.model.eval()
+
         self.preprocess_time = 0
         self.embedding_time = 0
         self.flush_time = 0
-
-    def eval_mode(self):
-        self.model.eval()
 
     def train_mode(self, num_classes):
         self.model.train()
@@ -85,7 +90,7 @@ class OSNet:
                                 std=[0.229, 0.224, 0.225])
         ])
 
-        if num_classes < 100:
+        if num_classes < 100:   # freeze early layers
             for name, param in self.model.base.named_parameters():
                 if 'layer3' not in name and 'layer4' not in name:
                     param.requires_grad = False
