@@ -14,7 +14,7 @@ from sklearn.metrics import roc_curve, auc
 import seaborn as sns
 
 # internal dependencies
-from testing import test_fxs
+from testing.execute import osnet_tests
 from utilities import io_utils
 
 
@@ -46,8 +46,8 @@ def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
 
     summary = {}
 
-    id_col_1a = embedding_distances['employee_id1']
-    id_col_2a = embedding_distances['employee_id2']
+    id_col_1a = embedding_distances['person_id1']
+    id_col_2a = embedding_distances['person_id2']
 
     same_employee = embedding_distances[id_col_1a == id_col_2a]
     different_employee = embedding_distances[id_col_1a != id_col_2a]
@@ -64,8 +64,8 @@ def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
             (id_col_2a == employee_id)
         ]
 
-        id_col_1b = employee_distances['employee_id1']
-        id_col_2b = employee_distances['employee_id2']
+        id_col_1b = employee_distances['person_id1']
+        id_col_2b = employee_distances['person_id2']
 
         same = employee_distances[id_col_1b == id_col_2b]
         different = employee_distances[id_col_1b != id_col_2b]
@@ -85,7 +85,7 @@ def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
         .stack()
         .apply(pd.Series)
         .reset_index()
-        .rename(columns={'level_0': 'employee_id', 'level_1': 'category'})
+        .rename(columns={'level_0': 'person_id', 'level_1': 'category'})
     )
 
     with pd.ExcelWriter(stats_spreadsheet_path, engine='xlsxwriter') as writer:
@@ -96,8 +96,8 @@ def analyze_embedding_data(embedding_distances: pd.DataFrame) -> dict:
 
 
 if __name__ == '__main__':
-    embeddings_filepath, img_data_df = test_fxs.extract_event_img_embeddings()
-    distances_df = test_fxs.calculate_embedding_distances(
+    embeddings_filepath, img_data_df = osnet_tests.event_img_extraction()
+    distances_df = osnet_tests.event_img_embedding_distances(
         embeddings_filepath, img_data_df
     )
 
