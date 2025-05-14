@@ -31,7 +31,7 @@ class OSNet:
             device: torch.device = None,
             input_dims: tuple[int, int] = (128, 256),
             output_shape: tuple[int] = (512,),
-            num_classes: int = 751,
+            num_classes: int = None,
             loss: str = 'triplet',
             buffer_limit: int = 100,
             mode: str = 'eval'
@@ -44,15 +44,26 @@ class OSNet:
             'gpu:0' if torch.cuda.is_available() else 'cpu'
         )
 
+        checkpoint = torch.load(self.weights_path, map_location=device)
+        state_dict = checkpoint['state_dict']
+
+        if not num_classes:
+            for key in state_dict:
+                if key.endswith('classifier.weight'):
+                    classifier_weight_shape = state_dict[key].shape
+                    num_classes = classifier_weight_shape[0]
+                    break
+            if num_classes is None:
+                raise ValueError('classifier.weight not found in checkpoint')
+
         self.model = reid.osnet.osnet_x1_0(
             num_classes=num_classes,
             loss=loss,
             pretrained=False,
         )
-        checkpoint = torch.load(self.weights_path, map_location=device)
-        state_dict = checkpoint['state_dict']
+
         new_state_dict = {}
-        for key in state_dict.keys():
+        for key in state_dict:
             new_key = key.replace('module.', '')
 
             if (mode == 'train') and (

@@ -132,16 +132,23 @@ def plot_distance_histograms(dataset: str, embedding_distances: pd.DataFrame):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, help='Which data to analyze')
+    parser.add_argument('--weights-file', type=str)
     args = parser.parse_args()
 
     dataset = args.dataset
+    weights_file = args.weights_file
+    
     if dataset == 'market1501':
-        embeddings_filepath, img_data_df = osnet_tests.market1501_extraction()
+        embeddings_filepath, img_data_df = osnet_tests.market1501_extraction(
+            weights_file=weights_file
+        )
         distances_df = osnet_tests.market1501_embedding_distances(
             embeddings_filepath, img_data_df
         )
     elif dataset == 'event_imgs':
-        embeddings_filepath, img_data_df = osnet_tests.event_img_extraction()
+        embeddings_filepath, img_data_df = osnet_tests.event_img_extraction(
+            weights_file=weights_file
+        )
         distances_df = osnet_tests.event_img_embedding_distances(
             embeddings_filepath, img_data_df
         )
