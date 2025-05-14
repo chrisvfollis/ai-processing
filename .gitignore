@@ -75,6 +75,9 @@ __pycache__/
 *.txt
 *.log
 
+# DATASETS:
+files/datasets/*
+
 # =============================================================================
 #                           + WHITELISTED FILES +
 # -----------------------------------------------------------------------------
@@ -93,3 +96,6 @@ __pycache__/
 
 # STRUCTURED DATA:
 !models/weights/**/*.h5
+
+# DIRECTORIES:
+!files/datasets/.gitkeep

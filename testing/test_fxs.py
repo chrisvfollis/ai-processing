@@ -62,10 +62,10 @@ def extract_event_img_embeddings(
     osnet.activate_buffers(
         'event_imgs',
         structure='standard',
-        output_dir=img_dir_path
+        output_dir=os.path.join(project_root, 'files/output/')
     )
     embeddings_filepath = osnet.output_path
-    
+
     img_data_df = admin_utils.save_approved_img_data(shop_id=shop_id)
 
     try:
