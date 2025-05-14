@@ -352,7 +352,7 @@ def save_approved_img_data(
     output_path = os.path.join(project_root, output_dir)
 
     img_dir_path = os.path.join(output_path, 'event_imgs/')
-    spreadsheet_path = os.path.join(output_path, 'approved_img_data.xlsx')
+    spreadsheet_path = os.path.join(output_path, 'event_img_data.xlsx')
 
     s3_client = conn_utils.s3_connect(region='us-west-1')
 
