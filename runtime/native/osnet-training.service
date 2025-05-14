@@ -1,5 +1,5 @@
 [Unit]
-Description=OSNet Training/Fine Tuning
+Description=OSNet Training/Fine-Tuning
 Wants=network-online.target
 After=network-online.target
 

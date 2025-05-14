@@ -4,6 +4,7 @@ import argparse
 import warnings
 
 # 3rd-party dependencies
+from openpyxl import load_workbook
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
@@ -87,10 +88,20 @@ def event_img_finetune(num_epochs: int = 20):
             'val_loss': val_loss,
         })
 
-    output_path = os.path.join(project_root, 'models/weights/', 'OSNet_finetuned.pth.tar')
+    output_path = os.path.join(
+        project_root, 'models/weights/', 'OSNet_finetuned.pth.tar'
+    )
     torch.save({'state_dict': osnet.model.state_dict()}, output_path)
 
-    return pd.DataFrame(training_run_data)
+    training_run_df = pd.DataFrame(training_run_data)
+
+    spreadsheet_path = os.path.join(
+        project_root, 'files/output/', 'OSNet_training_run.xlsx'
+    )
+    with pd.ExcelWriter(spreadsheet_path, engine='openpyxl', mode='w') as writer:
+        training_run_df.to_excel(writer, sheet_name='Epochs', index=False)
+
+    return training_run_df
 
 
 def train_one_epoch(model, loader, optimizer, criterion, device):
@@ -149,4 +160,4 @@ if __name__ == '__main__':
     dataset = args.dataset or 'event_imgs'
 
     if dataset == 'event_imgs':
-        event_img_finetune(num_epochs=num_epochs)
+        training_run_data = event_img_finetune(num_epochs=num_epochs)
