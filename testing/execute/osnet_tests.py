@@ -23,11 +23,8 @@ from utilities import admin_utils
 
 def load_market1501_metadata(dataset_dir: str = 'market-1501/') -> pd.DataFrame:
     project_root = io_utils.get_project_root()
-
     dataset_dir_path = os.path.join(project_root, 'files/datasets/', dataset_dir)
-    spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'market1501_data.xlsx'
-    )
+
 
     all_images = []
     image_dirs = ['query']
@@ -50,9 +47,10 @@ def load_market1501_metadata(dataset_dir: str = 'market-1501/') -> pd.DataFrame:
 
     img_data_df = pd.DataFrame(all_images)
 
-    with pd.ExcelWriter(
-        spreadsheet_path, engine='openpyxl', mode='a', if_sheet_exists='replace'
-    ) as writer:
+    spreadsheet_path = os.path.join(
+        project_root, 'files/output/', 'market1501_data.xlsx'
+    )
+    with pd.ExcelWriter(spreadsheet_path, engine='openpyxl', mode='w') as writer:
         img_data_df.to_excel(writer, sheet_name='Metadata', index=False)
 
     return img_data_df
@@ -110,9 +108,7 @@ def market1501_embedding_distances(
         }
 
     project_root = io_utils.get_project_root()
-    spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'market1501_data.xlsx'
-    )
+
     distance_data = []
 
     with h5py.File(embeddings_filepath, 'r') as f:
@@ -153,8 +149,12 @@ def market1501_embedding_distances(
 
     distances_df = pd.DataFrame(distance_data)
 
+    spreadsheet_path = os.path.join(
+        project_root, 'files/output/', 'market1501_data.xlsx'
+    )
+    mode = 'a' if os.path.exists(spreadsheet_path) else 'w'
     with pd.ExcelWriter(
-        spreadsheet_path, engine='openpyxl', mode='a', if_sheet_exists='replace'
+        spreadsheet_path, engine='openpyxl', mode=mode, if_sheet_exists='replace'
     ) as writer:
         distances_df.to_excel(writer, sheet_name='CosineDistances', index=False)
 
@@ -229,9 +229,6 @@ def event_img_embedding_distances(
         return entry_data
 
     project_root = io_utils.get_project_root()
-    spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'event_img_data.xlsx'
-    )
 
     if isinstance(img_data_df, str):
         img_data_df = pd.read_excel(img_data_df)
@@ -299,8 +296,12 @@ def event_img_embedding_distances(
 
     distances_df = pd.DataFrame(distance_data)
 
+    spreadsheet_path = os.path.join(
+        project_root, 'files/output/', 'event_imgs_data.xlsx'
+    )
+    mode = 'a' if os.path.exists(spreadsheet_path) else 'w'
     with pd.ExcelWriter(
-        spreadsheet_path, engine='openpyxl', mode='a', if_sheet_exists='replace'
+        spreadsheet_path, engine='openpyxl', mode=mode, if_sheet_exists='replace'
     ) as writer:
         distances_df.to_excel(writer, sheet_name='CosineDistances', index=False)
 

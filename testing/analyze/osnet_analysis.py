@@ -40,9 +40,6 @@ def analyze_embedding_data(
         return dict(zip(datasets, summary_stats))
     
     project_root = io_utils.get_project_root()
-    stats_spreadsheet_path = os.path.join(
-        project_root, 'files/output/', f'{dataset}_data.xlsx'
-    )
 
     summary = {}
 
@@ -88,11 +85,38 @@ def analyze_embedding_data(
         .rename(columns={'level_0': 'person_id', 'level_1': 'category'})
     )
 
-    with pd.ExcelWriter(stats_spreadsheet_path, engine='xlsxwriter') as writer:
+    spreadsheet_path = os.path.join(
+        project_root, 'files/output/', f'{dataset}_data.xlsx'
+    )
+    with pd.ExcelWriter(spreadsheet_path, engine='xlsxwriter') as writer:
         global_df.to_excel(writer, sheet_name='GlobalStats', index=True)
         per_emp_df.to_excel(writer, sheet_name='EmployeeStats', index=False)
 
     return summary
+
+
+def plot_distance_histograms(dataset: str, embedding_distances: pd.DataFrame):
+    id_col_1 = embedding_distances['person_id1']
+    id_col_2 = embedding_distances['person_id2']
+
+    same = embedding_distances[id_col_1 == id_col_2]['distance']
+    different = embedding_distances[id_col_1 != id_col_2]['distance']
+
+    plt.figure(figsize=(10, 5))
+    plt.hist(same, bins=50, alpha=0.6, label='Same Person')
+    plt.hist(different, bins=50, alpha=0.6, label='Different Person')
+    plt.xlabel('Cosine Distance')
+    plt.ylabel('Frequency')
+    plt.title(f'Cosine Distance Distributions - {dataset}')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    project_root = io_utils.get_project_root()
+    plot_path = os.path.join(project_root, 'files/output/', f'{dataset}_distance_histograms.png')
+    plt.savefig(plot_path)
+    plt.close()
+
 
 
 if __name__ == '__main__':

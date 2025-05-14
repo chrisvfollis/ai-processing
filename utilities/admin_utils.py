@@ -357,14 +357,13 @@ def save_approved_img_data(
     output_path = os.path.join(project_root, output_dir)
 
     img_dir_path = os.path.join(output_path, 'event_imgs/')
-    spreadsheet_path = os.path.join(output_path, 'event_img_data.xlsx')
 
     s3_client = conn_utils.s3_connect(region='us-west-1')
 
     saved_img_data = []
 
     cols = [
-        'employee_id',
+        'person_id',
         'shop_id',
         'image',
         'start_time',
@@ -399,9 +398,8 @@ def save_approved_img_data(
         standardized = saved_img_data_df[col].dt.tz_convert('UTC')
         saved_img_data_df[col] = standardized.dt.tz_localize(None)
     
-    with pd.ExcelWriter(
-        spreadsheet_path, engine='openpyxl', mode='a', if_sheet_exists='replace'
-    ) as writer:
+    spreadsheet_path = os.path.join(output_path, 'event_imgs_data.xlsx')
+    with pd.ExcelWriter(spreadsheet_path, engine='openpyxl', mode='w') as writer:
         saved_img_data_df.to_excel(writer, sheet_name='Metadata', index=False)
 
     return saved_img_data_df
