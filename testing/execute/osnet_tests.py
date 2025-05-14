@@ -90,7 +90,7 @@ def market1501_extraction(
         else:
             osnet.release_buffers()
 
-    return embeddings_filepath
+    return embeddings_filepath, img_data_df
 
 
 def market1501_embedding_distances(

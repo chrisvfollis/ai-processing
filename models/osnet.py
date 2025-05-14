@@ -11,6 +11,7 @@ import h5py
 import cv2
 import torch
 import torchvision.transforms.functional as TF
+from torchvision import transforms
 
 warnings.filterwarnings(
     "ignore", message="Cython evaluation",
@@ -24,9 +25,17 @@ from utilities import io_utils
 
 
 class OSNet:
-    def __init__(self, weights_path, device, input_dims=(128, 256),
-                 output_shape=(512,), num_classes=751, loss='triplet',
-                 buffer_limit=100):
+    def __init__(
+            self,
+            weights_path: str,
+            device: torch.device,
+            input_dims: tuple[int, int] = (128, 256),
+            output_shape: tuple[int] = (512,),
+            num_classes: int = 751,
+            loss: str = 'triplet',
+            buffer_limit: int = 100,
+            mode: str = 'eval'
+        ):
         self.device = device
 
         self.model = reid.osnet.osnet_x1_0(
@@ -44,7 +53,11 @@ class OSNet:
         
         self.model.load_state_dict(new_state_dict)
         self.model.to(self.device)
-        self.model.eval()
+
+        if mode == 'eval':
+            self.eval_mode()
+        elif mode == 'train':
+            self.train_mode(num_classes)
 
         self.input_dims = input_dims
         self.output_shape = output_shape
@@ -57,7 +70,27 @@ class OSNet:
         self.preprocess_time = 0
         self.embedding_time = 0
         self.flush_time = 0
-    
+
+    def eval_mode(self):
+        self.model.eval()
+
+    def train_mode(self, num_classes):
+        self.model.train()
+
+        self.transform = transforms.Compose([
+            transforms.Resize((256, 128)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
+        ])
+
+        if num_classes < 100:
+            for name, param in self.model.base.named_parameters():
+                if 'layer3' not in name and 'layer4' not in name:
+                    param.requires_grad = False
+
+
     def preprocess_input(
             self, input_data: Union[np.array, list[np.array]]
         ) -> torch.Tensor:

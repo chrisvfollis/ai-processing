@@ -318,8 +318,13 @@ def get_approved_records(shop_id=None) -> list[tuple]:
     conn, cursor = conn_utils.pg_db_connect(var_prefix='WEBAPP_DB')
 
     query = """
-        SELECT eel.employee_id, eel.shop_id, eel.image, eel.start_time,
-            sel.first_name, sel.last_name
+        SELECT
+            eel.employee_id,
+            eel.shop_id,
+            eel.image,
+            eel.start_time,
+            sel.first_name,
+            sel.last_name
         FROM employee_event_log_employeeevent eel
         JOIN shop_employeelist sel ON eel.employee_id = sel.id
         WHERE eel.review_status = 'approved'
@@ -358,7 +363,7 @@ def save_approved_img_data(
 
     saved_img_data = []
 
-    fields = [
+    cols = [
         'employee_id',
         'shop_id',
         'image',
@@ -368,10 +373,11 @@ def save_approved_img_data(
     ]
 
     for row in approved_records:
-        row_data = dict(zip(fields, row))
+        row_data = dict(zip(cols, row))
 
+        img_save_path = os.path.join(img_dir_path, row_data['image'])
+        row_data['path'] = img_save_path
         try:
-            img_save_path = os.path.join(img_dir_path, row_data['image'])
             if not os.path.exists(img_save_path):
                 s3_obj = s3_client.get_object(
                     Bucket=bucket_name,
