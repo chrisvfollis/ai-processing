@@ -9,7 +9,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 # internal dependencies
-from utilities import io_utils, log_utils
+from utilities import io_utils, log_utils, conn_utils
 import utilities.general_utils as utils
 
 logger = log_utils.get_logger(__name__)
@@ -66,26 +66,31 @@ def run_inference_pipeline(
 
 def run_tracking_pipeline(video_file, inference_data=None):
     project_root = io_utils.get_project_root()
+    output_dir = os.path.join(project_root, 'files/output/')
 
     file_prefix = video_file.split('.')[0]
     time_prefix = utils.parse_clip_filename(video_file, data='time')
 
     if not inference_data:
         filename = io_utils.get_latest_file(
-            project_root, 'files/output/', f'{file_prefix}_inference_data.pkl'
+            output_dir, f'{file_prefix}_inference_pipeline.pkl'
         )
-        data_path = os.path.join(project_root, 'files/output/', filename)
+        data_path = os.path.join(output_dir, filename)
 
         with open(data_path, 'rb') as f:
             inference_data = pickle.load(f)
+        
+    credentials = conn_utils.get_aws_credentials()
 
     from pipelines import TrackingPipeline
 
     trk_pipeline = TrackingPipeline(
         video_file,
         time_prefix,
-        *inference_data,
-        continuous_mode=False
+        inference_data['object_detections'],
+        inference_data['face_detections'],
+        credentials,
+        continuous_mode=False,
     )
 
     trk_pipeline.run(filter_tracks=False)
