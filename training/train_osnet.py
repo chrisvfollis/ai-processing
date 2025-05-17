@@ -45,8 +45,16 @@ def event_img_finetune(
         stratify=img_data_df['person_id'],
         random_state=42,
     )
+    dataset_manifest_path = os.path.join(
+        project_root, 'files/output/', 'OSNet_training_manifest.csv'
+    )
+    train_utils.save_dataset_manifest(
+        train_df, val_df, output_path=dataset_manifest_path
+    )
 
     train_dataset = datasets.EventImgs(train_df, transform=osnet.transform)
+    val_dataset = datasets.EventImgs(val_df, transform=osnet.transform)
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=32,
@@ -54,7 +62,6 @@ def event_img_finetune(
         num_workers=4,
         drop_last=True,
     )
-    val_dataset = datasets.EventImgs(val_df, transform=osnet.transform)
     val_loader = DataLoader(
         val_dataset,
         batch_size=32,
