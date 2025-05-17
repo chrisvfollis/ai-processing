@@ -19,17 +19,25 @@ from torchreid import losses
 # internal dependencies
 from models import OSNet
 from utilities import admin_utils, io_utils
-from training import datasets
+from training import datasets, train_utils
 
 
-def event_img_finetune(num_epochs: int = 20):
+def event_img_finetune(
+        weights_file: str = 'OSNet.pth.tar-250',
+        num_epochs: int = 20,
+        split: str = 'validate'
+    ) -> pd.DataFrame:
+    project_root = io_utils.get_project_root()
+
     img_data_df = admin_utils.save_approved_img_data()
-
-    img_counts = img_data_df['person_id'].value_counts()
-    valid_ids = img_counts[img_counts >= 2].index
-    img_data_df = img_data_df[img_data_df['person_id'].isin(valid_ids)]
-
+    img_data_df = train_utils.clean_dataset(
+        dataset=img_data_df,
+        class_col='person_id',
+        split=split,
+    )
     num_classes = img_data_df['person_id'].nunique()
+
+    osnet = OSNet(weights_file, num_classes=num_classes, mode='train')
 
     train_df, val_df = train_test_split(
         img_data_df,
@@ -37,12 +45,6 @@ def event_img_finetune(num_epochs: int = 20):
         stratify=img_data_df['person_id'],
         random_state=42,
     )
-
-    project_root = io_utils.get_project_root()
-    weights_path = os.path.join(project_root, 'models/weights/', 'OSNet.pth.tar-250')
-
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    osnet = OSNet(weights_path, device, num_classes=num_classes, mode='train')
 
     train_dataset = datasets.EventImgs(train_df, transform=osnet.transform)
     train_loader = DataLoader(
@@ -77,9 +79,9 @@ def event_img_finetune(num_epochs: int = 20):
             loader=train_loader,
             optimizer=optimizer,
             criterion=criterion,
-            device=device,
+            device=osnet.device,
         )
-        val_loss = evaluate(osnet.model, val_loader, criterion, device)
+        val_loss = evaluate(osnet.model, val_loader, criterion, osnet.device)
         print(f'Epoch {epoch} - Train Loss: {loss:.4f}, Val Loss: {val_loss:.4f}')
 
         training_run_data.append({
@@ -151,13 +153,18 @@ def evaluate(model, loader, criterion, device):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--weights-file', type=str)
     parser.add_argument('--num-epochs', type=int)
     parser.add_argument('--dataset', type=str)
 
     args = parser.parse_args()
 
+    weights_file = args.weights_file or 'OSNet.pth.tar-250'
     num_epochs = args.num_epochs or 20
     dataset = args.dataset or 'event_imgs'
 
     if dataset == 'event_imgs':
-        training_run_data = event_img_finetune(num_epochs=num_epochs)
+        training_run_data = event_img_finetune(
+            weights_file=weights_file,
+            num_epochs=num_epochs
+        )

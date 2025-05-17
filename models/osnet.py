@@ -41,7 +41,7 @@ class OSNet:
             self.project_root, 'models/weights/', weights_file
         )
         self.device = device or torch.device(
-            'gpu:0' if torch.cuda.is_available() else 'cpu'
+            'cuda:0' if torch.cuda.is_available() else 'cpu'
         )
 
         checkpoint = torch.load(self.weights_path, map_location=device)
