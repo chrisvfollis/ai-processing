@@ -1377,7 +1377,7 @@ class Track(KalmanFilter):
     def add_face_detection(self, possible_matches, frame_number):
         self.face_detections[frame_number] = possible_matches
     
-    def calc_cos_distances(self, new_embeddings, normalize=True):
+    def calc_cos_distances(self, new_embeddings):
         cached_embeddings = self.embedding_cache_tensor
         cos_sims = F.cosine_similarity(
             cached_embeddings.unsqueeze(1),
@@ -1386,7 +1386,8 @@ class Track(KalmanFilter):
         )
         cos_distances = 1 - cos_sims
 
-        return (cos_distances / 2) if normalize else cos_distances
+        normalized_cos_distances = cos_distances / 2
+        return cos_distances, normalized_cos_distances
     
     def calc_assn_costs(self, new_detections, new_embeddings, f_num, fps,
                         frame_diag, max_scale_ratio=1.5, max_pixel_delta=100):
@@ -1397,8 +1398,9 @@ class Track(KalmanFilter):
         '''
 
         def _spatial_analysis(new_detections, frame_diag, distance_cutoff=0.5):
-            def _normalized_euclidean(new_detections, frame_diag,
-                                      distance_cutoff=0.5):
+            def _euclidean_distances(
+                    new_detections, frame_diag, distance_cutoff=0.5
+                ):
                 device = new_detections.device
 
                 if len(new_detections) == 0:
@@ -1415,32 +1417,33 @@ class Track(KalmanFilter):
                 )
                 press_stopwatch(self, 'tensor_conversion')
 
-                distances = torch.norm(det_centroids - trk_centroid, dim=1)
-                normalized = distances / frame_diag
+                raw_distances = torch.norm(det_centroids - trk_centroid, dim=1)
+                normalized = raw_distances / frame_diag
 
                 normalized = torch.where(normalized >= distance_cutoff,
                                          torch.tensor(float('inf'),
                                                       device=device), 
                                          normalized)
 
-                return normalized
+                return raw_distances, normalized_distances
             
             def _normalized_area():
                 pass
 
             press_stopwatch(self, 'spatial_analysis')
 
-            euclidean_dists = _normalized_euclidean(
+            raw_distances, normalized_distances = _euclidean_distances(
                 new_detections, frame_diag, distance_cutoff=distance_cutoff
             )
 
             press_stopwatch(self, 'tensor_conversion')
-            self.cost_method_data[-1]['spatial_costs'] = euclidean_dists.tolist()
+            self.cost_method_data[-1]['spatial_costs_raw'] = raw_distances.tolist()
+            self.cost_method_data[-1]['spatial_costs'] = normalized_distances.tolist()
             press_stopwatch(self, 'tensor_conversion')
 
             press_stopwatch(self, 'spatial_analysis')
 
-            return euclidean_dists
+            return normalized_distances
 
         def _feature_analysis(new_embeddings, methods):
             def _weighted_moving_avg(cos_distances, mask,
@@ -1512,7 +1515,7 @@ class Track(KalmanFilter):
                 press_stopwatch(self, 'tensor_conversion')
                 return num_new_tensor
 
-            cos_distances = self.calc_cos_distances(new_embeddings)
+            raw_cos_distances, cos_distances = self.calc_cos_distances(new_embeddings)
 
             method_map = {'standard': 0, 'lowest': 1, 'median': 2}
 
@@ -1540,6 +1543,7 @@ class Track(KalmanFilter):
             
             press_stopwatch(self, 'tensor_conversion')
             self.cost_method_data[-1]['dissimilarity_costs'] = costs.tolist()
+            self.cost_method_data[-1]['dissimilarity_costs_raw'] = raw_cos_distances.tolist()
             self.cost_method_data[-1]['cost_methods'] = methods.tolist()
             press_stopwatch(self, 'tensor_conversion')
 
@@ -1550,9 +1554,11 @@ class Track(KalmanFilter):
             'frame': f_num,
             'track_id': self.track_id,
             'detection_count': len(new_detections),
+            'spatial_costs_raw': [],
             'spatial_costs': [],
+            'dissimilarity_costs_raw': [],
             'dissimilarity_costs': [],
-            'cost_methods': []
+            'cost_methods': [],
         })
 
         spatial_costs = _spatial_analysis(new_detections, frame_diag,
