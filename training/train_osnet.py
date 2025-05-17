@@ -19,6 +19,7 @@ from torchreid import losses
 # internal dependencies
 from models import OSNet
 from utilities import admin_utils, io_utils
+import utilities.general_utils as utils
 from training import datasets, train_utils
 
 
@@ -28,6 +29,8 @@ def event_img_finetune(
         split: str = 'validate'
     ) -> pd.DataFrame:
     project_root = io_utils.get_project_root()
+    output_dir = os.path.join(project_root, 'files/output/')
+    weights_dir = os.path.join(project_root, 'models/weights/')
 
     img_data_df = admin_utils.save_approved_img_data()
     img_data_df = train_utils.clean_dataset(
@@ -93,24 +96,31 @@ def event_img_finetune(
             'val_loss': val_loss,
         })
 
-    output_path = os.path.join(
-        project_root, 'models/weights/', 'OSNet_finetuned.pth.tar'
-    )
-    torch.save({
+    final_epoch = training_run_data[-1]
+    num_train = manifest_df.loc[manifest_df['split'] == 'train'].shape[0]
+    num_val = manifest_df.loc[manifest_df['split'] == 'val'].shape[0]
+
+    checkpoint = {
         'state_dict': osnet.model.state_dict(),
         'epoch_count': num_epochs,
         'train_manifest': manifest_df.to_dict(orient='list'),
-        'final_train_loss': training_run_data[-1]['train_loss'],
-        'final_val_loss': training_run_data[-1]['val_loss'],
+        'final_train_loss': final_epoch['train_loss'],
+        'final_val_loss': final_epoch['val_loss'],
         'num_classes': num_classes,
+        'num_train_samples': num_train,
+        'num_val_samples': num_val,
         'original_weights': weights_file,
-    }, output_path)
+    }
+    output_path = os.path.join(weights_dir, 'OSNet_finetuned.pth')
+    torch.save(checkpoint, output_path)
+
+    for key, value in checkpoint.items():
+        if isinstance(value, (str, int, float)):
+            print(f'{key}: {value}')
+
+    spreadsheet_path = os.path.join(output_dir, 'OSNet_training_run.xlsx')
 
     training_run_df = pd.DataFrame(training_run_data)
-
-    spreadsheet_path = os.path.join(
-        project_root, 'files/output/', 'OSNet_training_run.xlsx'
-    )
     with pd.ExcelWriter(spreadsheet_path, engine='openpyxl', mode='w') as writer:
         training_run_df.to_excel(writer, sheet_name='Epochs', index=False)
 
