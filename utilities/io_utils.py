@@ -105,7 +105,7 @@ def cleanup_semaphores(logger):
 
 
 def get_project_root() -> str:
-    '''Returns the absolute path of the project root'''
+    '''Gets the absolute path of the project root.'''
 
     current_path = os.path.abspath(os.path.dirname(__file__))
     
@@ -116,6 +116,54 @@ def get_project_root() -> str:
         current_path = os.path.dirname(current_path)
     
     raise RuntimeError('Project root not found')
+
+
+def get_common_dirs(project_root: Optional[str] = None) -> dict:
+    '''
+    Gets the absolute paths of frequently-used directories within the project
+    that functions & pipelines regularly read/write data to.
+
+    Args:
+        project_root (str): The absolute path of the project root. If you have
+            already stored this value in the current context, you may pass it
+            here for efficiency to avoid running get_project_root() again
+            unnecessarily.
+    '''
+    project_root = project_root or get_project_root()
+
+    input_dir = os.path.join(project_root, 'files/input/')
+    output_dir = os.path.join(project_root, 'files/output/')
+    
+    event_imgs_dir = os.path.join(output_dir, 'event_imgs/')
+    runtime_data_dir = os.path.join(output_dir, 'runtime_data')
+
+    model_weights_dir = os.path.join(project_root, 'models/weights/')
+
+    return {
+        'project_root': project_root,
+        'input_dir': input_dir,
+        'output_dir': output_dir,
+        'event_imgs_dir': event_imgs_dir,
+        'runtime_data_dir': runtime_data_dir,
+        'weights_dir': model_weights_dir,
+    }
+
+
+def set_common_dirs(
+        obj, project_root: Optional[str] = None,
+        exclude: Optional[Union[str, list]] = None
+    ) -> None:
+    common_dirs = get_common_dirs(project_root=project_root)
+
+    if exclude is None:
+        exclude = []
+    elif isinstance(exclude, str):
+        exclude = [exclude]
+
+    for dir in common_dirs.keys():
+        if dir in exclude:
+            continue
+        setattr(obj, dir, common_dirs[dir])
 
 
 def get_unique_filename(dir_path, base_name):
@@ -164,9 +212,8 @@ def get_latest_file(dir_path, base_name):
     return latest_file
 
 
-def delete_local_files(identifier, file_types='any',
-                 paths=['../files/input', '../files/output',
-                        '../files/output/event_imgs']):
+def delete_local_files(identifier, file_types: str = 'any',
+                       project_root: Optional[str] = None) -> bool:
     def _parse_name_and_extension(file):
         file_parts = [x for x in file.rsplit('.', 1)]
 
@@ -177,8 +224,17 @@ def delete_local_files(identifier, file_types='any',
     
         return name, extension
 
+    dirs = get_common_dirs(project_root=project_root)
+
+    paths = [dirs[d] for d in [
+        'input_dir',
+        'output_dir',
+        'event_imgs_dir',
+    ]]
+
     n_deleted = 0
     for path in paths:
+
         if not os.path.exists(path):
             print(f'Skipping non-existent path: {path}')
             continue
@@ -234,7 +290,7 @@ def save_event_image(img, credentials, project_root=None):
 
     object_key = f'{uuid.uuid4()}.jpg'
     file_path = os.path.join(event_imgs_dir, object_key)
-    
+
     cv2.imwrite(file_path, img)
     try:
         s3_client = boto3.client(
@@ -260,7 +316,8 @@ def upload_file(s3_client, bucket_name, file_path, object_key):
         print(f'Failed to upload {file_path}: {e}')
 
 
-def upload_data(credentials, dir='../files/output/', max_workers=8):
+def upload_data(credentials, max_workers=8):
+    output_dir = os.path.join(get_project_root(), 'files/output')
     try:
         session = boto3.session.Session()
         s3_client = session.client(
@@ -273,7 +330,7 @@ def upload_data(credentials, dir='../files/output/', max_workers=8):
 
         upload_tasks = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for root, _, files in os.walk(dir):
+            for root, _, files in os.walk(output_dir):
                 for file in files:
                     file_path = os.path.join(root, file)
                     object_key = file
@@ -300,7 +357,7 @@ def download_s3_footage(
     ) -> bool:
     s3_client = conn_utils.s3_connect(region='us-west-1', credentials=credentials)
     video_file = object_key.split('/')[-1]
-    local_path = os.path.join('../files/input', video_file)
+    local_path = os.path.join(get_project_root(), 'files/input', video_file)
 
     try:
         s3_client.download_file(bucket_name, object_key, local_path)
@@ -335,7 +392,6 @@ def download_s3_image(
         object_key,
         credentials=None,
         filename=None,
-        img_dir='../files/input',
         bucket_name='ivakt-employee-photos'
     ) -> bool:
     s3_client = conn_utils.s3_connect(
@@ -343,7 +399,7 @@ def download_s3_image(
     )
     if not filename:
         filename = object_key.split('/')[-1]
-    output_path = os.path.join(img_dir, filename)
+    output_path = os.path.join(get_project_root(), 'files/input/', filename)
 
     try:
         if os.path.exists(output_path):
@@ -365,7 +421,9 @@ def download_s3_image(
 # -----------------------------------------------------------------------------
 
 
-def build_database(db_path='../files/data.db') -> None:
+def build_database(db_name='data.db') -> None:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
+
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     cursor.execute('''
@@ -409,7 +467,8 @@ def build_database(db_path='../files/data.db') -> None:
     conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
-def get_shop(db_path='../files/data.db') -> tuple:
+def get_shop(db_name='data.db') -> tuple:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     cursor.execute('''
@@ -422,7 +481,7 @@ def get_shop(db_path='../files/data.db') -> tuple:
     return results
 
 
-def lookup_identities(image_paths, db_path='../files/data.db') -> list[tuple]:
+def lookup_identities(image_paths, db_name='data.db') -> list[tuple]:
     '''
     Returns:
         results (List[Tuple]):
@@ -435,6 +494,7 @@ def lookup_identities(image_paths, db_path='../files/data.db') -> list[tuple]:
             - last_name
             - designation: determines whether the person's data is reported 
     '''
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     filenames = tuple(
@@ -458,7 +518,8 @@ def lookup_identities(image_paths, db_path='../files/data.db') -> list[tuple]:
     return [results_map.get(filename) for filename in filenames]
 
 
-def lookup_name(identity_uuid, db_path='../files/data.db') -> tuple:
+def lookup_name(identity_uuid, db_name='data.db') -> tuple:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     identity_uuid = (identity_uuid,)
@@ -476,7 +537,8 @@ def lookup_name(identity_uuid, db_path='../files/data.db') -> tuple:
     return result
 
 
-def get_designation(identity_uuid, db_path='../files/data.db') -> Union[str, None]:
+def get_designation(identity_uuid, db_name='data.db') -> Union[str, None]:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     identity_uuid = (identity_uuid,)
@@ -496,7 +558,8 @@ def get_designation(identity_uuid, db_path='../files/data.db') -> Union[str, Non
 
 
 def save_track_info(time_prefix: str, camera: str, target_trks: dict,
-                    fps: int = 30, db_path='../files/data.db') -> None:
+                    fps: int = 30, db_name='data.db') -> None:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
     columns = [
@@ -543,7 +606,8 @@ def save_track_info(time_prefix: str, camera: str, target_trks: dict,
 
 
 def get_track_info(time_prefix: str, designation: Optional[str] = None,
-                   db_path: str = '../files/data.db') -> list[tuple]:
+                   db_name: str = 'data.db') -> list[tuple]:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
     
     query = '''
@@ -566,7 +630,8 @@ def get_track_info(time_prefix: str, designation: Optional[str] = None,
     return results
 
 
-def update_track_info(time_prefix, updates, db_path='../files/data.db') -> None:
+def update_track_info(time_prefix, updates, db_name='.data.db') -> None:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
     
     for track_id, data in updates.items():
@@ -584,7 +649,8 @@ def update_track_info(time_prefix, updates, db_path='../files/data.db') -> None:
     conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
-def clear_track_info(identifier, db_path='../files/data.db') -> None:
+def clear_track_info(identifier, db_name='data.db') -> None:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
     try:
         if identifier == 'all':
@@ -601,14 +667,19 @@ def clear_track_info(identifier, db_path='../files/data.db') -> None:
 
 
 def save_person_data(
-        person_data, db_path='../files/data.db', img_dir='../files/input/faces'
-    ) -> None:
+        person_data, db_name='data.db') -> None:
     def _format_filename(img_url) -> str:
         filename = img_url.rsplit('/', 1)[1]    # remove bucket/folder info
         return '.'.join(filename.rsplit('_', 1)[:2])    # format file extension
 
     credentials = conn_utils.get_aws_credentials()
+    
+    project_root = get_project_root()
+
+    db_path = os.path.join(project_root, 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
+
+    img_dir = os.path.join(project_root, 'files/input/', 'faces/')
 
     column_names_people = [
         'first_name',
@@ -677,7 +748,7 @@ def save_person_data(
             )
             cursor.execute(insert_query_faces, values_faces)
             download_s3_image(
-                object_key, credentials, filename=filename, img_dir=img_dir
+                object_key, credentials, filename=filename
             )
 
     conn_utils.close_sqlite_db(conn, cursor, commit=True)
@@ -712,8 +783,12 @@ def get_api_tokens(credentials: dict = None) -> Union[tuple[str], tuple[None]]:
 
 def fetch_person_data(
         shop_uuid: str = None, access_token: str = None, save_data: bool = True,
-        db_path: str = '../files/data.db', img_dir: str = '../files/input/faces'
-    ) -> list:
+        db_name: str = 'data.db') -> list:
+    project_root = get_project_root()
+
+    db_path = os.path.join(project_root, 'files/', db_name)
+    img_dir = os.path.join(project_root, 'files/input/', 'faces/')
+
     shop_uuid = shop_uuid or get_shop(db_path=db_path)[0]
     access_token = access_token or get_api_tokens()[0]
     
@@ -801,12 +876,12 @@ def clear_queue_block(shop_id, timestamp) -> None:
 
 
 def post_events_to_webapp(
-        time_prefix, db_path='../files/data.db'
+        time_prefix, db_name='data.db'
     ) -> Union[bool, None]:
     
     webapp_api = APIClient(var_prefix='WEBAPP_API')
 
-    shop_uuid = get_shop(db_path)[0]
+    shop_uuid = get_shop(db_name)[0]
 
     df = utils.create_track_df(time_prefix)
     df = utils.merge_track_records(df)

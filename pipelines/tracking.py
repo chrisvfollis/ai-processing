@@ -44,9 +44,10 @@ class TrackingPipeline:
                 - 1 = includes lightweight aggregate memory usage logs
                 - 2 = includes extensive memory usage logs
         '''
-        self.project_root = io_utils.get_project_root()
-        self.input_dir = os.path.join(self.project_root, 'files/input/')
-        self.output_dir = os.path.join(self.project_root, 'files/output/')
+        common_dirs = io_utils.get_common_dirs()
+        self.project_root = common_dirs['project_root']
+        self.input_dir = common_dirs['input_dir']
+        self.output_dir = common_dirs['output_dir']
 
         # GENERAL ATTRIBUTES:
         self.continuous_mode = continuous_mode

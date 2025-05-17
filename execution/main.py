@@ -232,7 +232,7 @@ if __name__ == '__main__':
     ]
 
     credentials = conn_utils.get_aws_credentials()
-    shop_id, _ = io_utils.get_shop('../files/data.db')
+    shop_id, _ = io_utils.get_shop()
 
     memory_monitor, _ = log_utils.observability_thread('low_memory', logger=logger)
     memory_monitor.start()
