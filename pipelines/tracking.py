@@ -1420,10 +1420,11 @@ class Track(KalmanFilter):
                 raw_distances = torch.norm(det_centroids - trk_centroid, dim=1)
                 normalized = raw_distances / frame_diag
 
-                normalized = torch.where(normalized >= distance_cutoff,
-                                         torch.tensor(float('inf'),
-                                                      device=device), 
-                                         normalized)
+                normalized = torch.where(
+                    normalized >= distance_cutoff,
+                    torch.tensor(float('inf'), device=device),
+                    normalized,
+                )
 
                 return raw_distances, normalized
             

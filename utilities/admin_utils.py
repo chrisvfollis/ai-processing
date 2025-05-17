@@ -348,15 +348,13 @@ def get_approved_records(shop_id=None) -> list[tuple]:
 def save_approved_img_data(
         approved_records: list[tuple] = None,
         bucket_name: str = 'timemanager-event-imgs',
-        output_dir: str = 'files/output/',
-        shop_id: str = None
+        shop_id: str = None,
     ) -> pd.DataFrame:
     approved_records = approved_records or get_approved_records(shop_id)
 
     project_root = io_utils.get_project_root()
-    output_path = os.path.join(project_root, output_dir)
-
-    img_dir_path = os.path.join(output_path, 'event_imgs/')
+    output_dir = os.path.join(project_root, 'files/output/')
+    img_dir = os.path.join(output_dir, 'event_imgs/')
 
     s3_client = conn_utils.s3_connect(region='us-west-1')
 
@@ -374,7 +372,7 @@ def save_approved_img_data(
     for row in approved_records:
         row_data = dict(zip(cols, row))
 
-        img_save_path = os.path.join(img_dir_path, row_data['image'])
+        img_save_path = os.path.join(img_dir, row_data['image'])
         row_data['path'] = img_save_path
         try:
             if not os.path.exists(img_save_path):
@@ -398,7 +396,7 @@ def save_approved_img_data(
         standardized = saved_img_data_df[col].dt.tz_convert('UTC')
         saved_img_data_df[col] = standardized.dt.tz_localize(None)
     
-    spreadsheet_path = os.path.join(output_path, 'event_imgs_data.xlsx')
+    spreadsheet_path = os.path.join(output_dir, 'event_imgs_data.xlsx')
     with pd.ExcelWriter(spreadsheet_path, engine='openpyxl', mode='w') as writer:
         saved_img_data_df.to_excel(writer, sheet_name='Metadata', index=False)
 

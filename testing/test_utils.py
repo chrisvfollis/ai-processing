@@ -306,3 +306,4 @@ def export_face_event_spreadsheet(
     for img_path in image_paths_to_remove:
         if os.path.exists(img_path):
             os.remove(img_path)
+
