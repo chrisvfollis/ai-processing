@@ -1006,8 +1006,12 @@ class TrackingPipeline:
                 images.append(cropped)
 
             if images: 
-                trk.start_img = io_utils.save_event_image(images[0], self.credentials)
-                trk.end_img = io_utils.save_event_image(images[-1], self.credentials)
+                trk.start_img = io_utils.save_event_image(
+                    images[0], self.credentials, project_root=self.project_root
+                )
+                trk.end_img = io_utils.save_event_image(
+                    images[-1], self.credentials, project_root=self.project_root
+                )
             else:
                 self.no_images += 1
 

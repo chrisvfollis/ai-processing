@@ -225,11 +225,16 @@ def read_embeddings(hdf5_file, target_frame, device):
         return target_embeddings
 
 
-def save_event_image(img, credentials, img_dir='../files/output/event_imgs/'):
+def save_event_image(img, credentials, project_root=None):
     if img is None:
         return None
+    
+    project_root = project_root or get_project_root()
+    event_imgs_dir = os.path.join(project_root, 'files/output/', 'event_imgs/')
+
     object_key = f'{uuid.uuid4()}.jpg'
-    file_path = os.path.join(img_dir, object_key)
+    file_path = os.path.join(event_imgs_dir, object_key)
+    
     cv2.imwrite(file_path, img)
     try:
         s3_client = boto3.client(
