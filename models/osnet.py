@@ -275,7 +275,7 @@ class OSNet:
             num_embeddings = len(embedding_data)
 
         if (len(self.embedding_buffer) + num_embeddings) >= self.buffer_limit:
-            self.flush_buffers()
+            self.flush_buffers(structure=structure)
 
         if structure == 'standard':
             self.embedding_buffer.append(embedding_data)
