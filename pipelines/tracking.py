@@ -124,7 +124,7 @@ class TrackingPipeline:
         self.detection_data, self.face_data = detection_data, face_data
         self.embedding_path = os.path.join(
             self.output_dir,
-            f'{self.video_file.split('.')[0]}_embeddings.hdf5'
+            f"{self.video_file.split('.')[0]}_embeddings.hdf5"
         )
         
         # CONTINUE PRIOR TRACKS:
