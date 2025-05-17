@@ -214,7 +214,6 @@ class OSNet:
             self,
             file_prefix: str,
             structure: str = 'standard',
-            output_dir: str = '../files/output',
             buffer_limit: int = None,
         ):
         '''
@@ -225,6 +224,8 @@ class OSNet:
         self.buffer_limit = buffer_limit or self.buffer_limit
 
         # set up buffer output file:
+        output_dir = os.path.join(self.project_root, 'files/output/')
+
         filename = file_prefix + '_embeddings.hdf5'
         unique_filename = io_utils.get_unique_filename(output_dir, filename)
 

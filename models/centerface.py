@@ -28,8 +28,11 @@ class CenterFace:
         ):
         self.device = device or utils.get_default_device()
 
+        self.project_root = io_utils.get_project_root()
+        self.output_dir = os.path.join(self.project_root, 'files/output/')
+
         weights_path = os.path.join(
-            io_utils.get_project_root(), 'models/weights/', weights_file
+            self.project_root, 'models/weights/', weights_file
         )
         self.model = torch.load(weights_path, map_location=self.device)
 
@@ -398,10 +401,12 @@ class CenterFace:
 
         return image
 
-    def save_runtime_data(self, filename='../files/output/centerface_data.xlsx'):
+    def save_runtime_data(self):
         if not self.save_data:
             return
-        
+
+        filename = os.path.join(self.output_dir, 'centerface_data.xlsx')
+
         detection_data = []
         for i, detections in self.face_detections.items():
             for det in detections:

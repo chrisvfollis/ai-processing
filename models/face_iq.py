@@ -29,8 +29,6 @@ class FaceIq:
             detection_model: str,
             id_cutoff: float = 0.8,
             device: torch.device = None,
-            face_dir: str = 'files/input/faces/',
-            db_path: str = 'files/data.db',
             detector_weights: str = 'centerface.pth',
             enhancer_weights: str = '90000_G.pth',
             save_data: bool = False, 
@@ -38,7 +36,11 @@ class FaceIq:
         self.device = device or utils.get_default_device()
 
         project_root = io_utils.get_project_root()
+        self.input_dir = os.path.join(self.project_root, 'files/input/')
+        self.output_dir = os.path.join(self.project_root, 'files/output/')
 
+        self.face_dir = os.path.join(self.input_dir, 'faces/')
+        self.db_path = os.path.join(project_root, 'files/', 'data.db')
 
         self.rec_model_name = recognition_model
         self.det_model_name = detection_model
@@ -51,9 +53,6 @@ class FaceIq:
         )
 
         self.id_cutoff = id_cutoff
-
-        self.face_dir = os.path.join(project_root, face_dir)
-        self.db_path = os.path.join(project_root, db_path)
 
         self.identification_pipeline_time = 0
         self.face_detection_time = 0
@@ -353,7 +352,6 @@ class FaceIq:
 
         if self.save_data:
             i_f = -1
-            output_dir = '../files/output'
             for face_df in results:
                 i_f += 1
                 
@@ -370,7 +368,7 @@ class FaceIq:
                 self.id_matches.setdefault(self.i, []).append(match_dict)
 
                 filename = f'{self.i}_{i_f}_{name}_detection.png'
-                output_path = os.path.join(output_dir, filename)
+                output_path = os.path.join(self.output_dir, filename)
 
                 x, y, w, h = best_match[['x', 'y', 'w', 'h']]
                 x1, y1, x2, y2 = utils.xywh_xyxy([x, y, w, h])
@@ -726,18 +724,18 @@ class FaceIq:
         
         if self.save_data or output_path:
             if not output_path:
-                output_dir = '../files/output'
                 filename = f'{self.i}_{self.i_f}_enhanced_detection.png'
-                output_path = os.path.join(output_dir, filename)
+                output_path = os.path.join(self.output_dir, filename)
 
             cv2.imwrite(output_path, enhanced_face)
 
         return enhanced_face
 
-    def save_runtime_data(self, filename='../files/output/faceiq_data.xlsx'):
+    def save_runtime_data(self):
         if not self.save_data:
             return
-        
+        filename = os.path.join(self.output_dir, 'faceiq_data.xlsx')
+    
         detection_data = []
         for i, detections in self.face_detections.items():
             identifications = self.id_matches.get(

@@ -27,8 +27,8 @@ logger = get_logger(__name__)
 class TrackingPipeline:
     def __init__(
             self,
-            video_file,
-            time_prefix,
+            video_file: str,
+            time_prefix: str,
             detection_data,
             face_data,
             credentials,
@@ -44,69 +44,11 @@ class TrackingPipeline:
                 - 1 = includes lightweight aggregate memory usage logs
                 - 2 = includes extensive memory usage logs
         '''
-        def _set_video_attrs(video_file, time_prefix):
-            self.video_file = video_file
-            self.video_path = os.path.join('../files/input/', video_file)
+        self.project_root = io_utils.get_project_root()
+        self.input_dir = os.path.join(self.project_root, 'files/input/')
+        self.output_dir = os.path.join(self.project_root, 'files/output/')
 
-            video_info = utils.get_video_info(self.video_path)
-
-            self.resolution = video_info[0]
-            self.frame_diag = video_info[1]
-            self.fps = video_info[2]
-            self.total_frames = video_info[3]
-
-            self.start_time = utils.frame_timestamp(time_prefix)
-            self.end_time = utils.frame_timestamp(
-                time_prefix, self.total_frames, self.fps
-            )
-            self.f_num = 0
-
-        def _set_timing_attrs():
-            self.primary_run_time = 0
-            self.persist_time = 0
-
-            self.trk_creation = 0
-            self.prediction = 0
-            self.match_measurements = 0
-            self.match_identities = 0
-            self.spatial_analysis = 0
-            self.feature_analysis = 0
-            
-            self.pkl_io = 0
-            self.read_embeddings = 0
-            self.tensor_conversion = 0
-
-        def _set_track_attrs():
-            self.trk_id = 0
-
-            self.active_trks = {}
-            self.inactive_trks = {}
-            self.filtered_trks = {}
-
-            self.min_lifespan = self.fps * 15
-            self.max_absence = self.fps * 3
-
-            self.persisted = 0
-            self.lifespan_filtered = 0
-            self.size_filtered = 0
-            self.no_images = 0
-        
-        def _set_parameters(conf_thresh):
-            self.conf_thresh = conf_thresh
-
-            self.dt = 1/self.fps
-            self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
-            self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
-                                                                # with an arbitrary dt of 0.5
-
-            self.initial_uncertainty = [5] * 8
-            self.m_noise = [250 * self.variance_scaling_factor] * 4
-            self.p_noise = [
-                (50 * self.timestep_scaling_factor) * self.variance_scaling_factor
-            ] * 4
-
-            # self.m_noise = [500] * 4
-        
+        # GENERAL ATTRIBUTES:
         self.continuous_mode = continuous_mode
         self.prior_pkl = ''
 
@@ -114,19 +56,78 @@ class TrackingPipeline:
         self.device = device or utils.get_default_device()
         self.credentials = credentials
         
-        _set_video_attrs(video_file, time_prefix)
+        # VIDEO ATTRIBUTES:
+        self.video_file = video_file
+        self.video_path = os.path.join(self.input_dir, video_file)
+
+        video_info = utils.get_video_info(self.video_path)
+
+        self.resolution = video_info[0]
+        self.frame_diag = video_info[1]
+        self.fps = video_info[2]
+        self.total_frames = video_info[3]
+
         self.progress_interval = self.total_frames // 4
 
-        _set_timing_attrs()
-        _set_track_attrs()
-        _set_parameters(conf_thresh)
+        self.start_time = utils.frame_timestamp(time_prefix)
+        self.end_time = utils.frame_timestamp(
+            time_prefix, self.total_frames, self.fps
+        )
+        self.f_num = 0
 
+        # TIMING ATTRIBUTES:
+        self.primary_run_time = 0
+        self.persist_time = 0
+
+        self.trk_creation = 0
+        self.prediction = 0
+        self.match_measurements = 0
+        self.match_identities = 0
+        self.spatial_analysis = 0
+        self.feature_analysis = 0
+        
+        self.pkl_io = 0
+        self.read_embeddings = 0
+        self.tensor_conversion = 0
+
+        # TRACK ATTRIBUTES:
+        self.trk_id = 0
+
+        self.active_trks = {}
+        self.inactive_trks = {}
+        self.filtered_trks = {}
+
+        self.min_lifespan = self.fps * 15
+        self.max_absence = self.fps * 3
+
+        self.persisted = 0
+        self.lifespan_filtered = 0
+        self.size_filtered = 0
+        self.no_images = 0
+
+        # PARAMETERS:
+        self.conf_thresh = conf_thresh
+
+        self.dt = 1/self.fps
+        self.variance_scaling_factor = (self.resolution[0] / 1920) ** 2
+        self.timestep_scaling_factor = (0.5/self.dt)**4     # Params were originally tuned
+                                                            # with an arbitrary dt of 0.5
+
+        self.initial_uncertainty = [5] * 8
+        # self.m_noise = [500] * 4
+        self.m_noise = [250 * self.variance_scaling_factor] * 4
+        self.p_noise = [
+            (50 * self.timestep_scaling_factor) * self.variance_scaling_factor
+        ] * 4
+
+        # INFERENCE DATA:
         self.detection_data, self.face_data = detection_data, face_data
         self.embedding_path = os.path.join(
-            "../files/output/",
-            f"{os.path.splitext(self.video_file)[0]}_embeddings.hdf5"
+            self.output_dir,
+            f'{self.video_file.split('.')[0]}_embeddings.hdf5'
         )
         
+        # CONTINUE PRIOR TRACKS:
         if continuous_mode == True:
             self.persist_prior_tracks()
 
@@ -156,15 +157,16 @@ class TrackingPipeline:
         
         press_stopwatch(self, 'persist_time')
 
-        output_dir = '../files/output'
-        files = [f for f in os.listdir(output_dir)
-                 if f.endswith(str(self.video_file.split('.')[0].split('_')[-1])
-                               + '.pkl')]
+        files = [
+            f for f in os.listdir(self.output_dir) if f.endswith(
+                str(self.video_file.split('.')[0].split('_')[-1]) + '.pkl'
+            )
+        ]
         if not files:
             return
         
         self.prior_pkl = sorted(files)[-1]
-        pkl_path = os.path.join(output_dir, self.prior_pkl)
+        pkl_path = os.path.join(self.output_dir, self.prior_pkl)
 
         press_stopwatch(self, 'pkl_io')
         with open(pkl_path, 'rb') as f:
@@ -938,12 +940,10 @@ class TrackingPipeline:
         _filter_by_lifespan(target_trks)
         _filter_by_size(target_trks)
 
-    def get_track_images(self, target, vid_dir='../files/input/'):
+    def get_track_images(self, target):
         logger.info('Getting track images...')
-    
-        vid_path = os.path.join(vid_dir, self.video_file)
 
-        cap = cv2.VideoCapture(vid_path)
+        cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
             return None
         
@@ -1013,33 +1013,33 @@ class TrackingPipeline:
 
         cap.release()
 
-    def save_pipeline_state(self, output_dir='../files/output'):
+    def save_pipeline_state(self):
         logger.info('Saving pipeline state...')
-        os.makedirs(output_dir, exist_ok=True)
         file_prefix = self.video_file.split('.')[0]
 
         logger.info(f'{len(self.active_trks.keys())} tracks saved to be continued')
 
-        save_path = os.path.join(output_dir, f'{file_prefix}.pkl')
+        save_path = os.path.join(self.output_dir, f'{file_prefix}.pkl')
 
         press_stopwatch(self, 'pkl_io')
         with open(save_path, "wb") as f:
             pickle.dump(self, f)
         
         if self.prior_pkl:
-            prior_path = os.path.join(output_dir, self.prior_pkl)
+            prior_path = os.path.join(self.output_dir, self.prior_pkl)
             if os.path.exists(prior_path) and os.path.isfile(prior_path):
                 os.remove(prior_path)
         press_stopwatch(self, 'pkl_io')
 
         logger.info('Tracking pipeline saved')
 
-    def save_runtime_data(self, output_dir='../files/output/runtime_data'):
+    def save_runtime_data(self):
         logger.info('Saving runtime data...')
-    
+
+        runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
         commit_hash, commit_datetime = utils.get_git_commit_info()
         clip_identifier = self.video_file.split('.')[0] + '_' + commit_hash
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(runtime_data_dir, exist_ok=True)
 
         all_tracks = {**self.active_trks, **self.inactive_trks, **self.filtered_trks}
 
@@ -1172,8 +1172,10 @@ class TrackingPipeline:
 
         cost_method_df = pd.DataFrame(self.cost_method_data)
 
-        filename = io_utils.get_unique_filename(output_dir, f'tracking_data_{clip_identifier}.xlsx')
-        excel_path = os.path.join(output_dir, filename)
+        filename = io_utils.get_unique_filename(
+            runtime_data_dir, f'tracking_data_{clip_identifier}.xlsx'
+        )
+        excel_path = os.path.join(runtime_data_dir, filename)
 
         try:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
@@ -1186,19 +1188,21 @@ class TrackingPipeline:
         except Exception as e:
             logger.error(f"Failed to save Excel file: {e}")
 
-    def generate_output_vid(self, input_dir='../files/input/', output_dir='../files/output/videos'):
+    def generate_output_vid(self):
         logger.info(f'Generating output video for {self.video_file}')
+
+        video_dir = os.path.join(self.output_dir, 'videos/')
 
         all_trks = self.all_trks
 
-        cap = cv2.VideoCapture(os.path.join(input_dir, self.video_file))
+        cap = cv2.VideoCapture(self.video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
 
         prefix = self.video_file.split('.')[0]
-        filename = io_utils.get_unique_filename(output_dir, f'{prefix}_boxes.mp4')
+        filename = io_utils.get_unique_filename(video_dir, f'{prefix}_boxes.mp4')
         
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(os.path.join(output_dir, filename),
+        out = cv2.VideoWriter(os.path.join(video_dir, filename),
                               fourcc, fps, (1920, 1080))
         
         color = (245, 104, 17)

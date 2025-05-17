@@ -21,8 +21,7 @@ logger = get_logger(__name__)
 
 class InferencePipeline:
     def __init__(self, video_file, model_info, device, yolo_params=None,
-                 osnet_params=None, faceiq_params=None,
-                 footage_dir='../files/input/'):
+                 osnet_params=None, faceiq_params=None):
         def _instantiate_models(model_info, device, yolo_params, osnet_params,
                                 faceiq_params):
             if not yolo_params:
@@ -42,27 +41,36 @@ class InferencePipeline:
                 self.face_iq = FaceIq(*model_info[2], device=device)
             else:
                 self.face_iq = FaceIq(*model_info[2], device=device, **faceiq_params)
-                    
-        def _set_video_attrs(video_file, footage_dir):
-            self.video_file = video_file
-            self.video_path = os.path.join(footage_dir, video_file)
 
-            video_info = utils.get_video_info(self.video_path)
-
-            self.resolution = video_info[0]
-            self.frame_diag = video_info[1]
-            self.fps = video_info[2]
-            self.total_frames = video_info[3]
-
-            self.f_num = 0
-        
         press_stopwatch(self, 'init_time')
+    
+        self.project_root = io_utils.get_project_root()
+        self.input_dir = os.path.join(self.project_root, 'files/input/')
+        self.output_dir = os.path.join(self.project_root, 'files/output/')
 
-        _set_video_attrs(video_file, footage_dir)
+        # VIDEO ATTRIBUTES:
+        self.video_file = video_file
+        self.video_path = os.path.join(self.input_dir, video_file)
+
+        video_info = utils.get_video_info(self.video_path)
+
+        self.resolution = video_info[0]
+        self.frame_diag = video_info[1]
+        self.fps = video_info[2]
+        self.total_frames = video_info[3]
+
+        self.f_num = 0
+
+        # MODEL SETUP:
         _instantiate_models(
-            model_info, device, yolo_params, osnet_params, faceiq_params
+            model_info,
+            device,
+            yolo_params,
+            osnet_params,
+            faceiq_params,
         )
         
+        # PARAMETERS:
         self.track_stride = max(1, self.fps // 10)
         self.id_stride = (self.fps // self.track_stride) * self.track_stride
 
@@ -70,9 +78,11 @@ class InferencePipeline:
             ((self.total_frames // 4) // self.track_stride) * self.track_stride
         )
 
+        # INFERENCE DATA STORAGE:
         self.object_detections = {}
         self.face_detections = {}
 
+        # TIMING ATTRIBUTES:
         self.primary_run_time = 0
         self.read_time = 0
         self.garbage_collection_time = 0
@@ -220,19 +230,19 @@ class InferencePipeline:
 
         return pd.concat(merged_dfs, ignore_index=True)
 
-    def save_runtime_data(self, output_dir='../files/output/runtime_data'):
+    def save_runtime_data(self):
+        runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
         commit_hash, commit_datetime = utils.get_git_commit_info()
 
         clip_identifier = self.video_file.split('.')[0] + '_' + commit_hash
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(runtime_data_dir, exist_ok=True)
 
-        prior_runtime_data = os.listdir(output_dir)
+        prior_runtime_data = os.listdir(runtime_data_dir)
         if len(prior_runtime_data) > 200:
             for filename in prior_runtime_data:
-                file_path = os.path.join(output_dir, filename)
+                file_path = os.path.join(runtime_data_dir, filename)
                 if os.path.isfile(file_path):
                     os.remove(file_path)
-
 
         config_data = {
             'module': [
@@ -329,8 +339,8 @@ class InferencePipeline:
         }
         performance_df = pd.DataFrame(performance_data)
         
-        filename = io_utils.get_unique_filename(output_dir, f'inference_data_{clip_identifier}.xlsx')
-        excel_path = os.path.join(output_dir, filename)
+        filename = io_utils.get_unique_filename(runtime_data_dir, f'inference_data_{clip_identifier}.xlsx')
+        excel_path = os.path.join(runtime_data_dir, filename)
 
         try:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
@@ -340,16 +350,14 @@ class InferencePipeline:
         except Exception as e:
             logger.info(f'Failed to save Excel file: {e}')
 
-    def save_pipeline_state(self, output_dir='../files/output'):
-        os.makedirs(output_dir, exist_ok=True)
-        file_prefix = self.video_file.split('.')[0]
-
+    def save_pipeline_state(self):
         logger.info('Saving inference pipeline state...')
 
+        file_prefix = self.video_file.split('.')[0]
         filename = io_utils.get_unique_filename(
-            output_dir, f'{file_prefix}_inference_pipeline.pkl'
+            self.output_dir, f'{file_prefix}_inference_pipeline.pkl'
         )
-        save_path = os.path.join(output_dir, filename)
+        save_path = os.path.join(self.output_dir, filename)
 
         # make shallow copy and remove unpickleable objects
         state = self.__dict__.copy()
