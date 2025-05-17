@@ -1223,7 +1223,7 @@ class TrackingPipeline:
             ret, frame = cap.read()
             if not ret:
                 break
-
+            
             for trk_id, trk in all_trks.items():
                 box = trk.states.get(f_num, None)
                 
@@ -1248,6 +1248,15 @@ class TrackingPipeline:
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
 
             frame = cv2.resize(frame, (1920, 1080))
+            cv2.putText(
+                frame,
+                f'Frame {f_num}',
+                (15, 1050),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                color,
+                2,
+            )
             out.write(frame)
             f_num += 1
 
