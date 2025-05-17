@@ -271,9 +271,7 @@ class FaceIq:
     
             for df in all_face_dfs:
                 if not df.empty:
-                    results = io_utils.lookup_identities(
-                        df['identity'], db_path=self.db_path
-                    )
+                    results = io_utils.lookup_identities(df['identity'])
 
                     df[['identity', 'name', 'designation']] = pd.DataFrame(
                         [(result[1], f'{result[3]}_{result[4]}', result[5])
@@ -462,7 +460,7 @@ class FaceIq:
         print('Formatted dataframe:')
         print(df)
 
-        results = io_utils.lookup_identities(df['identity'], db_path=self.db_path)
+        results = io_utils.lookup_identities(df['identity'])
         print(df)
         df[['identity', 'name', 'designation']] = pd.DataFrame(
             [(result[1], f'{result[3]}_{result[4]}', result[5])
