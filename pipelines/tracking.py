@@ -1425,7 +1425,7 @@ class Track(KalmanFilter):
                                                       device=device), 
                                          normalized)
 
-                return raw_distances, normalized_distances
+                return raw_distances, normalized
             
             def _normalized_area():
                 pass
