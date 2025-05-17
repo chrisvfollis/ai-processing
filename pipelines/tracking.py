@@ -111,9 +111,7 @@ class TrackingPipeline:
         self.prior_pkl = ''
 
         self.debug_level = debug_level
-        self.device = device or torch.device(
-            'cuda:0' if torch.cuda.is_available() else 'cpu'
-        )
+        self.device = device or utils.get_default_device()
         self.credentials = credentials
         
         _set_video_attrs(video_file, time_prefix)
