@@ -88,7 +88,7 @@ def run_tracking_pipeline(video_file, inference_data=None):
         continuous_mode=False
     )
 
-    trk_pipeline.run()
+    trk_pipeline.run(filter_tracks=False)
     trk_pipeline.save_runtime_data()
 
     trk_pipeline.generate_output_vid()

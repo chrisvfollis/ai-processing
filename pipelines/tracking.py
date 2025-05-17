@@ -202,7 +202,7 @@ class TrackingPipeline:
 
         press_stopwatch(self, 'persist_time')
 
-    def run(self, prior_pipeline=False):
+    def run(self, is_prior_pipeline=False, filter_tracks=True):
         def _get_measurements():
             detections = self.detection_data.get(self.f_num, [])
             if not detections:
@@ -450,7 +450,7 @@ class TrackingPipeline:
         
         press_stopwatch(self, 'primary_run_time')
 
-        if not prior_pipeline:
+        if not is_prior_pipeline:
             logger.info(f"Running tracking pipeline for {self.video_file}...")
 
         if self.debug_level >= 1:
@@ -499,21 +499,19 @@ class TrackingPipeline:
 
             if self.f_num % 100 == 0:
                 io_utils.clear_memory()
-
+                
             self.f_num += 1
 
-        if not prior_pipeline:
-            if self.continuous_mode == True:
-                target = 'inactive_trks'
-            elif self.continuous_mode == False:
-                target = 'all_trks'
+        try:
+            if is_prior_pipeline:
+                return
+
+            target = 'inactive_trks' if self.continuous_mode else 'all_trks'
 
             self.assign_identities(target)
-            self.filter_tracks(target)
-
-            if self.debug_level >= 1:
-                log_utils.dump_native_usage('before-get-track-images', logger=logger)
-
+            if filter_tracks:
+                self.filter_tracks(target)
+    
             self.get_track_images('all_trks')
 
             if self.continuous_mode == True:
@@ -521,14 +519,11 @@ class TrackingPipeline:
             
             press_stopwatch(self, 'primary_run_time')
 
-            if self.debug_level >= 1:
-                log_utils.dump_native_usage('save-runtime-start', logger=logger)
             self.save_runtime_data()
-            if self.debug_level >= 1:
-                log_utils.dump_native_usage('after-excel', logger=logger)
 
-        if self.debug_level == 2:
-            tracemalloc.stop()
+        finally:
+            if self.debug_level == 2:
+                tracemalloc.stop()
 
     def assign_identities(self, target):
         def _group_tracks(trk_ids, target_trks):
@@ -943,6 +938,11 @@ class TrackingPipeline:
     def get_track_images(self, target):
         logger.info('Getting track images...')
 
+        if self.debug_level >= 1:
+            log_utils.dump_native_usage(
+                'before-get-track-images', logger=logger
+            )
+
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
             return None
@@ -1035,6 +1035,9 @@ class TrackingPipeline:
 
     def save_runtime_data(self):
         logger.info('Saving runtime data...')
+
+        if self.debug_level >= 1:
+            log_utils.dump_native_usage('save-runtime-start', logger=logger)
 
         runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
         commit_hash, commit_datetime = utils.get_git_commit_info()
@@ -1187,6 +1190,9 @@ class TrackingPipeline:
                 logger.info(f'Saved tracking runtime data to {excel_path}')
         except Exception as e:
             logger.error(f"Failed to save Excel file: {e}")
+        finally:
+            if self.debug_level >= 1:
+                log_utils.dump_native_usage('after-excel', logger=logger)
 
     def generate_output_vid(self):
         logger.info(f'Generating output video for {self.video_file}')
