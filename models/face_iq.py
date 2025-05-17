@@ -35,12 +35,12 @@ class FaceIq:
         ):
         self.device = device or utils.get_default_device()
 
-        project_root = io_utils.get_project_root()
+        self.project_root = io_utils.get_project_root()
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
 
         self.face_dir = os.path.join(self.input_dir, 'faces/')
-        self.db_path = os.path.join(project_root, 'files/', 'data.db')
+        self.db_path = os.path.join(self.project_root, 'files/', 'data.db')
 
         self.rec_model_name = recognition_model
         self.det_model_name = detection_model
