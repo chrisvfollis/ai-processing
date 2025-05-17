@@ -1223,7 +1223,13 @@ class TrackingPipeline:
             ret, frame = cap.read()
             if not ret:
                 break
-            
+
+            for det in self.detection_data.get(f_num, []):
+                x, y, w, h = map(int, det[:4])
+                x1, y1 = x, y
+                x2, y2 = x + w, y + h
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2)
+
             for trk_id, trk in all_trks.items():
                 box = trk.states.get(f_num, None)
                 

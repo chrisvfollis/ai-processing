@@ -107,6 +107,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--pipeline', type=str)
     parser.add_argument('--video', type=str)
+
     parser.add_argument('--yolov4', type=str)
     parser.add_argument('--osnet', type=str)
     
@@ -126,4 +127,7 @@ if __name__ == '__main__':
     if pipeline == 'inference':
         run_inference_pipeline(video, model_info)
     elif pipeline == 'tracking':
+        run_tracking_pipeline(video)
+    elif pipeline == 'both':
+        run_inference_pipeline(video, model_info)
         run_tracking_pipeline(video)
