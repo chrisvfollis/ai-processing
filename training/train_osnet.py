@@ -45,12 +45,8 @@ def event_img_finetune(
         stratify=img_data_df['person_id'],
         random_state=42,
     )
-    dataset_manifest_path = os.path.join(
-        project_root, 'files/output/', 'OSNet_training_manifest.csv'
-    )
-    train_utils.save_dataset_manifest(
-        train_df, val_df, output_path=dataset_manifest_path
-    )
+
+    manifest_df = train_utils.create_dataset_manifest(train_df, val_df)
 
     train_dataset = datasets.EventImgs(train_df, transform=osnet.transform)
     val_dataset = datasets.EventImgs(val_df, transform=osnet.transform)
@@ -100,7 +96,15 @@ def event_img_finetune(
     output_path = os.path.join(
         project_root, 'models/weights/', 'OSNet_finetuned.pth.tar'
     )
-    torch.save({'state_dict': osnet.model.state_dict()}, output_path)
+    torch.save({
+        'state_dict': osnet.model.state_dict(),
+        'epoch_count': num_epochs,
+        'train_manifest': manifest_df.to_dict(orient='list'),
+        'final_train_loss': training_run_data[-1]['train_loss'],
+        'final_val_loss': training_run_data[-1]['val_loss'],
+        'num_classes': num_classes,
+        'original_weights': weights_file,
+    }, output_path)
 
     training_run_df = pd.DataFrame(training_run_data)
 

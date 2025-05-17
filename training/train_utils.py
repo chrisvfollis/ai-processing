@@ -35,7 +35,7 @@ def clean_dataset(
     return dataset
 
 
-def save_dataset_manifest(
+def create_dataset_manifest(
         training: pd.DataFrame,
         validation: pd.DataFrame,
         testing: Optional[pd.DataFrame] = None,
@@ -59,6 +59,7 @@ def save_dataset_manifest(
         all_datasets.append(testing)
 
     manifest_df = pd.concat(all_datasets, ignore_index=True)
+
     if output_path:
         manifest_df.to_csv(output_path, index=False)
 
