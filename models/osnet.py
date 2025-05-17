@@ -22,6 +22,7 @@ from torchreid import models as reid
 # internal dependencies
 from utilities.log_utils import press_stopwatch
 from utilities import io_utils
+import utilities.general_utils as utils
 
 
 class OSNet:
@@ -40,9 +41,7 @@ class OSNet:
         self.weights_path = os.path.join(
             self.project_root, 'models/weights/', weights_file
         )
-        self.device = device or torch.device(
-            'cuda:0' if torch.cuda.is_available() else 'cpu'
-        )
+        self.device = device or utils.get_default_device()
 
         checkpoint = torch.load(self.weights_path, map_location=device)
         state_dict = checkpoint['state_dict']

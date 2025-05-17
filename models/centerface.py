@@ -2,6 +2,7 @@
 from typing import List, Union, Sequence
 from collections.abc import Iterable
 import math
+import os
 
 # 3rd-party dependencies
 import numpy as np
@@ -12,25 +13,24 @@ from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
 from utilities import general_utils as utils
+from utilities import io_utils
 
 
 class CenterFace:
     def __init__(
             self,
             device: torch.device = None,
-            weights_path: str ='../models/weights/centerface.pth',
+            weights_file: str = 'centerface.pth',
             conf_thresh: float = 0.65,
             min_area: Union[Iterable[int], int] = (40, 40),
             ignore_landmarks: bool = False,
             save_data: bool = False
         ):
+        self.device = device or utils.get_default_device()
 
-        '''Inspired by https://github.com/Star-Clouds/CenterFace/'''
-
-        self.device = device or torch.device(
-            'cuda:0' if torch.cuda.is_available() else 'cpu'
+        weights_path = os.path.join(
+            io_utils.get_project_root(), 'models/weights/', weights_file
         )
-        
         self.model = torch.load(weights_path, map_location=self.device)
 
         self.model.eval()

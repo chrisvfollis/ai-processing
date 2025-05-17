@@ -1,6 +1,7 @@
 # standard dependencies
 from collections import OrderedDict
 import functools
+import os
 
 # 3rd-party dependencies
 import numpy as np
@@ -13,24 +14,25 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 import torchvision.transforms as transforms
 
 # internal dependencies
-pass
+import utilities.general_utils as utils
+from utilities import io_utils
 
 
 class ClearFace:
     def __init__(
             self,
             device: torch.device = None,
-            weights_path='weights/clearface/90000_G.pth',
+            weights_file: str = '90000_G.pth',
             in_nc: int = 3,
             out_nc: int = 3,
             nf: int = 64,
             nb: int = 16
         ):
+        self.device = device or utils.get_default_device()
 
-        self.weights_path = weights_path
-
-        self.device = device or torch.device(
-            'cuda:0' if torch.cuda.is_available() else 'cpu'
+        project_root = io_utils.get_project_root()
+        self.weights_path = os.path.join(
+            project_root, 'models/weights/clearface/', weights_file
         )
 
         self.netG = RRDBNet(

@@ -25,31 +25,35 @@ from utilities.log_utils import press_stopwatch
 class FaceIq:
     def __init__(
             self,
-            recognition_model,
-            detection_model,
-            id_cutoff=0.8,
-            device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'),
-            face_dir='../files/input/faces',
-            db_path='../files/data.db',
-            detector_weights='../models/weights/centerface.pth',
-            enhancer_weights='../models/weights/clearface/90000_G.pth',
-            save_data=False
+            recognition_model: str,
+            detection_model: str,
+            id_cutoff: float = 0.8,
+            device: torch.device = None,
+            face_dir: str = 'files/input/faces/',
+            db_path: str = 'files/data.db',
+            detector_weights: str = 'centerface.pth',
+            enhancer_weights: str = '90000_G.pth',
+            save_data: bool = False, 
         ):
+        self.device = device or utils.get_default_device()
+
+        project_root = io_utils.get_project_root()
+
 
         self.rec_model_name = recognition_model
         self.det_model_name = detection_model
 
         self.face_detector = CenterFace(
-            device=device, weights_path=detector_weights
+            device=self.device, weights_file=detector_weights
         )
         self.face_enhancer = ClearFace(
-            device=device, weights_path=enhancer_weights
+            device=self.device, weights_file=enhancer_weights
         )
 
         self.id_cutoff = id_cutoff
 
-        self.face_dir = face_dir
-        self.db_path = db_path
+        self.face_dir = os.path.join(project_root, face_dir)
+        self.db_path = os.path.join(project_root, db_path)
 
         self.identification_pipeline_time = 0
         self.face_detection_time = 0

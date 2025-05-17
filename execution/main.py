@@ -226,10 +226,9 @@ if __name__ == '__main__':
             logger.error(f'Invalid --start-from value: {args.start_from} ({e})')
             sys.exit(1)
     
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = utils.get_default_device()
     model_info = [
-        '../models/weights/YOLOv4.pth', 'OSNet.pth.tar-250'
-        , ('Facenet512', 'centerface_gpu')
+        'YOLOv4.pth', 'OSNet.pth.tar-250', ('Facenet512', 'centerface_gpu')
     ]
 
     credentials = conn_utils.get_aws_credentials()

@@ -1,6 +1,6 @@
 # standard dependencies
 import sys
-import time
+import os
 
 # 3rd-party dependencies
 import numpy as np
@@ -11,17 +11,29 @@ import torch.nn.functional as F
 
 # internal dependencies
 from utilities.log_utils import press_stopwatch
+from utilities import io_utils
+import utilities.general_utils as utils
 
 
 class YOLOv4:
-    def __init__(self, weights_path, device, nms_thresh=0.5, conf_thresh=0.65,
-                 input_dims=(416, 416)):
-        self.device = device
+    def __init__(
+            self,
+            weights_file: str = 'YOLOv4.pth',
+            device: torch.device = None,
+            nms_thresh: float = 0.5,
+            conf_thresh: float = 0.65,
+            input_dims: tuple[int] = (416, 416)
+        ):
+        self.device = device or utils.get_default_device()
 
         self.model = Yolov4Model(inference=True)
-        weights = torch.load(weights_path, map_location=device)
 
+        weights_path = os.path.join(
+            io_utils.get_project_root(), 'models/weights/', weights_file
+        )
+        weights = torch.load(weights_path, map_location=device)
         self.model.load_state_dict(weights)
+
         self.model.to(self.device)
         self.model.eval()
 

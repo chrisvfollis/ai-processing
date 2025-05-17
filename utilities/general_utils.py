@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import cv2
 from shapely.geometry import Polygon, box
+import torch
 
 # internal dependencies
 from utilities import io_utils
@@ -663,3 +664,10 @@ def merge_track_records(
         merged.append(current)
 
     return pd.DataFrame(merged)
+
+
+def get_default_device() -> torch.device:
+    '''Returns cuda:0 if a GPU is available, otherwise the CPU'''
+    return torch.device(
+        'cuda:0' if torch.cuda.is_available() else 'cpu'
+    )
