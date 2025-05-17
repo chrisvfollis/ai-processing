@@ -289,7 +289,7 @@ class OSNet:
         press_stopwatch(self, 'flush_time')
 
         if len(self.embedding_buffer) > 0:
-            self.write_embeddings(structure)
+            self.write_embeddings(structure=structure)
     
         for buffer in self.active_buffers:
             buffer.clear()
