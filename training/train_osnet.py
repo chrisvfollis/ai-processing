@@ -28,7 +28,7 @@ def event_img_finetune(
         weights_file: str = 'OSNet.pth.tar-250',
         num_epochs: int = 20,
         split: str = 'validate'
-    ) -> pd.DataFrame:
+    ) -> tuple[str]:
     run_id = str(uuid.uuid4())
 
     project_root = io_utils.get_project_root()
@@ -218,7 +218,13 @@ if __name__ == '__main__':
     dataset = args.dataset or 'event_imgs'
 
     if dataset == 'event_imgs':
-        training_run_data = event_img_finetune(
+        checkpoint_path, manifest_path, epoch_data_path = event_img_finetune(
             weights_file=weights_file,
             num_epochs=num_epochs
         )
+    
+    train_utils.upload_training_files(
+        checkpoint_path=checkpoint_path,
+        manifest_path=manifest_path,
+        epoch_data_path=epoch_data_path,
+    )

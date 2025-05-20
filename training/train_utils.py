@@ -5,7 +5,7 @@ from typing import Optional, Union
 import pandas as pd
 
 # internal dependencies
-from utilities import conn_utils
+from utilities import conn_utils, io_utils
 from utilities.conn_utils import APIClient
 
 
@@ -107,3 +107,22 @@ def log_training_run(
     else:
         print('Failed to log training run:', response.status_code, response.text)
         return False
+
+
+def upload_training_files(
+        checkpoint_path: str = None,
+        manifest_path: str = None,
+        epoch_data_path: str = None,
+        region: str = 'us-west-1',
+        bucket_name: str = 'ivakt-training-files',
+    ):
+    s3_client = conn_utils.s3_connect(region=region)
+
+    for path in [checkpoint_path, manifest_path, epoch_data_path]:
+        filename = path.split('/')[-1]
+        io_utils.upload_file(
+            s3_client,
+            bucket_name,
+            file_path=path,
+            object_key=filename,
+        )

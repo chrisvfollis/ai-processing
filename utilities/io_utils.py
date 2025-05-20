@@ -309,11 +309,15 @@ def save_event_image(img, credentials, project_root=None):
     return object_key
 
 
-def upload_file(s3_client, bucket_name, file_path, object_key):
+def upload_file(
+        s3_client, bucket_name: str, file_path: str, object_key: str
+    ) -> bool:
     try:
         s3_client.upload_file(file_path, bucket_name, object_key)
+        return True
     except Exception as e:
         print(f'Failed to upload {file_path}: {e}')
+        return False
 
 
 def upload_data(credentials, max_workers=8):
