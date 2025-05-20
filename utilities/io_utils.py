@@ -22,7 +22,6 @@ import boto3
 from botocore.exceptions import EndpointConnectionError, NoCredentialsError
 import requests
 import psutil
-import psycopg2
 
 # internal dependencies
 from utilities import general_utils as utils

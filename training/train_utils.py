@@ -68,7 +68,7 @@ def create_dataset_manifest(
 
 
 def log_training_run(
-    run_id: str,
+    checkpoint_id: str,
     model_name: str,
     starting_weights: str,
     output_weights: str,
@@ -85,7 +85,7 @@ def log_training_run(
     webapp_api = APIClient(var_prefix='INTERNAL_API')
 
     payload = {
-        'run_id': run_id,
+        'checkpoint_id': checkpoint_id,
         'model_name': model_name,
         'starting_weights': starting_weights,
         'output_weights': output_weights,
@@ -109,11 +109,11 @@ def log_training_run(
         return False
 
 
-def log_epoch_data(run_id: str, epoch_data: list[dict]):
+def log_epoch_data(checkpoint_id: str, epoch_data: list[dict]):
     webapp_api = APIClient(var_prefix='INTERNAL_API')
 
     for data in epoch_data:
-        payload = data | {'run_id': run_id}
+        payload = data | {'checkpoint_id': checkpoint_id}
 
         response = webapp_api.post('log_epoch/', json=payload)
         if response.status_code == 201:

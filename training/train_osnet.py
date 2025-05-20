@@ -20,7 +20,6 @@ from torchreid import losses
 # internal dependencies
 from models import OSNet
 from utilities import admin_utils, io_utils
-import utilities.general_utils as utils
 from training import datasets, train_utils
 
 
@@ -29,7 +28,7 @@ def event_img_finetune(
         num_epochs: int = 20,
         split: str = 'validate'
     ) -> tuple[str]:
-    run_id = str(uuid.uuid4())
+    checkpoint_id = str(uuid.uuid4())
 
     project_root = io_utils.get_project_root()
     output_dir = os.path.join(project_root, 'files/output/')
@@ -52,7 +51,7 @@ def event_img_finetune(
         random_state=42,
     )
 
-    manifest_filename = f'{run_id}_manifest.csv'
+    manifest_filename = f'{checkpoint_id}_manifest.csv'
     manifest_path = os.path.join(output_dir, manifest_filename)
 
     manifest_df = train_utils.create_dataset_manifest(
@@ -114,12 +113,12 @@ def event_img_finetune(
     model_name = 'OSNet'
     dataset_name = 'event_imgs'
 
-    output_weights_file = f'OSNet_{run_id}.pth'
+    output_weights_file = f'OSNet_{checkpoint_id}.pth'
     output_weights_path = os.path.join(weights_dir, output_weights_file)
 
     checkpoint = {
         'state_dict': osnet.model.state_dict(),
-        'run_id': run_id,
+        'checkpoint_id': checkpoint_id,
         'model_name': model_name,
         'starting_weights': weights_file,
         'dataset_name': dataset_name,
@@ -139,11 +138,11 @@ def event_img_finetune(
 
     epoch_data_df = pd.DataFrame(epoch_data)
 
-    epoch_csv_path = os.path.join(output_dir, f'{run_id}_epochs.csv')
+    epoch_csv_path = os.path.join(output_dir, f'{checkpoint_id}_epochs.csv')
     epoch_data_df.to_csv(epoch_csv_path, index=False)
 
     train_utils.log_training_run(
-        run_id,
+        checkpoint_id,
         model_name,
         weights_file,
         output_weights_file,
@@ -156,7 +155,7 @@ def event_img_finetune(
         final_train_loss,
         final_val_loss,
     )
-    train_utils.log_epoch_data(run_id, epoch_data)
+    train_utils.log_epoch_data(checkpoint_id, epoch_data)
 
     return output_weights_path, manifest_path, epoch_csv_path
 
