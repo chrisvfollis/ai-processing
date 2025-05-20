@@ -156,6 +156,7 @@ def event_img_finetune(
         final_train_loss,
         final_val_loss,
     )
+    train_utils.log_epoch_data(run_id, epoch_data)
 
     return output_weights_path, manifest_path, epoch_csv_path
 

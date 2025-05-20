@@ -109,6 +109,23 @@ def log_training_run(
         return False
 
 
+def log_epoch_data(run_id: str, epoch_data: list[dict]):
+    webapp_api = APIClient(var_prefix='WEBAPP_API')
+
+    for data in epoch_data:
+        payload = data | {'run_id': run_id}
+
+        response = webapp_api.post('log_epoch/', json=payload)
+        if response.status_code == 201:
+            print(f'Logged epoch {data["epoch"]}')
+        else:
+            print(
+                f'Failed to log epoch {data["epoch"]}:',
+                response.status_code,
+                response.text,
+            )
+
+
 def upload_training_files(
         checkpoint_path: str = None,
         manifest_path: str = None,
