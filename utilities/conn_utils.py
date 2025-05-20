@@ -58,7 +58,7 @@ class APIClient:
         endpoint_url = self.endpoint_url(endpoint)
         headers = headers or self.headers
 
-        return requests.get(endpoint_url, headers=headers, params=params, json=json)
+        return requests.post(endpoint_url, headers=headers, params=params, json=json)
 
 
 # =============================================================================
