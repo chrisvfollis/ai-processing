@@ -3,6 +3,7 @@ import os
 import argparse
 import warnings
 import uuid
+import itertools
 
 # 3rd-party dependencies
 from openpyxl import load_workbook
@@ -23,13 +24,43 @@ from utilities import admin_utils, io_utils
 from training import datasets, train_utils
 
 
+def run_grid_search(
+        source_checkpoint: str = 'OSNet.pth.tar-250',
+        num_epochs: int = 25,
+        split: str = 'validate',
+        hyperparam_grid: dict = {
+            'triplet_margin': [0.2, 0.3, 0.5],
+            'lr': [3e-4, 1e-3, 3e-3],
+            'weight_decay': [0, 1e-4, 1e-3],
+        }
+    ):
+    combinations = list(itertools.product(
+        hyperparam_grid['triplet_margin'],
+        hyperparam_grid['lr'],
+        hyperparam_grid['weight_decay'],
+    ))
+    for i, combination in enumerate(combinations):
+        print(f'Training with hyperparam combination {i}/{len(combinations)}...')
+        hyperparams['triplet_margin'] = combination[0]
+        hyperparams['lr'] = combination[1]
+        hyperparams['weight_decay'] = combination[2]
+    
+        output_paths = event_img_finetune(
+            source_checkpoint=source_checkpoint,
+            num_epochs=num_epochs,
+            split=split,
+            **hyperparams,
+        )
+        train_utils.upload_training_files(*output_paths)
+
+
 def event_img_finetune(
         source_checkpoint: str = 'OSNet.pth.tar-250',
-        num_epochs: int = 20,
+        num_epochs: int = 25,
         split: str = 'validate',
         triplet_margin: float = 0.3,
-        lr: float = 3.5e-4,
-        weight_decay: float = 5e-4,
+        lr: float = 3e-4,
+        weight_decay: float = 1e-4,
     ) -> tuple[str]:
     checkpoint_id = str(uuid.uuid4())
 
@@ -216,29 +247,38 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=str)
     # Dataset info:
     parser.add_argument('--dataset', type=str)
+    # Training run:
+    parser.add_argument('--num-epochs', type=int)
+    parser.add_argument('--grid-search', action='store_true')
     # Hyperparameters:
     parser.add_argument('--triplet-margin', type=float)
     parser.add_argument('--lr', type=float)
     parser.add_argument('--weight-decay', type=float)
-    parser.add_argument('--num-epochs', type=int)
 
     args = parser.parse_args()
 
     source_checkpoint = args.checkpoint or 'OSNet.pth.tar-250'
     dataset = args.dataset or 'event_imgs'
-    triplet_margin = args.triplet_margin or 0.3
-    lr = args.lr or 3.5e-4
-    weight_decay = args.weight_decay or 5e-4
-    num_epochs = args.num_epochs or 20
 
-    if dataset == 'event_imgs':
-        checkpoint_path, manifest_path, epoch_data_path = event_img_finetune(
-            source_checkpoint=source_checkpoint,
-            num_epochs=num_epochs
-        )
+    num_epochs = args.num_epochs or 25
+    grid_search = args.num_epochs or False
+
+    triplet_margin = args.triplet_margin or 0.3
+    lr = args.lr or 3e-4
+    weight_decay = args.weight_decay or 1e-4
     
-    train_utils.upload_training_files(
-        checkpoint_path=checkpoint_path,
-        manifest_path=manifest_path,
-        epoch_data_path=epoch_data_path,
-    )
+    if dataset == 'event_imgs':
+        if not grid_search:
+            output_paths = event_img_finetune(
+                source_checkpoint=source_checkpoint,
+                num_epochs=num_epochs,
+                triplet_margin=triplet_margin,
+                lr=lr,
+                weight_decay=weight_decay
+            )
+            train_utils.upload_training_files(*output_paths)
+        elif grid_search:
+            run_grid_search(
+                source_checkpoint=source_checkpoint,
+                num_epochs=num_epochs,
+            )
