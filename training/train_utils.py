@@ -70,8 +70,8 @@ def create_dataset_manifest(
 def log_training_run(
     checkpoint_id: str,
     model_name: str,
-    starting_weights: str,
-    output_weights: str,
+    source_checkpoint: str,
+    output_checkpoint: str,
     dataset_name: str,
     manifest_file: str,
     num_classes: int,
@@ -89,8 +89,8 @@ def log_training_run(
     model_info = {
         'checkpoint_id': checkpoint_id,
         'model_name': model_name,
-        'starting_weights': starting_weights,
-        'output_weights': output_weights,
+        'source_checkpoint': source_checkpoint,
+        'output_checkpoint': output_checkpoint,
     }
     dataset_info = {
         'dataset_name': dataset_name,

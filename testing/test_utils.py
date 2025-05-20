@@ -314,23 +314,28 @@ def log_test_data(
         evaluation_metric: str,
         evaluation_score: float,
         test_dataset_name: str,
-        test_manifest: str = None,
+        manifest_file: str = None,
         data_subset: str = None,
         num_test_samples: int = None,
     ):
     webapp_api = APIClient(var_prefix='INTERNAL_API')
 
-    payload = {
+    model_info = {
         'checkpoint_id': checkpoint_id,
-        'evaluation_metric': evaluation_metric,
-        'evaluation_score': evaluation_score,
+    }
+    dataset_info = {
         'test_dataset_name': test_dataset_name,
-        'test_manifest': test_manifest,
+        'manifest_file': manifest_file,
         'data_subset': data_subset,
         'num_test_samples': num_test_samples,
     }
-    response = webapp_api.post('log_test/', json=payload)
+    test_info_and_results = {
+        'evaluation_metric': evaluation_metric,
+        'evaluation_score': evaluation_score,
+    }
+    payload = model_info | dataset_info | test_info_and_results
 
+    response = webapp_api.post('log_test/', json=payload)
     if response.status_code == 201:
         print('Logged test result:', response.json())
         return True

@@ -24,7 +24,7 @@ from training import datasets, train_utils
 
 
 def event_img_finetune(
-        weights_file: str = 'OSNet.pth.tar-250',
+        source_checkpoint: str = 'OSNet.pth.tar-250',
         num_epochs: int = 20,
         split: str = 'validate',
         triplet_margin: float = 0.3,
@@ -42,7 +42,7 @@ def event_img_finetune(
     num_classes = img_data_df['person_id'].nunique()
 
     model_name = 'OSNet'
-    osnet = OSNet(weights_file, num_classes=num_classes, mode='train')
+    osnet = OSNet(source_checkpoint, num_classes=num_classes, mode='train')
 
     criterion = losses.TripletLoss(margin=triplet_margin)
     optimizer = torch.optim.Adam(
@@ -113,14 +113,14 @@ def event_img_finetune(
     num_train = manifest_df.loc[manifest_df['split'] == 'train'].shape[0]
     num_val = manifest_df.loc[manifest_df['split'] == 'val'].shape[0]
 
-    output_weights_file = f'OSNet_{checkpoint_id}.pth'
-    output_weights_path = os.path.join(weights_dir, output_weights_file)
+    output_checkpoint = f'OSNet_{checkpoint_id}.pth'
+    output_checkpoint_path = os.path.join(weights_dir, output_checkpoint)
 
     model_info = {
         'state_dict': osnet.model.state_dict(),
         'checkpoint_id': checkpoint_id,
         'model_name': model_name,
-        'starting_weights': weights_file,
+        'source_checkpoint': source_checkpoint,
     }
     dataset_info = {
         'dataset_name': dataset_name,
@@ -140,7 +140,7 @@ def event_img_finetune(
         'final_val_loss': final_val_loss,
     }
     checkpoint = model_info | dataset_info | hyperparameters | results
-    torch.save(checkpoint, output_weights_path)
+    torch.save(checkpoint, output_checkpoint_path)
 
     for key, value in checkpoint.items():
         if isinstance(value, (str, int, float)):
@@ -154,15 +154,15 @@ def event_img_finetune(
     train_utils.log_training_run(
         checkpoint_id,
         model_name,
-        weights_file,
-        output_weights_file,
+        source_checkpoint,
+        output_checkpoint,
         **dataset_info,
         **hyperparameters,
         **results,
     )
     train_utils.log_epoch_data(checkpoint_id, epoch_data)
 
-    return output_weights_path, manifest_path, epoch_csv_path
+    return output_checkpoint_path, manifest_path, epoch_csv_path
 
 
 def train_one_epoch(model, loader, optimizer, criterion, device):
@@ -213,7 +213,7 @@ def evaluate(model, loader, criterion, device):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # Model info:
-    parser.add_argument('--weights-file', type=str)
+    parser.add_argument('--checkpoint', type=str)
     # Dataset info:
     parser.add_argument('--dataset', type=str)
     # Hyperparameters:
@@ -224,7 +224,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    weights_file = args.weights_file or 'OSNet.pth.tar-250'
+    source_checkpoint = args.checkpoint or 'OSNet.pth.tar-250'
     dataset = args.dataset or 'event_imgs'
     triplet_margin = args.triplet_margin or 0.3
     lr = args.lr or 3.5e-4
@@ -233,7 +233,7 @@ if __name__ == '__main__':
 
     if dataset == 'event_imgs':
         checkpoint_path, manifest_path, epoch_data_path = event_img_finetune(
-            weights_file=weights_file,
+            source_checkpoint=source_checkpoint,
             num_epochs=num_epochs
         )
     
