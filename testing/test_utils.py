@@ -17,6 +17,7 @@ import boto3
 # internal dependencies
 from utilities import io_utils
 from utilities import conn_utils
+from utilities.conn_utils import APIClient
 
 
 def add_imgs_to_spreadsheet(df):
@@ -307,3 +308,32 @@ def export_face_event_spreadsheet(
         if os.path.exists(img_path):
             os.remove(img_path)
 
+
+def log_test_data(
+        checkpoint_id: str,
+        evaluation_metric: str,
+        evaluation_score: float,
+        test_dataset_name: str,
+        test_manifest: str = None,
+        data_subset: str = None,
+        num_test_samples: int = None,
+    ):
+    webapp_api = APIClient(var_prefix='INTERNAL_API')
+
+    payload = {
+        'checkpoint_id': checkpoint_id,
+        'evaluation_metric': evaluation_metric,
+        'evaluation_score': evaluation_score,
+        'test_dataset_name': test_dataset_name,
+        'test_manifest': test_manifest,
+        'data_subset': data_subset,
+        'num_test_samples': num_test_samples,
+    }
+    response = webapp_api.post('log_test/', json=payload)
+
+    if response.status_code == 201:
+        print('Logged training run:', response.json())
+        return True
+    else:
+        print('Failed to log training run:', response.status_code, response.text)
+        return False
