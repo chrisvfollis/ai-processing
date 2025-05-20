@@ -5,7 +5,8 @@ from typing import Optional, Union
 import pandas as pd
 
 # internal dependencies
-pass
+from utilities import conn_utils
+from utilities.conn_utils import APIClient
 
 
 def clean_dataset(
@@ -39,7 +40,7 @@ def create_dataset_manifest(
         training: pd.DataFrame,
         validation: pd.DataFrame,
         testing: Optional[pd.DataFrame] = None,
-        output_path: str = None
+        output_path: str = None,
     ) -> pd.DataFrame:
     '''
     Saves pertinent information about each sample in the dataset, such as
@@ -64,3 +65,45 @@ def create_dataset_manifest(
         manifest_df.to_csv(output_path, index=False)
 
     return manifest_df
+
+
+def log_training_run(
+    run_id: str,
+    model_name: str,
+    starting_weights: str,
+    output_weights: str,
+    dataset_name: str,
+    train_manifest: str,
+    num_classes: int,
+    num_train_samples: int,
+    num_val_samples: int,
+    epoch_count: int,
+    final_train_loss: float,
+    final_val_loss: float,
+    additional_metadata: dict = None,
+    ) -> bool:
+    webapp_api = APIClient(var_prefix='WEBAPP_API')
+
+    payload = {
+        'run_id': run_id,
+        'model_name': model_name,
+        'starting_weights': starting_weights,
+        'output_weights': output_weights,
+        'dataset_name': dataset_name,
+        'train_manifest': train_manifest,
+        'num_classes': num_classes,
+        'num_train_samples': num_train_samples,
+        'num_val_samples': num_val_samples,
+        'epoch_count': epoch_count,
+        'final_train_loss': final_train_loss,
+        'final_val_loss': final_val_loss,
+        'additional_metadata': additional_metadata or {},
+    }
+
+    response = webapp_api.post('log_training/', json=payload)
+    if response.status_code == 201:
+        print('Logged training run:', response.json())
+        return True
+    else:
+        print('Failed to log training run:', response.status_code, response.text)
+        return False

@@ -2,6 +2,7 @@
 import os
 import argparse
 import warnings
+import uuid
 
 # 3rd-party dependencies
 from openpyxl import load_workbook
@@ -28,6 +29,8 @@ def event_img_finetune(
         num_epochs: int = 20,
         split: str = 'validate'
     ) -> pd.DataFrame:
+    run_id = str(uuid.uuid4())
+
     project_root = io_utils.get_project_root()
     output_dir = os.path.join(project_root, 'files/output/')
     weights_dir = os.path.join(project_root, 'models/weights/')
@@ -38,8 +41,8 @@ def event_img_finetune(
         class_col='person_id',
         split=split,
     )
-    num_classes = img_data_df['person_id'].nunique()
 
+    num_classes = img_data_df['person_id'].nunique()
     osnet = OSNet(weights_file, num_classes=num_classes, mode='train')
 
     train_df, val_df = train_test_split(
@@ -49,8 +52,14 @@ def event_img_finetune(
         random_state=42,
     )
 
-    manifest_df = train_utils.create_dataset_manifest(train_df, val_df)
+    manifest_filename = f'{run_id}_manifest.csv'
+    manifest_path = os.path.join(output_dir, manifest_filename)
 
+    manifest_df = train_utils.create_dataset_manifest(
+        train_df, val_df,
+        output_path=manifest_path,
+    )
+    
     train_dataset = datasets.EventImgs(train_df, transform=osnet.transform)
     val_dataset = datasets.EventImgs(val_df, transform=osnet.transform)
 
@@ -76,7 +85,7 @@ def event_img_finetune(
         weight_decay=5e-4
     )
 
-    training_run_data = []
+    epoch_data = []
 
     for epoch in range(num_epochs):
         print(f'Starting epoch {epoch}...')
@@ -90,41 +99,65 @@ def event_img_finetune(
         val_loss = evaluate(osnet.model, val_loader, criterion, osnet.device)
         print(f'Epoch {epoch} - Train Loss: {loss:.4f}, Val Loss: {val_loss:.4f}')
 
-        training_run_data.append({
+        epoch_data.append({
             'epoch': epoch,
             'train_loss': loss,
             'val_loss': val_loss,
         })
 
-    final_epoch = training_run_data[-1]
+    final_epoch = epoch_data[-1]
+    final_train_loss = final_epoch['train_loss']
+    final_val_loss = final_epoch['val_loss']
     num_train = manifest_df.loc[manifest_df['split'] == 'train'].shape[0]
     num_val = manifest_df.loc[manifest_df['split'] == 'val'].shape[0]
 
+    model_name = 'OSNet'
+    dataset_name = 'event_imgs'
+
+    output_weights_file = f'OSNet_{run_id}.pth'
+    output_weights_path = os.path.join(weights_dir, output_weights_file)
+
     checkpoint = {
         'state_dict': osnet.model.state_dict(),
-        'epoch_count': num_epochs,
-        'train_manifest': manifest_df.to_dict(orient='list'),
-        'final_train_loss': final_epoch['train_loss'],
-        'final_val_loss': final_epoch['val_loss'],
+        'run_id': run_id,
+        'model_name': model_name,
+        'starting_weights': weights_file,
+        'dataset_name': dataset_name,
+        'train_manifest': manifest_filename,
         'num_classes': num_classes,
         'num_train_samples': num_train,
         'num_val_samples': num_val,
-        'original_weights': weights_file,
+        'epoch_count': num_epochs,
+        'final_train_loss': final_train_loss,
+        'final_val_loss': final_val_loss,
     }
-    output_path = os.path.join(weights_dir, 'OSNet_finetuned.pth')
-    torch.save(checkpoint, output_path)
+    torch.save(checkpoint, output_weights_path)
 
     for key, value in checkpoint.items():
         if isinstance(value, (str, int, float)):
             print(f'{key}: {value}')
 
-    spreadsheet_path = os.path.join(output_dir, 'OSNet_training_run.xlsx')
+    epoch_data_df = pd.DataFrame(epoch_data)
 
-    training_run_df = pd.DataFrame(training_run_data)
-    with pd.ExcelWriter(spreadsheet_path, engine='openpyxl', mode='w') as writer:
-        training_run_df.to_excel(writer, sheet_name='Epochs', index=False)
+    epoch_csv_path = os.path.join(output_dir, f'{run_id}_epochs.csv')
+    epoch_data_df.to_csv(epoch_csv_path, index=False)
 
-    return training_run_df
+    train_utils.log_training_run(
+        run_id,
+        model_name,
+        weights_file,
+        output_weights_file,
+        dataset_name,
+        manifest_filename,
+        num_classes,
+        num_train,
+        num_val,
+        num_epochs,
+        final_train_loss,
+        final_val_loss,
+    )
+
+    return output_weights_path, manifest_path, epoch_csv_path
 
 
 def train_one_epoch(model, loader, optimizer, criterion, device):
