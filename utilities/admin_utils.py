@@ -335,6 +335,7 @@ def get_approved_records(shop_id=None) -> list[tuple]:
         params = (shop_id,)
     
     try:
+        print('Retrieving approved event records...')
         cursor.execute(query, params)
         approved_records = cursor.fetchall()
     except Exception as e:
@@ -369,6 +370,7 @@ def save_approved_img_data(
         'last_name',
     ]
 
+    print('Saving approved event image data...')
     for row in approved_records:
         row_data = dict(zip(cols, row))
 

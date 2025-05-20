@@ -82,7 +82,7 @@ def log_training_run(
     final_val_loss: float,
     additional_metadata: dict = None,
     ) -> bool:
-    webapp_api = APIClient(var_prefix='WEBAPP_API')
+    webapp_api = APIClient(var_prefix='INTERNAL_API')
 
     payload = {
         'run_id': run_id,
@@ -110,7 +110,7 @@ def log_training_run(
 
 
 def log_epoch_data(run_id: str, epoch_data: list[dict]):
-    webapp_api = APIClient(var_prefix='WEBAPP_API')
+    webapp_api = APIClient(var_prefix='INTERNAL_API')
 
     for data in epoch_data:
         payload = data | {'run_id': run_id}
