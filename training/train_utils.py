@@ -73,32 +73,44 @@ def log_training_run(
     starting_weights: str,
     output_weights: str,
     dataset_name: str,
-    train_manifest: str,
+    manifest_file: str,
     num_classes: int,
     num_train_samples: int,
     num_val_samples: int,
-    epoch_count: int,
+    triplet_margin: float,
+    lr: float,
+    weight_decay: float,
+    num_epochs: int,
     final_train_loss: float,
     final_val_loss: float,
-    additional_metadata: dict = None,
     ) -> bool:
     webapp_api = APIClient(var_prefix='INTERNAL_API')
 
-    payload = {
+    model_info = {
         'checkpoint_id': checkpoint_id,
         'model_name': model_name,
         'starting_weights': starting_weights,
         'output_weights': output_weights,
+    }
+    dataset_info = {
         'dataset_name': dataset_name,
-        'train_manifest': train_manifest,
+        'manifest_file': manifest_file,
         'num_classes': num_classes,
         'num_train_samples': num_train_samples,
         'num_val_samples': num_val_samples,
-        'epoch_count': epoch_count,
+    }
+    hyperparameters = {
+        'triplet_loss_margin': triplet_margin,
+        'learning_rate': lr,
+        'weight_decay': weight_decay,
+        'num_epochs': num_epochs,
+    }
+    results = {
         'final_train_loss': final_train_loss,
         'final_val_loss': final_val_loss,
-        'additional_metadata': additional_metadata or {},
     }
+
+    payload = model_info | dataset_info | hyperparameters | results
 
     response = webapp_api.post('log_training/', json=payload)
     if response.status_code == 201:

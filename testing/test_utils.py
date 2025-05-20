@@ -332,8 +332,8 @@ def log_test_data(
     response = webapp_api.post('log_test/', json=payload)
 
     if response.status_code == 201:
-        print('Logged training run:', response.json())
+        print('Logged test result:', response.json())
         return True
     else:
-        print('Failed to log training run:', response.status_code, response.text)
+        print('Failed to log test result:', response.status_code, response.text)
         return False

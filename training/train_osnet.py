@@ -26,23 +26,28 @@ from training import datasets, train_utils
 def event_img_finetune(
         weights_file: str = 'OSNet.pth.tar-250',
         num_epochs: int = 20,
-        split: str = 'validate'
+        split: str = 'validate',
+        triplet_margin: float = 0.3,
+        lr: float = 3.5e-4,
+        weight_decay: float = 5e-4,
     ) -> tuple[str]:
     checkpoint_id = str(uuid.uuid4())
 
-    project_root = io_utils.get_project_root()
-    output_dir = os.path.join(project_root, 'files/output/')
-    weights_dir = os.path.join(project_root, 'models/weights/')
-
-    img_data_df = admin_utils.save_approved_img_data()
+    dataset_name = 'event_imgs'
     img_data_df = train_utils.clean_dataset(
-        dataset=img_data_df,
+        dataset=admin_utils.save_approved_img_data(),
         class_col='person_id',
         split=split,
     )
-
     num_classes = img_data_df['person_id'].nunique()
+
+    model_name = 'OSNet'
     osnet = OSNet(weights_file, num_classes=num_classes, mode='train')
+
+    criterion = losses.TripletLoss(margin=triplet_margin)
+    optimizer = torch.optim.Adam(
+        osnet.model.parameters(), lr=lr, weight_decay=weight_decay
+    )
 
     train_df, val_df = train_test_split(
         img_data_df,
@@ -50,6 +55,11 @@ def event_img_finetune(
         stratify=img_data_df['person_id'],
         random_state=42,
     )
+
+    project_root = io_utils.get_project_root()
+
+    output_dir = os.path.join(project_root, 'files/output/')
+    weights_dir = os.path.join(project_root, 'models/weights/')
 
     manifest_filename = f'{checkpoint_id}_manifest.csv'
     manifest_path = os.path.join(output_dir, manifest_filename)
@@ -75,13 +85,6 @@ def event_img_finetune(
         shuffle=False,
         num_workers=4,
         drop_last=False,
-    )
-
-    criterion = losses.TripletLoss(margin=0.3)
-    optimizer = torch.optim.Adam(
-        osnet.model.parameters(),
-        lr=3.5e-4,
-        weight_decay=5e-4
     )
 
     epoch_data = []
@@ -110,26 +113,33 @@ def event_img_finetune(
     num_train = manifest_df.loc[manifest_df['split'] == 'train'].shape[0]
     num_val = manifest_df.loc[manifest_df['split'] == 'val'].shape[0]
 
-    model_name = 'OSNet'
-    dataset_name = 'event_imgs'
-
     output_weights_file = f'OSNet_{checkpoint_id}.pth'
     output_weights_path = os.path.join(weights_dir, output_weights_file)
 
-    checkpoint = {
+    model_info = {
         'state_dict': osnet.model.state_dict(),
         'checkpoint_id': checkpoint_id,
         'model_name': model_name,
         'starting_weights': weights_file,
+    }
+    dataset_info = {
         'dataset_name': dataset_name,
-        'train_manifest': manifest_filename,
+        'manifest_file': manifest_filename,
         'num_classes': num_classes,
         'num_train_samples': num_train,
         'num_val_samples': num_val,
-        'epoch_count': num_epochs,
+    }
+    hyperparameters = {
+        'triplet_loss_margin': triplet_margin,
+        'learning_rate': lr,
+        'weight_decay': weight_decay,
+        'num_epochs': num_epochs,
+    }
+    results = {
         'final_train_loss': final_train_loss,
         'final_val_loss': final_val_loss,
     }
+    checkpoint = model_info | dataset_info | hyperparameters | results
     torch.save(checkpoint, output_weights_path)
 
     for key, value in checkpoint.items():
@@ -146,14 +156,9 @@ def event_img_finetune(
         model_name,
         weights_file,
         output_weights_file,
-        dataset_name,
-        manifest_filename,
-        num_classes,
-        num_train,
-        num_val,
-        num_epochs,
-        final_train_loss,
-        final_val_loss,
+        **dataset_info,
+        **hyperparameters,
+        **results,
     )
     train_utils.log_epoch_data(checkpoint_id, epoch_data)
 
@@ -207,15 +212,24 @@ def evaluate(model, loader, criterion, device):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    # Model info:
     parser.add_argument('--weights-file', type=str)
-    parser.add_argument('--num-epochs', type=int)
+    # Dataset info:
     parser.add_argument('--dataset', type=str)
+    # Hyperparameters:
+    parser.add_argument('--triplet-margin', type=float)
+    parser.add_argument('--lr', type=float)
+    parser.add_argument('--weight-decay', type=float)
+    parser.add_argument('--num-epochs', type=int)
 
     args = parser.parse_args()
 
     weights_file = args.weights_file or 'OSNet.pth.tar-250'
-    num_epochs = args.num_epochs or 20
     dataset = args.dataset or 'event_imgs'
+    triplet_margin = args.triplet_margin or 0.3
+    lr = args.lr or 3.5e-4
+    weight_decay = args.weight_decay or 5e-4
+    num_epochs = args.num_epochs or 20
 
     if dataset == 'event_imgs':
         checkpoint_path, manifest_path, epoch_data_path = event_img_finetune(
