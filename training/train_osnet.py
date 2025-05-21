@@ -112,7 +112,7 @@ def event_img_finetune(
     )
     val_loader = DataLoader(
         val_dataset,
-        batch_size=32,
+        batch_size=64,
         shuffle=False,
         num_workers=4,
         drop_last=False,
