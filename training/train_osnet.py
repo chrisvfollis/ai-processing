@@ -41,6 +41,7 @@ def run_grid_search(
     ))
     for i, combination in enumerate(combinations):
         print(f'Training with hyperparam combination {i}/{len(combinations)}...')
+        hyperparams = {}
         hyperparams['triplet_margin'] = combination[0]
         hyperparams['lr'] = combination[1]
         hyperparams['weight_decay'] = combination[2]
