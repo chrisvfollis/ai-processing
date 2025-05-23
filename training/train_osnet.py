@@ -90,8 +90,11 @@ def evaluate(model, loader, device, epoch):
     same_dists = dist_matrix[same_mask].cpu().numpy()
     diff_dists = dist_matrix[diff_mask].cpu().numpy()
 
-    avg_same = same_dists.mean() if len(same_dists) > 0 else float('inf')
-    avg_diff = diff_dists.mean() if len(diff_dists) > 0 else float('inf')
+    avg_same = same_dists.mean() if len(same_dists) > 0 else 1e-8
+    avg_diff = diff_dists.mean() if len(diff_dists) > 0 else 1e-8
+
+    if avg_diff == 0:
+        avg_diff = 1e-8
 
     avg_distance_ratio = avg_same / avg_diff    # smaller is better
 
@@ -202,6 +205,7 @@ def event_img_finetune(
     final_epoch = epoch_data[-1]
     final_train_loss = final_epoch['train_loss']
     final_val_dist_ratio = final_epoch['val_dist_ratio']
+
     num_train = manifest_df.loc[manifest_df['split'] == 'train'].shape[0]
     num_val = manifest_df.loc[manifest_df['split'] == 'val'].shape[0]
 
