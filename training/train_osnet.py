@@ -142,7 +142,6 @@ def event_img_finetune(
         train_dataset,
         batch_size=P*K,
         sampler=PKSampler(train_labels, P=P, K=K),
-        shuffle=True,
         drop_last=True,
         num_workers=4,
     )
@@ -293,9 +292,9 @@ if __name__ == '__main__':
     source_checkpoint = args.checkpoint or 'OSNet.pth.tar-250'
     dataset = args.dataset or 'event_imgs'
 
-    num_epochs = args.num_epochs or 25
     grid_search = args.num_epochs or False
 
+    num_epochs = args.num_epochs or 25
     triplet_margin = args.triplet_margin or 0.3
     lr = args.lr or 3e-4
     weight_decay = args.weight_decay or 1e-4
