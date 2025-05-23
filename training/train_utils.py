@@ -77,7 +77,7 @@ def log_training_run(
     num_classes: int,
     num_train_samples: int,
     num_val_samples: int,
-    triplet_margin: float,
+    triplet_loss_margin: float,
     lr: float,
     weight_decay: float,
     num_epochs: int,
@@ -100,7 +100,7 @@ def log_training_run(
         'num_val_samples': num_val_samples,
     }
     hyperparameters = {
-        'triplet_loss_margin': triplet_margin,
+        'triplet_loss_margin': triplet_loss_margin,
         'learning_rate': lr,
         'weight_decay': weight_decay,
         'num_epochs': num_epochs,
