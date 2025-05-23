@@ -21,7 +21,8 @@ from torchreid import losses
 # internal dependencies
 from models import OSNet
 from utilities import admin_utils, io_utils
-from training import datasets, train_utils
+from training import train_utils
+from training.datasets import PKSampler, EventImgs
 
 
 def run_grid_search(
@@ -60,10 +61,15 @@ def event_img_finetune(
         num_epochs: int = 25,
         split: str = 'validate',
         triplet_margin: float = 0.3,
+        P: int = 4,
+        K: int = 8,
         lr: float = 3e-4,
         weight_decay: float = 1e-4,
     ) -> tuple[str]:
     checkpoint_id = str(uuid.uuid4())
+
+    project_root = io_utils.get_project_root()
+    output_dir = os.path.join(project_root, 'files/output/')
 
     dataset_name = 'event_imgs'
     img_data_df = train_utils.clean_dataset(
@@ -75,7 +81,6 @@ def event_img_finetune(
 
     model_name = 'OSNet'
     osnet = OSNet(source_checkpoint, num_classes=num_classes, mode='train')
-
     criterion = losses.TripletLoss(margin=triplet_margin)
     optimizer = torch.optim.Adam(
         osnet.model.parameters(), lr=lr, weight_decay=weight_decay
@@ -87,11 +92,26 @@ def event_img_finetune(
         stratify=img_data_df['person_id'],
         random_state=42,
     )
+    train_labels = train_df['person_id'].tolist()
+    
+    train_dataset = EventImgs(train_df, transform=osnet.transform)
+    val_dataset = EventImgs(val_df, transform=osnet.transform)
 
-    project_root = io_utils.get_project_root()
-
-    output_dir = os.path.join(project_root, 'files/output/')
-    weights_dir = os.path.join(project_root, 'models/weights/')
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=P*K,
+        sampler=PKSampler(train_labels, P=P, K=K),
+        shuffle=True,
+        drop_last=True,
+        num_workers=4,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=64,
+        shuffle=False,
+        drop_last=False,
+        num_workers=4,
+    )
 
     manifest_filename = f'{checkpoint_id}_manifest.csv'
     manifest_path = os.path.join(output_dir, manifest_filename)
@@ -99,24 +119,6 @@ def event_img_finetune(
     manifest_df = train_utils.create_dataset_manifest(
         train_df, val_df,
         output_path=manifest_path,
-    )
-    
-    train_dataset = datasets.EventImgs(train_df, transform=osnet.transform)
-    val_dataset = datasets.EventImgs(val_df, transform=osnet.transform)
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=32,
-        shuffle=True,
-        num_workers=4,
-        drop_last=True,
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=64,
-        shuffle=False,
-        num_workers=4,
-        drop_last=False,
     )
 
     epoch_data = []
@@ -146,7 +148,9 @@ def event_img_finetune(
     num_val = manifest_df.loc[manifest_df['split'] == 'val'].shape[0]
 
     output_checkpoint = f'OSNet_{checkpoint_id}.pth'
-    output_checkpoint_path = os.path.join(weights_dir, output_checkpoint)
+    output_checkpoint_path = os.path.join(
+        project_root, 'models/weights/', output_checkpoint
+    )
 
     model_info = {
         'state_dict': osnet.model.state_dict(),
