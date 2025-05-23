@@ -28,7 +28,7 @@ from training.datasets import PKSampler, EventImgs
 
 def train_one_epoch(model, loader, optimizer, criterion, device):
     batch = 0
-    progress_interval = len(loader) // 4
+    progress_interval = max(len(loader) // 4, 1)
 
     total_loss = 0
     for imgs, labels in loader:
