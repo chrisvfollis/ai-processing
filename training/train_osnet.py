@@ -26,35 +26,75 @@ from training import train_utils
 from training.datasets import PKSampler, EventImgs
 
 
-def run_grid_search(
-        source_checkpoint: str = 'OSNet.pth.tar-250',
-        num_epochs: int = 25,
-        split: str = 'validate',
-        hyperparam_grid: dict = {
-            'triplet_margin': [0.2, 0.3, 0.5],
-            'lr': [3e-4, 1e-3, 3e-3],
-            'weight_decay': [0, 1e-4, 1e-3],
-        }
-    ):
-    combinations = list(itertools.product(
-        hyperparam_grid['triplet_margin'],
-        hyperparam_grid['lr'],
-        hyperparam_grid['weight_decay'],
-    ))
-    for i, combination in enumerate(combinations):
-        print(f'Training with hyperparam combination {i}/{len(combinations)}...')
-        hyperparams = {}
-        hyperparams['triplet_margin'] = combination[0]
-        hyperparams['lr'] = combination[1]
-        hyperparams['weight_decay'] = combination[2]
+def train_one_epoch(model, loader, optimizer, criterion, device):
+    batch = 0
+    progress_interval = len(loader) // 4
+
+    total_loss = 0
+    for imgs, labels in loader:
+        imgs, labels = imgs.to(device), labels.to(device)
+
+        embeddings, _ = model(imgs)
+        loss = criterion(embeddings, labels)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        batch += 1
+
+        if (batch % progress_interval) == 0:
+            print(f'{batch} of {len(loader)} batches complete')
     
-        output_paths = event_img_finetune(
-            source_checkpoint=source_checkpoint,
-            num_epochs=num_epochs,
-            split=split,
-            **hyperparams,
-        )
-        train_utils.upload_training_files(*output_paths)
+    return total_loss / len(loader)
+
+
+@torch.no_grad()
+def evaluate(model, loader, device):
+    model.eval()
+
+    all_embeddings = []
+    all_labels = []
+
+    for imgs, labels in loader:
+        imgs = imgs.to(device)
+        output = model(imgs)
+
+        embeddings = output[0] if isinstance(output, tuple) else output
+        embeddings = F.normalize(embeddings, dim=1) # L2 normalization
+
+        all_embeddings.append(embeddings.cpu())
+        all_labels.append(labels)
+
+    model.train()
+
+    embeddings = torch.cat(all_embeddings)
+    labels = torch.cat(all_labels)
+
+    # Since we've L2-normalized our embedding vectors, their cosine similarities
+    # are equal to their dot products. Therefore we can compute all the
+    # similarity scores via matrix multiplication:
+    sim_matrix = torch.mm(embeddings, embeddings.t())
+    dist_matrix = 1 - sim_matrix
+
+    same_mask = labels.unsqueeze(0) == labels.unsqueeze(1)
+    diff_mask = ~same_mask
+
+    same_dists = dist_matrix[same_mask].cpu().numpy()
+    diff_dists = dist_matrix[diff_mask].cpu().numpy()
+
+    avg_same = same_dists.mean() if len(same_dists) > 0 else float('inf')
+    avg_diff = diff_dists.mean() if len(diff_dists) > 0 else float('inf')
+
+    avg_distance_ratio = avg_same / avg_diff    # smaller is better
+
+    print(
+        f'Avg dist (same ID): {avg_same:.4f}, ' +
+        f'Avg dist (different ID): {avg_diff:.4f}'
+    )
+
+    return avg_distance_ratio
 
 
 def event_img_finetune(
@@ -203,75 +243,36 @@ def event_img_finetune(
     return output_checkpoint_path, manifest_path, epoch_csv_path
 
 
-def train_one_epoch(model, loader, optimizer, criterion, device):
-    batch = 0
-    progress_interval = len(loader) // 4
-
-    total_loss = 0
-    for imgs, labels in loader:
-        imgs, labels = imgs.to(device), labels.to(device)
-
-        embeddings, _ = model(imgs)
-        loss = criterion(embeddings, labels)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item()
-        batch += 1
-
-        if (batch % progress_interval) == 0:
-            print(f'{batch} of {len(loader)} batches complete')
+def run_grid_search(
+        source_checkpoint: str = 'OSNet.pth.tar-250',
+        num_epochs: int = 25,
+        split: str = 'validate',
+        hyperparam_grid: dict = {
+            'triplet_margin': [0.2, 0.3, 0.5],
+            'lr': [3e-4, 1e-3, 3e-3],
+            'weight_decay': [0, 1e-4, 1e-3],
+        }
+    ):
+    combinations = list(itertools.product(
+        hyperparam_grid['triplet_margin'],
+        hyperparam_grid['lr'],
+        hyperparam_grid['weight_decay'],
+    ))
+    for i, combination in enumerate(combinations):
+        print(f'Training with hyperparam combination {i}/{len(combinations)}...')
+        hyperparams = {}
+        hyperparams['triplet_margin'] = combination[0]
+        hyperparams['lr'] = combination[1]
+        hyperparams['weight_decay'] = combination[2]
     
-    return total_loss / len(loader)
+        output_paths = event_img_finetune(
+            source_checkpoint=source_checkpoint,
+            num_epochs=num_epochs,
+            split=split,
+            **hyperparams,
+        )
+        train_utils.upload_training_files(*output_paths)
 
-
-@torch.no_grad()
-def evaluate(model, loader, device):
-    model.eval()
-
-    all_embeddings = []
-    all_labels = []
-
-    for imgs, labels in loader:
-        imgs = imgs.to(device)
-        output = model(imgs)
-
-        embeddings = output[0] if isinstance(output, tuple) else output
-        embeddings = F.normalize(embeddings, dim=1) # L2 normalization
-
-        all_embeddings.append(embeddings.cpu())
-        all_labels.append(labels)
-
-    model.train()
-
-    embeddings = torch.cat(all_embeddings)
-    labels = torch.cat(all_labels)
-
-    # Since we've L2-normalized our embedding vectors, their cosine similarities
-    # are equal to their dot products. Therefore we can compute all the
-    # similarity scores via matrix multiplication:
-    sim_matrix = torch.mm(embeddings, embeddings.t())
-    dist_matrix = 1 - sim_matrix
-
-    same_mask = labels.unsqueeze(0) == labels.unsqueeze(1)
-    diff_mask = ~same_mask
-
-    same_dists = dist_matrix[same_mask].cpu().numpy()
-    diff_dists = dist_matrix[diff_mask].cpu().numpy()
-
-    avg_same = same_dists.mean() if len(same_dists) > 0 else float('inf')
-    avg_diff = diff_dists.mean() if len(diff_dists) > 0 else float('inf')
-
-    avg_distance_ratio = avg_same / avg_diff    # smaller is better
-
-    print(
-        f'Avg dist (same ID): {avg_same:.4f}, ' +
-        f'Avg dist (different ID): {avg_diff:.4f}'
-    )
-
-    return avg_distance_ratio
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
