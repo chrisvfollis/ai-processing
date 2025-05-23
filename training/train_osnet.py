@@ -99,8 +99,8 @@ def evaluate(model, loader, device, epoch):
     avg_distance_ratio = avg_same / avg_diff    # smaller is better
 
     print(
-        f'Epoch {epoch} — Val Dist Same: {avg_same:.4f}\n' +
-        f'Epoch {epoch} — Val Dist Diff: {avg_diff:.4f}'
+        f'Epoch {epoch + 1} — Val Dist Same: {avg_same:.4f}\n' +
+        f'Epoch {epoch + 1} — Val Dist Diff: {avg_diff:.4f}'
     )
 
     return avg_distance_ratio
@@ -184,7 +184,7 @@ def event_img_finetune(
     epoch_data = []
 
     for epoch in range(num_epochs):
-        print(f'Starting epoch {epoch}...')
+        print(f'Starting epoch {epoch + 1}...')
         loss = train_one_epoch(
             model=osnet.model,
             loader=train_loader,
@@ -192,9 +192,9 @@ def event_img_finetune(
             criterion=criterion,
             device=osnet.device,
         )
-        print(f'Epoch {epoch} - Train Loss: {loss:.4f}')
+        print(f'Epoch {epoch + 1} - Train Loss: {loss:.4f}')
         val_dist_ratio = evaluate(osnet.model, val_loader, osnet.device, epoch)
-        print(f'Epoch {epoch} — Val Dist Ratio: {val_dist_ratio:.4f}')
+        print(f'Epoch {epoch + 1} — Val Dist Ratio: {val_dist_ratio:.4f}')
         
         epoch_data.append({
             'epoch': epoch,
@@ -279,7 +279,7 @@ def run_grid_search(
         hyperparam_grid['weight_decay'],
     ))
     for i, combination in enumerate(combinations):
-        print(f'Training with hyperparam combination {i}/{len(combinations)}...')
+        print(f'Training with hyperparam combination {i+1}/{len(combinations)}...')
         hyperparams = {}
         hyperparams['triplet_margin'] = combination[0]
         hyperparams['lr'] = combination[1]
