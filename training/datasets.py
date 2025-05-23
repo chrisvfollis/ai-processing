@@ -1,10 +1,14 @@
 # standard dependencies
 import random
 from collections import defaultdict
+from typing import Optional, Union
+import math
 
 # 3rd-party dependencies
 from torch.utils.data import Dataset, Sampler
 from PIL import Image
+import pandas as pd
+import numpy as np
 
 # internal dependencies
 pass
@@ -32,13 +36,21 @@ class EventImgs(Dataset):
 
 
 class PKSampler(Sampler):
-    def __init__(self, labels, P, K):
+    def __init__(
+        self,
+        labels: Union[list, np.ndarray, pd.Series],
+        P: int,
+        K: int,
+        num_batches: Optional[int] = None
+    ):
         '''
         Args:
             labels (list, np.ndarray or pd.Series): A 1D list or array of class
                 labels (identities).
             P (int): Number of distinct identities (classes) per batch.
             K (int): The minimum number of samples per identity in each batch.
+            num_batches (int, optional): Total number of batches per epoch. If
+                None, will try to match full dataset coverage.
         '''
         self.labels = labels
         self.P = P
@@ -48,22 +60,28 @@ class PKSampler(Sampler):
         for idx, label in enumerate(labels):
             self.label_to_indices[label].append(idx)
 
-        self.valid_labels = [label for label, idxs in self.label_to_indices.items() if len(idxs) >= K]
+        self.valid_labels = [
+            label for label, idxs in self.label_to_indices.items()
+            if len(idxs) >= K
+        ]
+
+        if not self.valid_labels:
+            raise ValueError(f'No identities with at least K={K} examples')
+        
+        self.num_batches = num_batches or math.ceil(len(labels) / (P * K))
 
     def __iter__(self):
         indices = []
-        random.shuffle(self.valid_labels)
-
-        for i in range(0, len(self.valid_labels), self.P):
-            current_labels = self.valid_labels[i:i + self.P]
-            if len(current_labels) < self.P:
-                continue
-
-            for label in current_labels:
-                selected = random.sample(self.label_to_indices[label], self.K)
-                indices.extend(selected)
-
+        for _ in range(self.num_batches):
+            selected_labels = random.choices(self.valid_labels, k=self.P)
+            for label in selected_labels:
+                candidates = self.label_to_indices[label]
+                if len(candidates) >= self.K:
+                    sampled = random.sample(candidates, self.K)
+                else:
+                    sampled = random.choices(candidates, k=self.K)
+                indices.extend(sampled)
         return iter(indices)
 
     def __len__(self):
-        return len(self.valid_labels) // self.P * self.P * self.K
+        return self.num_batches * self.P * self.K

@@ -35,7 +35,13 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
         imgs, labels = imgs.to(device), labels.to(device)
 
         embeddings, _ = model(imgs)
-        loss = criterion(embeddings, labels)
+        try:
+            loss = criterion(embeddings, labels)
+        except RuntimeError as e:
+            if 'Expected reduction dim' in str(e):
+                print('Skipping batch: no valid negatives')
+                continue
+            raise e
 
         optimizer.zero_grad()
         loss.backward()
@@ -51,7 +57,7 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
 
 
 @torch.no_grad()
-def evaluate(model, loader, device):
+def evaluate(model, loader, device, epoch):
     model.eval()
 
     all_embeddings = []
@@ -90,8 +96,8 @@ def evaluate(model, loader, device):
     avg_distance_ratio = avg_same / avg_diff    # smaller is better
 
     print(
-        f'Avg dist (same ID): {avg_same:.4f}, ' +
-        f'Avg dist (different ID): {avg_diff:.4f}'
+        f'Epoch {epoch} — Val Dist Same: {avg_same:.4f}\n' +
+        f'Epoch {epoch} — Val Dist Diff: {avg_diff:.4f}'
     )
 
     return avg_distance_ratio
@@ -102,8 +108,7 @@ def event_img_finetune(
         num_epochs: int = 25,
         split: str = 'validate',
         triplet_margin: float = 0.3,
-        P: int = 4,
-        K: int = 8,
+        PK: tuple[int] = None,
         lr: float = 3e-4,
         weight_decay: float = 1e-4,
     ) -> tuple[str]:
@@ -133,15 +138,27 @@ def event_img_finetune(
         stratify=img_data_df['person_id'],
         random_state=42,
     )
-    train_labels = train_df['person_id'].tolist()
     
     train_dataset = EventImgs(train_df, transform=osnet.transform)
     val_dataset = EventImgs(val_df, transform=osnet.transform)
 
+    if PK:
+        P, K = PK
+        train_labels = train_df['person_id'].tolist()
+
+        sampler = PKSampler(train_labels, P=P, K=K)
+        shuffle = False
+        batch_size = P * K
+    else:
+        sampler = None
+        shuffle = True
+        batch_size = 32
+
     train_loader = DataLoader(
         train_dataset,
-        batch_size=P*K,
-        sampler=PKSampler(train_labels, P=P, K=K),
+        batch_size=batch_size,
+        sampler=sampler,
+        shuffle=shuffle,
         drop_last=True,
         num_workers=4,
     )
@@ -173,8 +190,8 @@ def event_img_finetune(
             device=osnet.device,
         )
         print(f'Epoch {epoch} - Train Loss: {loss:.4f}')
-        val_dist_ratio = evaluate(osnet.model, val_loader, osnet.device)
-        print(f'Epoch {epoch} — Val Distance Ratio: {val_dist_ratio:.4f}')
+        val_dist_ratio = evaluate(osnet.model, val_loader, osnet.device, epoch)
+        print(f'Epoch {epoch} — Val Dist Ratio: {val_dist_ratio:.4f}')
         
         epoch_data.append({
             'epoch': epoch,
@@ -213,8 +230,8 @@ def event_img_finetune(
         'num_epochs': num_epochs,
     }
     results = {
-        'final_train_loss': final_train_loss,
-        'final_val_score': final_val_dist_ratio,
+        'final_train_loss': float(final_train_loss),
+        'final_val_score': float(final_val_dist_ratio),
     }
     checkpoint = model_info | dataset_info | hyperparameters | results
     torch.save(checkpoint, output_checkpoint_path)
@@ -292,7 +309,7 @@ if __name__ == '__main__':
     source_checkpoint = args.checkpoint or 'OSNet.pth.tar-250'
     dataset = args.dataset or 'event_imgs'
 
-    grid_search = args.num_epochs or False
+    grid_search = args.grid_search or False
 
     num_epochs = args.num_epochs or 25
     triplet_margin = args.triplet_margin or 0.3

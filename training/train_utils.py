@@ -3,6 +3,7 @@ from typing import Optional, Union
 
 # 3rd-party dependencies
 import pandas as pd
+import numpy as np
 
 # internal dependencies
 from utilities import conn_utils, io_utils
@@ -78,7 +79,7 @@ def log_training_run(
     num_train_samples: int,
     num_val_samples: int,
     triplet_loss_margin: float,
-    lr: float,
+    learning_rate: float,
     weight_decay: float,
     num_epochs: int,
     final_train_loss: float,
@@ -101,7 +102,7 @@ def log_training_run(
     }
     hyperparameters = {
         'triplet_loss_margin': triplet_loss_margin,
-        'learning_rate': lr,
+        'learning_rate': learning_rate,
         'weight_decay': weight_decay,
         'num_epochs': num_epochs,
     }
@@ -126,6 +127,10 @@ def log_epoch_data(checkpoint_id: str, epoch_data: list[dict]):
 
     for data in epoch_data:
         payload = data | {'checkpoint_id': checkpoint_id}
+
+        for k, v in payload.items():
+            if isinstance(v, (np.integer, np.floating)):
+                payload[k] = v.item()
 
         response = webapp_api.post('log_epoch/', json=payload)
         if response.status_code == 201:
