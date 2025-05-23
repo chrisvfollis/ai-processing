@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 
 warnings.filterwarnings(
@@ -132,18 +133,19 @@ def event_img_finetune(
             criterion=criterion,
             device=osnet.device,
         )
-        val_loss = evaluate(osnet.model, val_loader, criterion, osnet.device)
-        print(f'Epoch {epoch} - Train Loss: {loss:.4f}, Val Loss: {val_loss:.4f}')
-
+        print(f'Epoch {epoch} - Train Loss: {loss:.4f}')
+        val_dist_ratio = evaluate(osnet.model, val_loader, osnet.device)
+        print(f'Epoch {epoch} — Val Distance Ratio: {val_dist_ratio:.4f}')
+        
         epoch_data.append({
             'epoch': epoch,
             'train_loss': loss,
-            'val_loss': val_loss,
+            'val_dist_ratio': val_dist_ratio,
         })
 
     final_epoch = epoch_data[-1]
     final_train_loss = final_epoch['train_loss']
-    final_val_loss = final_epoch['val_loss']
+    final_val_dist_ratio = final_epoch['val_dist_ratio']
     num_train = manifest_df.loc[manifest_df['split'] == 'train'].shape[0]
     num_val = manifest_df.loc[manifest_df['split'] == 'val'].shape[0]
 
@@ -173,7 +175,7 @@ def event_img_finetune(
     }
     results = {
         'final_train_loss': final_train_loss,
-        'final_val_loss': final_val_loss,
+        'final_val_score': final_val_dist_ratio,
     }
     checkpoint = model_info | dataset_info | hyperparameters | results
     torch.save(checkpoint, output_checkpoint_path)
@@ -209,8 +211,8 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
     for imgs, labels in loader:
         imgs, labels = imgs.to(device), labels.to(device)
 
-        feats, _ = model(imgs)
-        loss = criterion(feats, labels)
+        embeddings, _ = model(imgs)
+        loss = criterion(embeddings, labels)
 
         optimizer.zero_grad()
         loss.backward()
@@ -226,25 +228,50 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
 
 
 @torch.no_grad()
-def evaluate(model, loader, criterion, device):
+def evaluate(model, loader, device):
     model.eval()
 
-    total_loss = 0
+    all_embeddings = []
+    all_labels = []
+
     for imgs, labels in loader:
-        imgs, labels = imgs.to(device), labels.to(device)
+        imgs = imgs.to(device)
         output = model(imgs)
 
-        if isinstance(output, tuple):
-            feats = output[0]
-        else:
-            feats = output
+        embeddings = output[0] if isinstance(output, tuple) else output
+        embeddings = F.normalize(embeddings, dim=1) # L2 normalization
 
-        loss = criterion(feats, labels)
-        total_loss += loss.item()
+        all_embeddings.append(embeddings.cpu())
+        all_labels.append(labels)
 
     model.train()
-    return total_loss / len(loader)
 
+    embeddings = torch.cat(all_embeddings)
+    labels = torch.cat(all_labels)
+
+    # Since we've L2-normalized our embedding vectors, their cosine similarities
+    # are equal to their dot products. Therefore we can compute all the
+    # similarity scores via matrix multiplication:
+    sim_matrix = torch.mm(embeddings, embeddings.t())
+    dist_matrix = 1 - sim_matrix
+
+    same_mask = labels.unsqueeze(0) == labels.unsqueeze(1)
+    diff_mask = ~same_mask
+
+    same_dists = dist_matrix[same_mask].cpu().numpy()
+    diff_dists = dist_matrix[diff_mask].cpu().numpy()
+
+    avg_same = same_dists.mean() if len(same_dists) > 0 else float('inf')
+    avg_diff = diff_dists.mean() if len(diff_dists) > 0 else float('inf')
+
+    avg_distance_ratio = avg_same / avg_diff    # smaller is better
+
+    print(
+        f'Avg dist (same ID): {avg_same:.4f}, ' +
+        f'Avg dist (different ID): {avg_diff:.4f}'
+    )
+
+    return avg_distance_ratio
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

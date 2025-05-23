@@ -82,7 +82,7 @@ def log_training_run(
     weight_decay: float,
     num_epochs: int,
     final_train_loss: float,
-    final_val_loss: float,
+    final_val_score: float,
     ) -> bool:
     webapp_api = APIClient(var_prefix='INTERNAL_API')
 
@@ -107,7 +107,7 @@ def log_training_run(
     }
     results = {
         'final_train_loss': final_train_loss,
-        'final_val_loss': final_val_loss,
+        'final_val_score': final_val_score,
     }
 
     payload = model_info | dataset_info | hyperparameters | results

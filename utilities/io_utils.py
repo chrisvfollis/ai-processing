@@ -1,6 +1,5 @@
 # standard dependencies
 import os
-import sqlite3
 import re
 import getpass
 import subprocess
@@ -17,7 +16,6 @@ import pandas as pd
 import h5py
 import cv2
 import torch
-from dotenv import load_dotenv
 import boto3
 from botocore.exceptions import EndpointConnectionError, NoCredentialsError
 import requests
