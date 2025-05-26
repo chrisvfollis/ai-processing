@@ -160,3 +160,7 @@ def upload_training_files(
             file_path=path,
             object_key=filename,
         )
+
+
+def download_best_checkpoint():
+    pass

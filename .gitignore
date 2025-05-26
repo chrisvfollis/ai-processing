@@ -64,6 +64,7 @@ __pycache__/
 *.pkl
 *.hdf5
 *.h5
+# *.xz
 
 # STRUCTURED DATA - TABULAR:
 *.db

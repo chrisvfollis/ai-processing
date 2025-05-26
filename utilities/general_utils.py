@@ -566,6 +566,18 @@ def xywh_xyxy(coordinates, out='xyxy'):
         return x1, y1, w, h
 
 
+def c_xywh(coordinates, in_fmt='xywh'):
+    if in_fmt == 'xywh':
+        x, y, w, h = coordinates[:4]
+    elif in_fmt == 'xyxy':
+        x, y, w, h = xywh_xyxy(coordinates, out='xywh')
+        
+    cx = x + (w / 2)
+    cy = y + (h / 2)
+
+    return cx, cy, w, h
+
+
 def logceil_round(x):
     '''
     Rounds a number up to the next "nice" number based on its order of magnitude.
