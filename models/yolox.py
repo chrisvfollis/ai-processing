@@ -4,6 +4,7 @@
 # standard dependencies
 import math
 import os
+from typing import Union
 
 # 3rd-party dependencies
 import numpy as np
@@ -172,7 +173,18 @@ class YoloX:
         padded_img = padded_img.transpose(swap)
         padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
     
-        return padded_img, r
+        return padded_img
+    
+    def batch_preprocess(self, images, input_size, mean, std, swap=(2, 0, 1)):
+        preprocessed_images = []
+
+        for image in images:
+            preprocesesed = self.preprocess(image, input_size, mean, std, swap)
+            preprocessed_images.append(preprocesesed)
+        
+        preprocessed_images = np.stack(preprocessed_images, axis=0)
+        
+        return torch.from_numpy(preprocessed_images).float()
 
     def postprocess(
             self, prediction, num_classes=None, conf_thresh=None, nms_thresh=None
@@ -222,16 +234,22 @@ class YoloX:
 
         return output
 
-    def inference(self, img):
-        raw_img = img.copy()
-        img, _ = self.preprocess(raw_img, self.input_size, self.rgb_means, self.std)
-        img = torch.from_numpy(img).unsqueeze(0).float().to(self.device)
+    def inference(self, imgs):
+        # imgs is a list of images (or a single image for backward compatibility)
+        if isinstance(imgs, np.ndarray):
+            imgs = [imgs]
+
+        raw_imgs = [img.copy() for img in imgs]
+        img_tensor = self.batch_preprocess(
+            raw_imgs, self.input_size, self.rgb_means, self.std
+        )
+        img_tensor = img_tensor.float().to(self.device)
 
         if self.fp16:
-            img = img.half()
+            img_tensor = img_tensor.half()
 
         with torch.no_grad():
-            outputs = self.model(img)
+            outputs = self.model(img_tensor)
             outputs = self.postprocess(
                 outputs,
                 self.num_classes,
