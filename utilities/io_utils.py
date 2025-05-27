@@ -180,12 +180,35 @@ def get_unique_filename(dir_path, base_name):
 
 
 def get_unique_path(dir_path, base_name):
+    '''
+    Returns the full path to a unique filename, appending _1, _2, etc. if needed
+    to ensure uniqueness.
+    '''
+    filename, ext = os.path.splitext(base_name)
+    counter = 1
+    new_name = base_name
+    file_path = os.path.join(dir_path, new_name)
+
+    while os.path.exists(file_path):
+        new_name = f"{filename}_{counter}{ext}"
+        file_path = os.path.join(dir_path, new_name)
+        counter += 1
+
+    return file_path
+
+
+def get_unique_subdir(dir_path, base_name):
+    '''
+    Returns the full path to a unique directory name, appending _1, _2, etc. if
+    needed to ensure uniqueness.
+    '''
     base_name = base_name.strip('/')
     counter = 1
     candidate = os.path.join(dir_path, base_name)
     while os.path.exists(candidate):
         candidate = os.path.join(dir_path, f'{base_name}_{counter}')
         counter += 1
+
     return candidate
 
 

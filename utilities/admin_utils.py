@@ -150,7 +150,7 @@ def auto_scp(
         if os.path.exists(destination):
             print(f'Conflicting path: {destination}')
             conflict = destination
-            destination = io_utils.get_unique_path(local_path, remote_dir)
+            destination = io_utils.get_unique_subdir(local_path, remote_dir)
 
             temp_conflict_rename = conflict[:-1] + '_z/'
             os.rename(conflict, temp_conflict_rename)

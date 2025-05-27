@@ -1,7 +1,6 @@
 # standard dependencies
 import argparse
 import os
-import time
 import math
 
 # 3rd-party dependencies
@@ -11,9 +10,9 @@ import torch
 
 # internal dependencies
 import utilities.general_utils as utils
+from utilities import io_utils
 from models import YoloX
 from trackers import OCSort
-from trackers.oc_sort.args import make_parser
 
 
 def get_color(idx):
@@ -23,8 +22,8 @@ def get_color(idx):
     return color
 
 
-def plot_tracking(image, tlwhs, obj_ids, scores=None, frame_id=0, ids2=None):
-    img = np.ascontiguousarray(np.copy(image))
+def plot_tracking(image, tlwhs, obj_ids, f_num, ids2=None):
+    image = np.ascontiguousarray(np.copy(image))
 
     text_scale = 2
     text_thickness = 2
@@ -33,8 +32,8 @@ def plot_tracking(image, tlwhs, obj_ids, scores=None, frame_id=0, ids2=None):
     vert_offset = int(15 * text_scale)
 
     cv2.putText(
-        img,
-        f'frame: {frame_id} num: {len(tlwhs)}',
+        image,
+        f'frame: {f_num} num: {len(tlwhs)}',
         (0, vert_offset),
         font,
         text_scale,
@@ -48,21 +47,18 @@ def plot_tracking(image, tlwhs, obj_ids, scores=None, frame_id=0, ids2=None):
 
         obj_id = int(obj_ids[i])
         box_color = get_color(abs(obj_id))
-
         cv2.rectangle(
-            img,
+            image,
             xyxy_box[0:2],
             xyxy_box[2:4],
             color=box_color,
             thickness=line_thickness
         )
-
         id_text = f'{int(obj_id)}'
         if ids2 is not None:
             id_text = id_text + f', {int(ids2[i])}'
-
         cv2.putText(
-            img,
+            image,
             id_text,
             (xyxy_box[0], xyxy_box[1]),
             font,
@@ -70,31 +66,41 @@ def plot_tracking(image, tlwhs, obj_ids, scores=None, frame_id=0, ids2=None):
             (0, 0, 255),
             text_thickness
         )
-    
-    return img
+
+    return image
 
 
-def run_demo(predictor, tracker, vis_folder, current_time, args):
-    cap = cv2.VideoCapture(args.path)
-    width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-    height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    timestamp = time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
+def run_demo(predictor, tracker, args):
+    # paths:
+    project_root = io_utils.get_project_root()
 
-    save_folder = os.path.join(vis_folder, timestamp)
-    os.makedirs(save_folder, exist_ok=True)
-    save_path = args.out_path
-    print(f"video save_path is {save_path}")
+    input_dir = os.path.join(project_root, 'files/input/')
+    input_vid_path = os.path.join(input_dir, args.input_video)
 
+    output_vid_dir = os.path.join(project_root, 'files/output/', 'videos/')
+    output_vid_path = io_utils.get_unique_path(
+        output_vid_dir, f'{args.input_video.split('.')[0]}_boxes.mp4'
+    )
+
+    # input video:
+    cap = cv2.VideoCapture(input_vid_path)
+    video_info = utils.get_video_info(cap, release=False)
+    width, height = video_info[0]
+    fps = video_info[2]
+    tot_frames = video_info[3]
+
+    # output video:
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     vid_dims = (int(width), int(height))
+    out = cv2.VideoWriter(output_vid_path, fourcc, fps, vid_dims)
 
-    vid_writer = cv2.VideoWriter(save_path, fourcc, fps, vid_dims)
-
+    progress_interval = tot_frames // 4
     f_num = 0
+
     while True:
-        if f_num % 20 == 0:
-            print(f'Processing frame {f_num}')
+        if f_num % progress_interval == 0:
+            progress = int(round((f_num / tot_frames) * 100), 0)
+            print(f'Percent complete: {progress}%')
 
         ret, frame = cap.read()
         if not ret:
@@ -123,46 +129,77 @@ def run_demo(predictor, tracker, vis_folder, current_time, args):
                 online_ids.append(trk_id)
 
             frame = plot_tracking(
-                frame, online_boxes, online_ids, frame_id=f_num
+                frame, online_boxes, online_ids, f_num
             )
 
-        vid_writer.write(frame)
+        out.write(frame)
         f_num += 1
+
+    out.release()
+    cap.release()
 
 
 def main(args):
-    output_dir = './YOLOX_outputs'
-    vis_folder = os.path.join(output_dir, "track_vis")
+    predictor_config = {
+        'checkpoint': args.ckpt,
+        'num_classes': 1,
+        'depth': 1.33,
+        'width': 1.25,
+        'input_size': (800, 1440),
+        'conf_thresh': args.conf,
+        'nms_thresh': args.nms,
+        'device': torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+        'fp16': args.fp16,
+    }
+    predictor = YoloX(**predictor_config)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    predictor = YoloX(
-        args.ckpt,
-        num_classes=1,
-        depth=1.33,
-        width=1.25,
-        input_size=(800, 1440),
-        conf_thresh=args.conf,
-        nms_thresh=args.nms,
-        device=device,
-        fp16=args.fp16,
-    )
     if args.fuse:
         print("\tFusing model...")
         predictor.fuse()
-    
-    tracker = OCSort(
-        det_thresh=args.track_thresh,
-        iou_threshold=args.iou_thresh,
-        use_byte=args.use_byte,
-    )
 
-    current_time = time.localtime()
+    tracker_config = {
+        'det_thresh': args.det_thresh,
+        'max_age': args.max_age,
+        'min_hits': args.min_hits,
+        'iou_threshold': args.iou_thresh,
+        'delta_t': args.dt,
+        'asso_func': args.asso,
+        'inertia': args.inertia,
+        'use_byte': args.use_byte,
+    }
+    tracker = OCSort(**tracker_config)
 
-    run_demo(predictor, tracker, vis_folder, current_time, args)
+    run_demo(predictor, tracker, args)
 
 
 if __name__ == "__main__":
-    args = make_parser().parse_args()
+    parser = argparse.ArgumentParser("OC-SORT parameters")
+
+    # demo video args:
+    parser.add_argument("--input-video", type=str)
+    parser.add_argument("--aspect_ratio_thresh", type=float, default=1.6)
+    parser.add_argument('--min-box-area', type=float, default=100,
+                        help='filter out tiny boxes')
+
+    # model args:
+    parser.add_argument("-c", "--checkpoint", default='ocsort_x_mot17.pth.tar',
+                        type=str)
+    parser.add_argument("--fp16", default=False, action="store_true")
+    parser.add_argument("--fuse", default=False, action="store_true")
+    parser.add_argument("--conf", default=0.05, type=float)
+    parser.add_argument("--nms", default=0.7, type=float)
+
+    # tracking args:
+    parser.add_argument("--det-thresh", type=float, default=0.6)
+    parser.add_argument("--max-age", type=int, default=30,
+                        help="num frames to keep lost tracks")
+    parser.add_argument("--min-hits", type=int, default=3)
+    parser.add_argument("--iou-thresh", type=float, default=0.3)
+    parser.add_argument("--dt", "--delta-t", type=int, default=3)
+    parser.add_argument('--asso', default="iou")
+    parser.add_argument("--inertia", type=float, default=0.2)
+    parser.add_argument("--use-byte", default=False, action="store_true")
+    
+    args = parser.parse_args()
 
     main(args)

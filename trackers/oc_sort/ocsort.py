@@ -191,7 +191,7 @@ class OCSort:
             delta_t=3,
             asso_func="iou",
             inertia=0.2,
-            use_byte=False
+            use_byte=False,
         ):
         """
         Sets key parameters for SORT

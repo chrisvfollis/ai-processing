@@ -3,6 +3,7 @@
 
 # standard dependencies
 import math
+import os
 
 # 3rd-party dependencies
 import numpy as np
@@ -12,13 +13,13 @@ import torch.nn as nn
 import torchvision
 
 # internal dependencies
-pass
+from utilities import io_utils
 
 
 class YoloX:
     def __init__(
         self,
-        checkpoint_path: str,
+        checkpoint: str,
         num_classes: int = 1,
         depth: float = 1.33,
         width: float = 1.25,
@@ -61,6 +62,9 @@ class YoloX:
         if self.fp16:
             self.model = self.model.half()
 
+        checkpoint_path = os.path.join(
+            io_utils.get_project_root(), 'models/weights/', checkpoint
+        )
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model'])
 
