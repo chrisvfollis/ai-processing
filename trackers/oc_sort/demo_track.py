@@ -79,7 +79,7 @@ def run_demo(predictor, tracker, args):
 
     output_vid_dir = os.path.join(project_root, 'files/output/', 'videos/')
     output_vid_path = io_utils.get_unique_path(
-        output_vid_dir, f'{args.input_video.split('.')[0]}_boxes.mp4'
+        output_vid_dir, f'{args.input_video.split(".")[0]}_boxes.mp4'
     )
 
     # input video:

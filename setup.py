@@ -55,6 +55,7 @@ setup(
         'jupyter',
         'matplotlib',
         'pympler',
+        'filterpy',
     ],
     python_requires='>=3.10,<3.11',
 )
