@@ -5,6 +5,8 @@ import os
 # 3rd-party dependencies
 import numpy as np
 import cv2
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies

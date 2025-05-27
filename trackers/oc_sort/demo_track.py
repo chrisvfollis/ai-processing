@@ -8,6 +8,8 @@ import numpy as np
 import cv2
 import torch
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 # internal dependencies
 import utilities.general_utils as utils
 from utilities import io_utils
@@ -141,7 +143,7 @@ def run_demo(predictor, tracker, args):
 
 def main(args):
     predictor_config = {
-        'checkpoint': args.ckpt,
+        'checkpoint': args.checkpoint,
         'num_classes': 1,
         'depth': 1.33,
         'width': 1.25,

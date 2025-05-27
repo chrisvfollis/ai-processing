@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 import cv2
 import torch
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from deepface.commons import image_utils
 from deepface.modules import detection, representation, verification, recognition
 from deepface.models.Detector import DetectedFace, FacialAreaRegion

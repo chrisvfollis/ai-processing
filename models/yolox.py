@@ -111,8 +111,6 @@ class YoloX:
         self.model.apply(_configure_batchnorm)
         self.model.head.initialize_biases(1e-2)
         self.model.to(self.device)
-        if self.fp16:
-            self.model = self.model.half()
 
         checkpoint_path = os.path.join(
             io_utils.get_project_root(), 'models/weights/yolox/', checkpoint
@@ -122,6 +120,9 @@ class YoloX:
 
         self.model.eval()
         _fuse_model()
+
+        if self.fp16:
+            self.model = self.model.half()
 
     def preprocess(self, image, input_size, mean, std, swap=(2, 0, 1)):
         '''
