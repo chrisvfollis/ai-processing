@@ -7,53 +7,7 @@ import numpy as np
 # internal dependencies
 from .association import *
 from .kalmanfilter import KalmanFilterNew as KalmanFilter
-
-
-def k_previous_obs(observations, cur_age, k):
-    if len(observations) == 0:
-        return [-1, -1, -1, -1, -1]
-    for i in range(k):
-        dt = k - i
-        if cur_age - dt in observations:
-            return observations[cur_age-dt]
-    max_age = max(observations.keys())
-    return observations[max_age]
-
-
-def convert_bbox_to_z(bbox):
-    """
-    Takes a bounding box in the form [x1,y1,x2,y2] and returns z in the form
-      [x,y,s,r] where x,y is the centre of the box and s is the scale/area and r is
-      the aspect ratio
-    """
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-    x = bbox[0] + w/2.
-    y = bbox[1] + h/2.
-    s = w * h  # scale is just area
-    r = w / float(h+1e-6)
-    return np.array([x, y, s, r]).reshape((4, 1))
-
-
-def convert_x_to_bbox(x, score=None):
-    """
-    Takes a bounding box in the centre form [x,y,s,r] and returns it in the form
-      [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right
-    """
-    w = np.sqrt(x[2] * x[3])
-    h = x[2] / w
-    if(score == None):
-      return np.array([x[0]-w/2., x[1]-h/2., x[0]+w/2., x[1]+h/2.]).reshape((1, 4))
-    else:
-      return np.array([x[0]-w/2., x[1]-h/2., x[0]+w/2., x[1]+h/2., score]).reshape((1, 5))
-
-
-def speed_direction(bbox1, bbox2):
-    cx1, cy1 = (bbox1[0]+bbox1[2]) / 2.0, (bbox1[1]+bbox1[3])/2.0
-    cx2, cy2 = (bbox2[0]+bbox2[2]) / 2.0, (bbox2[1]+bbox2[3])/2.0
-    speed = np.array([cy2-cy1, cx2-cx1])
-    norm = np.sqrt((cy2-cy1)**2 + (cx2-cx1)**2) + 1e-6
-    return speed / norm
+from utilities.general_utils import convert_bbox_to_z, convert_x_to_bbox
 
 
 class KalmanBoxTracker:
@@ -127,7 +81,7 @@ class KalmanBoxTracker:
                 """
                   Estimate the track speed direction with observations \Delta t steps away
                 """
-                self.velocity = speed_direction(previous_box, bbox)
+                self.velocity = self.speed_direction(previous_box, bbox)
             
             """
               Insert new observations. This is a ugly way to maintain both self.observations
@@ -165,6 +119,13 @@ class KalmanBoxTracker:
         Returns the current bounding box estimate.
         """
         return convert_x_to_bbox(self.kf.x)
+
+    def speed_direction(self, bbox1, bbox2):
+        cx1, cy1 = (bbox1[0]+bbox1[2]) / 2.0, (bbox1[1]+bbox1[3])/2.0
+        cx2, cy2 = (bbox2[0]+bbox2[2]) / 2.0, (bbox2[1]+bbox2[3])/2.0
+        speed = np.array([cy2-cy1, cx2-cx1])
+        norm = np.sqrt((cy2-cy1)**2 + (cx2-cx1)**2) + 1e-6
+        return speed / norm
 
 
 """
@@ -257,8 +218,10 @@ class OCSort:
             for trk in self.trackers
         ])
         last_boxes = np.array([trk.last_observation for trk in self.trackers])
-        k_observations = np.array(
-            [k_previous_obs(trk.observations, trk.age, self.delta_t) for trk in self.trackers])
+        k_observations = np.array([
+            self.k_previous_obs(trk.observations, trk.age, self.delta_t)
+            for trk in self.trackers
+        ])
 
         """
             First round of association
@@ -351,3 +314,13 @@ class OCSort:
         if(len(ret) > 0):
             return np.concatenate(ret)
         return np.empty((0, 5))
+
+    def k_previous_obs(self, observations, cur_age, k):
+        if len(observations) == 0:
+            return [-1, -1, -1, -1, -1]
+        for i in range(k):
+            dt = k - i
+            if cur_age - dt in observations:
+                return observations[cur_age-dt]
+        max_age = max(observations.keys())
+        return observations[max_age]
