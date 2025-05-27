@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# -*- encoding: utf-8 -*-
 # Copyright (c) 2014-2021 Megvii Inc. All rights reserved.
 # Copyright (c) 2025 Ivakt Vision Inc. All rights reserved.
 
@@ -11,7 +9,6 @@ import numpy as np
 import cv2
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torchvision
 
 # internal dependencies

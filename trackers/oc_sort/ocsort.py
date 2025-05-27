@@ -1,9 +1,10 @@
-"""
-    This script is adopted from the SORT script by Alex Bewley alex@bewley.ai
-"""
-from __future__ import print_function
+# standard dependencies
+pass
 
+# 3rd-party dependencies
 import numpy as np
+
+# internal dependencies
 from .association import *
 from .kalmanfilter import KalmanFilterNew as KalmanFilter
 
