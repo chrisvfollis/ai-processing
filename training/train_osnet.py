@@ -211,7 +211,7 @@ def event_img_finetune(
 
     output_checkpoint = f'OSNet_{checkpoint_id}.pth'
     output_checkpoint_path = os.path.join(
-        project_root, 'models/weights/', output_checkpoint
+        project_root, 'models/weights/finetuned/', output_checkpoint
     )
 
     model_info = {

@@ -182,8 +182,8 @@ if __name__ == "__main__":
                         help='filter out tiny boxes')
 
     # model args:
-    parser.add_argument("-c", "--checkpoint", default='ocsort_x_mot17.pth.tar',
-                        type=str)
+    parser.add_argument("-c", "--checkpoint", type=str,
+                        default='ocsort_x_mot17.pth.tar')
     parser.add_argument("--fp16", default=False, action="store_true")
     parser.add_argument("--fuse", default=False, action="store_true")
     parser.add_argument("--conf", default=0.05, type=float)

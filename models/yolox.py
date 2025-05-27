@@ -63,7 +63,7 @@ class YoloX:
             self.model = self.model.half()
 
         checkpoint_path = os.path.join(
-            io_utils.get_project_root(), 'models/weights/', checkpoint
+            io_utils.get_project_root(), 'models/weights/yolox/', checkpoint
         )
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model'])

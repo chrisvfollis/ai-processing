@@ -80,7 +80,9 @@ __pycache__/
 files/datasets/*
 
 # WEIGHTS:
-models/weights/OSNet_finetuned.pth.tar
+models/weights/finetuned/*.pth
+models/weights/finetuned/*.pt
+models/weights/finetuned/*.tar
 
 # =============================================================================
 #                           + WHITELISTED FILES +
