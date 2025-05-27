@@ -33,6 +33,8 @@ class YoloX:
         nms_thresh: float = 0.7,
         device: torch.device = None,
         fp16: bool = True,
+        use_trt: bool = False,
+        trt_file: str = None
     ):
         def _configure_batchnorm(model):
             '''
@@ -108,25 +110,38 @@ class YoloX:
         self.rgb_means = (0.485, 0.456, 0.406)
         self.std = (0.229, 0.224, 0.225)
 
-        backbone = YOLOPAFPN(depth, width, in_channels=[256, 512, 1024])
-        head = YOLOXHead(num_classes, width, in_channels=[256, 512, 1024])
-        self.model = YOLOX(backbone, head)
+        if use_trt:
+            from torch2trt import TRTModule
+            self.model = TRTModule()
+            trt_path = os.path.join(
+                io_utils.get_project_root(), 'models/weights/yolox/', trt_file
+            )
+            self.model.load_state_dict(torch.load(
+                trt_path, map_location=self.device
+            ))
+            self.model.to(self.device)
+            self.model.eval()
+        else:
+            backbone = YOLOPAFPN(depth, width, in_channels=[256, 512, 1024])
+            head = YOLOXHead(num_classes, width, in_channels=[256, 512, 1024])
+            self.model = YOLOX(backbone, head)
 
-        self.model.apply(_configure_batchnorm)
-        self.model.head.initialize_biases(1e-2)
-        self.model.to(self.device)
+            self.model.apply(_configure_batchnorm)
+            self.model.head.initialize_biases(1e-2)
 
-        checkpoint_path = os.path.join(
-            io_utils.get_project_root(), 'models/weights/yolox/', checkpoint
-        )
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        self.model.load_state_dict(checkpoint['model'])
+            self.model.to(self.device)
 
-        self.model.eval()
-        _fuse_model()
+            checkpoint_path = os.path.join(
+                io_utils.get_project_root(), 'models/weights/yolox/', checkpoint
+            )
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            self.model.load_state_dict(checkpoint['model'])
 
-        if self.fp16:
-            self.model = self.model.half()
+            self.model.eval()
+            _fuse_model()
+
+            if self.fp16:
+                self.model = self.model.half()
 
     def preprocess(self, image, input_size, mean, std, swap=(2, 0, 1)):
         '''

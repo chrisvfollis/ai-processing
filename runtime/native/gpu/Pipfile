@@ -20,6 +20,7 @@ torch = {version = "*", index = "pytorch-cu121"}
 onnx2torch = "*"
 tensorflow = "==2.15.0"
 keras = "==2.15.0"
+torch2trt = {git = "https://github.com/NVIDIA-AI-IOT/torch2trt.git", ref = "0400b38123d01cc845364870bdf0a0044ea2b3b2"}
 
 # =============================================================================
 #                          - IMAGE/VIDEO PROCESSING -
