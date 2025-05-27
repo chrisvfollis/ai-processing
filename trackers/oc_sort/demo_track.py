@@ -101,7 +101,7 @@ def run_demo(predictor, tracker, args):
 
     while True:
         if f_num % progress_interval == 0:
-            progress = int(round((f_num / tot_frames) * 100), 0)
+            progress = int(round(((f_num / tot_frames) * 100), 0))
             print(f'Percent complete: {progress}%')
 
         ret, frame = cap.read()
