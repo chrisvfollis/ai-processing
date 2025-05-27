@@ -162,7 +162,6 @@ def main(args):
         'device': torch.device("cuda" if torch.cuda.is_available() else "cpu"),
         'fp16': fp16,
         'use_trt': args.use_trt,
-        'trt_file': args.trt_file,
     }
     predictor = YoloX(**predictor_config)
 
@@ -191,11 +190,8 @@ if __name__ == "__main__":
 
     # model args:
     parser.add_argument("--checkpoint", type=str, default='ocsort_x_mot17.pth.tar')
-    parser.add_argument("--full-precision", action="store_true", default=False)
-
     parser.add_argument("--use-trt", action="store_true", default=False)
-    parser.add_argument('--trt-file', type=str, default='model_trt.pth')
-
+    parser.add_argument("--full-precision", action="store_true", default=False)
     parser.add_argument("--conf", default=0.05, type=float)
     parser.add_argument("--nms", default=0.7, type=float)
 

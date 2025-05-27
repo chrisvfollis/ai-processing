@@ -34,7 +34,6 @@ class YoloX:
         device: torch.device = None,
         fp16: bool = True,
         use_trt: bool = False,
-        trt_file: str = None
     ):
         def _configure_batchnorm(model):
             '''
@@ -113,13 +112,15 @@ class YoloX:
         if use_trt:
             from torch2trt import TRTModule
             self.model = TRTModule()
+            self.model.to(self.device)
+
             trt_path = os.path.join(
-                io_utils.get_project_root(), 'models/weights/yolox/', trt_file
+                io_utils.get_project_root(), 'models/weights/yolox/', checkpoint
             )
             self.model.load_state_dict(torch.load(
                 trt_path, map_location=self.device
             ))
-            self.model.to(self.device)
+
             self.model.eval()
         else:
             backbone = YOLOPAFPN(depth, width, in_channels=[256, 512, 1024])
