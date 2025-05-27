@@ -13,8 +13,11 @@ import torch.nn as nn
 import torchvision
 
 # internal dependencies
-from utilities import io_utils
+from utilities import io_utils, log_utils
 import utilities.general_utils as utils
+
+
+logger = log_utils.get_logger(__name__)
 
 
 class YoloX:
@@ -87,7 +90,8 @@ class YoloX:
                     .reshape(-1) + b_bn
                 )
                 return fusedconv
-
+            
+            logger.info('Fusing model...')
             for m in self.model.modules():
                 if type(m) is BaseConv and hasattr(m, "bn"):
                     m.conv = _fuse_conv_and_bn(m.conv, m.bn)  # update conv

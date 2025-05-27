@@ -18,6 +18,7 @@ from trackers import OCSort
 
 
 logger = log_utils.get_logger(__name__)
+log_utils.configure_logging()
 
 
 def get_color(idx):
@@ -102,7 +103,7 @@ def run_demo(predictor, tracker, args):
     progress_interval = tot_frames // 4
     f_num = 0
 
-    while True:
+    while f_num < tot_frames:
         if f_num % progress_interval == 0:
             progress = int(round(((f_num / tot_frames) * 100), 0))
             logger.info(f'Percent complete: {progress}%')
