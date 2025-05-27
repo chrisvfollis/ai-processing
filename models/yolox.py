@@ -14,9 +14,11 @@ import torchvision
 
 # internal dependencies
 from utilities import io_utils
+import utilities.general_utils as utils
 
 
 class YoloX:
+    '''YOLOX wrapper optimized for inference'''
     def __init__(
         self,
         checkpoint: str,
@@ -29,7 +31,7 @@ class YoloX:
         device: torch.device = None,
         fp16: bool = False,
     ):
-        def _yolox_batchnorm(model):
+        def _configure_batchnorm(model):
             '''
             Adjust BatchNorm2d layers to use YOLOX-specific epsilon and
             momentum values instead of PyTorch defaults.
@@ -43,22 +45,72 @@ class YoloX:
                     m.eps = 1e-3
                     m.momentum = 0.03
 
-        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        def _fuse_model():
+            '''
+            Fuses the convolutional and batchnorm layers for faster inference.
+            '''
+            def _fuse_conv_and_bn(conv, bn):
+                # https://tehnokv.com/posts/fusing-batchnorm-and-conv/
+                fusedconv = (
+                    nn.Conv2d(
+                        conv.in_channels,
+                        conv.out_channels,
+                        kernel_size=conv.kernel_size,
+                        stride=conv.stride,
+                        padding=conv.padding,
+                        groups=conv.groups,
+                        bias=True,
+                    )
+                    .requires_grad_(False)
+                    .to(conv.weight.device)
+                )
+                # prepare filters
+                w_conv = conv.weight.clone().view(conv.out_channels, -1)
+                w_bn = torch.diag(bn.weight.div(
+                    torch.sqrt(bn.eps + bn.running_var)
+                ))
+                fusedconv.weight.copy_(
+                    torch.mm(w_bn, w_conv)
+                    .view(fusedconv.weight.shape)
+                )
+                # prepare spatial bias
+                b_conv = (
+                    torch.zeros(conv.weight.size(0), device=conv.weight.device)
+                    if conv.bias is None
+                    else conv.bias
+                )
+                b_bn = bn.bias - (bn.weight.mul(bn.running_mean).div(
+                    torch.sqrt(bn.running_var + bn.eps)
+                ))
+                fusedconv.bias.copy_(
+                    torch.mm(w_bn, b_conv.reshape(-1, 1))
+                    .reshape(-1) + b_bn
+                )
+                return fusedconv
+
+            for m in self.model.modules():
+                if type(m) is BaseConv and hasattr(m, "bn"):
+                    m.conv = _fuse_conv_and_bn(m.conv, m.bn)  # update conv
+                    delattr(m, "bn")  # remove batchnorm
+                    m.forward = m.fuseforward  # update forward
+
+        self.device = device or utils.get_default_device()
         self.num_classes = num_classes
         self.input_size = input_size
         self.conf_thresh = conf_thresh
         self.nms_thresh = nms_thresh
         self.fp16 = fp16
 
-        backbone = YOLOPAFPN(depth=depth, width=width, in_channels=[256, 512, 1024])
-        head = YOLOXHead(num_classes=num_classes, width=width, in_channels=[256, 512, 1024])
+        self.rgb_means = (0.485, 0.456, 0.406)
+        self.std = (0.229, 0.224, 0.225)
+
+        backbone = YOLOPAFPN(depth, width, in_channels=[256, 512, 1024])
+        head = YOLOXHead(num_classes, width, in_channels=[256, 512, 1024])
         self.model = YOLOX(backbone, head)
 
-        self.model.apply(_yolox_batchnorm)
+        self.model.apply(_configure_batchnorm)
         self.model.head.initialize_biases(1e-2)
-
         self.model.to(self.device)
-
         if self.fp16:
             self.model = self.model.half()
 
@@ -69,58 +121,14 @@ class YoloX:
         self.model.load_state_dict(checkpoint['model'])
 
         self.model.eval()
-
-        self.rgb_means = (0.485, 0.456, 0.406)
-        self.std = (0.229, 0.224, 0.225)
-
-    def fuse(self):
-        def _fuse_conv_and_bn(conv, bn):
-            # Fuse convolution and batchnorm layers
-            # https://tehnokv.com/posts/fusing-batchnorm-and-conv/
-            fusedconv = (
-                nn.Conv2d(
-                    conv.in_channels,
-                    conv.out_channels,
-                    kernel_size=conv.kernel_size,
-                    stride=conv.stride,
-                    padding=conv.padding,
-                    groups=conv.groups,
-                    bias=True,
-                )
-                .requires_grad_(False)
-                .to(conv.weight.device)
-            )
-            # prepare filters
-            w_conv = conv.weight.clone().view(conv.out_channels, -1)
-            w_bn = torch.diag(bn.weight.div(
-                torch.sqrt(bn.eps + bn.running_var)
-            ))
-            fusedconv.weight.copy_(
-                torch.mm(w_bn, w_conv)
-                .view(fusedconv.weight.shape)
-            )
-            # prepare spatial bias
-            b_conv = (
-                torch.zeros(conv.weight.size(0), device=conv.weight.device)
-                if conv.bias is None
-                else conv.bias
-            )
-            b_bn = bn.bias - (bn.weight.mul(bn.running_mean).div(
-                torch.sqrt(bn.running_var + bn.eps)
-            ))
-            fusedconv.bias.copy_(
-                torch.mm(w_bn, b_conv.reshape(-1, 1))
-                .reshape(-1) + b_bn
-            )
-            return fusedconv
-
-        for m in self.model.modules():
-            if type(m) is BaseConv and hasattr(m, "bn"):
-                m.conv = _fuse_conv_and_bn(m.conv, m.bn)  # update conv
-                delattr(m, "bn")  # remove batchnorm
-                m.forward = m.fuseforward  # update forward
+        _fuse_model()
 
     def preprocess(self, image, input_size, mean, std, swap=(2, 0, 1)):
+        '''
+        Rescales, pads, and normalizes the input image. The image's aspect ratio
+        is preserved through its rescaling, such that it fits within a canvas of
+        shape `input_size` which is used to pad it.
+        '''
         if len(image.shape) == 3:
             padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
         else:

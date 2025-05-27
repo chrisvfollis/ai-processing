@@ -153,10 +153,6 @@ def main(args):
     }
     predictor = YoloX(**predictor_config)
 
-    if args.fuse:
-        print("\tFusing model...")
-        predictor.fuse()
-
     tracker_config = {
         'det_thresh': args.det_thresh,
         'max_age': args.max_age,
@@ -178,27 +174,23 @@ if __name__ == "__main__":
     # demo video args:
     parser.add_argument("--input-video", type=str)
     parser.add_argument("--aspect_ratio_thresh", type=float, default=1.6)
-    parser.add_argument('--min-box-area', type=float, default=100,
-                        help='filter out tiny boxes')
+    parser.add_argument('--min-box-area', type=float, default=100)
 
     # model args:
-    parser.add_argument("-c", "--checkpoint", type=str,
-                        default='ocsort_x_mot17.pth.tar')
-    parser.add_argument("--fp16", default=False, action="store_true")
-    parser.add_argument("--fuse", default=False, action="store_true")
+    parser.add_argument("--checkpoint", type=str, default='ocsort_x_mot17.pth.tar')
+    parser.add_argument("--fp16", action="store_true", default=False)
     parser.add_argument("--conf", default=0.05, type=float)
     parser.add_argument("--nms", default=0.7, type=float)
 
     # tracking args:
     parser.add_argument("--det-thresh", type=float, default=0.6)
-    parser.add_argument("--max-age", type=int, default=30,
-                        help="num frames to keep lost tracks")
+    parser.add_argument("--max-age", type=int, default=30)
     parser.add_argument("--min-hits", type=int, default=3)
     parser.add_argument("--iou-thresh", type=float, default=0.3)
-    parser.add_argument("--dt", "--delta-t", type=int, default=3)
-    parser.add_argument('--asso', default="iou")
+    parser.add_argument("--dt", type=int, default=3)
+    parser.add_argument('--asso', type=str, default="iou")
     parser.add_argument("--inertia", type=float, default=0.2)
-    parser.add_argument("--use-byte", default=False, action="store_true")
+    parser.add_argument("--use-byte", action="store_true", default=False)
     
     args = parser.parse_args()
 
