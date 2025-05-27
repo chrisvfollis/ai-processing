@@ -32,7 +32,7 @@ class YoloX:
         conf_thresh: float = 0.1,
         nms_thresh: float = 0.7,
         device: torch.device = None,
-        fp16: bool = False,
+        fp16: bool = True,
     ):
         def _configure_batchnorm(model):
             '''

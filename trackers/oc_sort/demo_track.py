@@ -146,6 +146,11 @@ def run_demo(predictor, tracker, args):
 
 
 def main(args):
+    if args.full_precision == False:
+        fp16 = True
+    elif args.full_precision == True:
+        fp16 = False
+
     predictor_config = {
         'checkpoint': args.checkpoint,
         'num_classes': 1,
@@ -155,7 +160,7 @@ def main(args):
         'conf_thresh': args.conf,
         'nms_thresh': args.nms,
         'device': torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        'fp16': args.fp16,
+        'fp16': fp16,
     }
     predictor = YoloX(**predictor_config)
 
@@ -184,7 +189,7 @@ if __name__ == "__main__":
 
     # model args:
     parser.add_argument("--checkpoint", type=str, default='ocsort_x_mot17.pth.tar')
-    parser.add_argument("--fp16", action="store_true", default=False)
+    parser.add_argument("--full-precision", action="store_true", default=False)
     parser.add_argument("--conf", default=0.05, type=float)
     parser.add_argument("--nms", default=0.7, type=float)
 
