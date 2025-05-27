@@ -12,9 +12,12 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # internal dependencies
 import utilities.general_utils as utils
-from utilities import io_utils
+from utilities import io_utils, log_utils
 from models import YoloX
 from trackers import OCSort
+
+
+logger = log_utils.get_logger(__name__)
 
 
 def get_color(idx):
@@ -102,7 +105,7 @@ def run_demo(predictor, tracker, args):
     while True:
         if f_num % progress_interval == 0:
             progress = int(round(((f_num / tot_frames) * 100), 0))
-            print(f'Percent complete: {progress}%')
+            logger.info(f'Percent complete: {progress}%')
 
         ret, frame = cap.read()
         if not ret:

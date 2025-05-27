@@ -19,6 +19,7 @@ import tensorflow as tf
 from utilities import io_utils, log_utils, conn_utils
 from utilities import general_utils as utils
 
+
 logger = log_utils.get_logger(__name__)
 
 

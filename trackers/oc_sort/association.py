@@ -193,6 +193,7 @@ def linear_assignment(cost_matrix):
 #                              - ASSOCIATE -
 # -----------------------------------------------------------------------------
 
+
 def associate(detections, trackers, iou_threshold, velocities, previous_obs, vdc_weight):    
     if(len(trackers)==0):
         return np.empty((0,2),dtype=int), np.arange(len(detections)), np.empty((0,5),dtype=int)
