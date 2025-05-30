@@ -78,10 +78,21 @@ class FaceIq:
         ) -> List[Dict['str', Any]]:
             
             representations = []
+            employee_imgs = [cv2.imread(employee) for employee in employees]
+            file_hashes = [
+                image_utils.find_image_hash(employee) for employee in employees
+            ]
+            img_objs = self.detect(
+                employee_imgs
+            )
+
             for employee in employees:
                 file_hash = image_utils.find_image_hash(employee)
 
                 try:
+                    img_objs = self.detect(
+
+                    )
                     img_objs = detection.extract_faces(
                         img_path=employee,
                         detector_backend='retinaface',
@@ -95,19 +106,7 @@ class FaceIq:
                     print(f'Exception while extracting faces from {employee}: {str(err)}')
                     img_objs = []
 
-                if len(img_objs) == 0:
-                    representations.append(
-                        {
-                            'identity': employee,
-                            'hash': file_hash,
-                            'embedding': None,
-                            'target_x': 0,
-                            'target_y': 0,
-                            'target_w': 0,
-                            'target_h': 0,
-                        }
-                    )
-                else:
+                if len(img_objs) != 0:
                     for i, img_obj in enumerate(img_objs):
                         img_content = img_obj['face']
                         img_region = img_obj['facial_area']
@@ -136,6 +135,18 @@ class FaceIq:
                                 'target_h': img_region['h'],
                             }
                         )
+                else:
+                    representations.append(
+                        {
+                            'identity': employee,
+                            'hash': file_hash,
+                            'embedding': None,
+                            'target_x': 0,
+                            'target_y': 0,
+                            'target_w': 0,
+                            'target_h': 0,
+                        }
+                    )
 
             return representations
 

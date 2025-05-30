@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models._utils as _utils
 import torchvision.models as models
+from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
 from utilities import io_utils
@@ -219,6 +220,50 @@ class RetinaFace:
         landms = landms[:self.keep_top_k, :]
 
         dets = np.concatenate((dets, landms), axis=1)
+        return dets
+
+    def detect_faces(self, img: np.ndarray) -> list[FacialAreaRegion]:
+        '''
+        Detect and align faces with RetinaFace.
+
+        Args:
+            img (np.ndarray): Pre-loaded image as numpy array.
+
+        Returns:
+            List[FacialAreaRegion]: A list of FacialAreaRegion objects.
+        '''
+        results = []
+        detections = self.detect(img)
+
+        for det in detections:
+            x1, y1, x2, y2 = det[0:4]
+            confidence = det[4]
+            w = x2 - x1
+            h = y2 - y1
+            x, y = int(x1), int(y1)
+
+            left_eye = tuple(map(int, det[5:7]))
+            right_eye = tuple(map(int, det[7:9]))
+            nose = tuple(map(int, det[9:11]))
+            mouth_left = tuple(map(int, det[11:13]))
+            mouth_right = tuple(map(int, det[13:15]))
+
+            facial_area = FacialAreaRegion(
+                x=x,
+                y=y,
+                w=int(w),
+                h=int(h),
+                left_eye=left_eye,
+                right_eye=right_eye,
+                nose=nose,
+                mouth_left=mouth_left,
+                mouth_right=mouth_right,
+                confidence=float(confidence)
+            )
+            results.append(facial_area)
+
+        return results
+
 
 
 # =============================================================================
@@ -283,14 +328,17 @@ class RetinaFaceModel(nn.Module):
         feature3 = self.ssh3(fpn[2])
         features = [feature1, feature2, feature3]
 
-        bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)
-        classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)],dim=1)
-        ldm_regressions = torch.cat([self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1)
+        bbox_regressions = torch.cat(
+            [self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1
+        )
+        classifications = torch.cat(
+            [self.ClassHead[i](feature) for i, feature in enumerate(features)], dim=1
+        )
+        ldm_regressions = torch.cat(
+            [self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1
+        )
 
-        if self.phase == 'train':
-            output = (bbox_regressions, classifications, ldm_regressions)
-        else:
-            output = (bbox_regressions, F.softmax(classifications, dim=-1), ldm_regressions)
+        output = (bbox_regressions, F.softmax(classifications, dim=-1), ldm_regressions)
         return output
 
 
