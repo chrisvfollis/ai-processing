@@ -319,7 +319,9 @@ def get_approved_records(shop_id=None) -> list[tuple]:
         params['shop_id'] = shop_id
 
     try:
-        response = webapp_api.get('approved_employee_event_records/', params=params)
+        response = webapp_api.get(
+            'approved_employee_event_records/', params=params
+        )
         response.raise_for_status()
 
         data = response.json()
