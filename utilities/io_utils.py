@@ -12,7 +12,6 @@ from typing import Union, Optional
 
 # 3rd-party dependencies
 import numpy as np
-import pandas as pd
 import h5py
 import cv2
 import torch
@@ -33,10 +32,6 @@ from utilities.conn_utils import APIClient
 
 
 def clear_memory():
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    import tensorflow as tf
-    K = tf.keras.backend
-    K.clear_session()
     torch.cuda.empty_cache()
     gc.collect()
 

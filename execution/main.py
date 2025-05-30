@@ -9,11 +9,8 @@ from datetime import datetime
 import textwrap
 
 # 3rd-party dependencies
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import torch
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow as tf
 
 # internal dependencies
 from utilities import io_utils, log_utils, conn_utils
@@ -37,16 +34,6 @@ def run_processing_pipelines(
     ):
     log_utils.configure_logging(log_level=log_level)
     io_utils.clear_memory()
-
-    gpus = tf.config.list_physical_devices('GPU')
-    if gpus:
-        try:
-            tf.config.experimental.set_virtual_device_configuration(
-                gpus[0],
-                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=2048)]
-            )
-        except RuntimeError as e:
-            logger.exception(f'Error configuring TensorFlow GPU memory: {e}')
 
     from pipelines import InferencePipeline, TrackingPipeline
 
