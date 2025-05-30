@@ -361,24 +361,33 @@ def is_grayscale(frame, threshold=10):
     return mean_diff < threshold
 
 
-def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, max_height=1080):
+def cluster_bboxes_into_regions(
+        bboxes: list,
+        img_width: int,
+        img_height: int,
+        max_width: int = 1920,
+        max_height: int = 1080,
+        margin: int = 15,
+    ) -> list[tuple]:
     '''
     Clusters bounding boxes into the minimum number of non-overlapping image regions.
     
-    Parameters:
-    - bboxes: List of bounding boxes in the format (x, y, w, h, c) where x, y are top-left.
-    - img_width: Width of the original image.
-    - img_height: Height of the original image.
-    - max_width: Maximum allowable width for a region (default: 1920).
-    - max_height: Maximum allowable height for a region (default: 1080).
+    Args:
+        bboxes (list): A list of bounding boxes in the format (x, y, w, h, c)
+            where x, y are top-left.
+        img_width (int): Width of the original image.
+        img_height (int): Height of the original image.
+        max_width (int): Maximum allowable width for a region.
+        max_height (int): Maximum allowable height for a region.
+        margin (int): Number of pixels to expand around each region.
 
-    Returns:
-    - List of region coordinates [(x1, y1, w, h)] representing the cropped regions.
+    Returns (list): A list of region coordinates in the format (x1, y1, w, h)
+        representing the cropped regions.
     '''
 
     bbox_coords = np.array([(x, y, x + w, y + h) for x, y, w, h, _ in bboxes])
 
-    # Sort bounding boxes from top to bottom, then left to right:
+    # sort bounding boxes from top to bottom, then left to right:
     bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]
 
     regions = []
@@ -392,7 +401,7 @@ def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, m
         region_x2, region_y2 = x2, y2
         region_bboxes = [(x1, y1, x2, y2)]
 
-        # Try to expand region while keeping it within max limits:
+        # try to expand region while keeping it within max limits:
         for j, (bx1, by1, bx2, by2) in enumerate(bbox_coords[i+1:], start=i+1):
             if j in used:
                 continue
@@ -404,19 +413,25 @@ def cluster_bboxes_into_regions(bboxes, img_width, img_height, max_width=1920, m
                 (new_x2 - new_x1) > max_width or
                 (new_y2 - new_y1) > max_height
             ):
-                continue  # Skip this bbox
+                continue
 
             for rx1, ry1, rx2, ry2 in region_bboxes:
                 if not (
                     (new_x1 <= rx1) and (new_y1 <= ry1) and
                     (new_x2 >= rx2) and (new_y2 >= ry2)
                     ):
-                    break  # One bbox would be split, so skip this expansion
+                    break  # one bbox would be split, so skip this expansion
             else:
                 region_x1, region_y1 = new_x1, new_y1
                 region_x2, region_y2 = new_x2, new_y2
-                region_bboxes.append((bx1, by1, bx2, by2)) # Expand the region
+                region_bboxes.append((bx1, by1, bx2, by2)) # expand the region
                 used.add(j)
+
+        # apply margin, clipped to image bounds:
+        region_x1 = max(0, region_x1 - margin)
+        region_y1 = max(0, region_y1 - margin)
+        region_x2 = min(img_width, region_x2 + margin)
+        region_y2 = min(img_height, region_y2 + margin)
 
         region_w = region_x2 - region_x1
         region_h = region_y2 - region_y1
