@@ -20,30 +20,29 @@ logger = get_logger(__name__)
 
 
 class InferencePipeline:
-    def __init__(self, video_file, model_info, device, yolo_params=None,
-                 osnet_params=None, faceiq_params=None):
-        def _instantiate_models(model_info, device, yolo_params, osnet_params,
-                                faceiq_params):
-            if not yolo_params:
-                self.yolov4 = YOLOv4(model_info[0], device)
-            else:
-                self.yolov4 = YOLOv4(model_info[0], device, **yolo_params)
-            
-            if not osnet_params:
-                self.osnet = OSNet(model_info[1], device)
-            else:
-                self.osnet = OSNet(model_info[1], device, **osnet_params)
-            
-            file_prefix = video_file.split('.')[0]
-            self.osnet.activate_buffers(file_prefix, structure='video_data')
-            
-            if not faceiq_params:
-                self.face_iq = FaceIq(*model_info[2], device=device)
-            else:
-                self.face_iq = FaceIq(*model_info[2], device=device, **faceiq_params)
-
+    def __init__(
+            self,
+            video_file: str,
+            device: torch.device = None,
+            yolo_cfg: dict = {},
+            osnet_cfg: dict = {},
+            faceiq_cfg: dict = {},
+        ):
         press_stopwatch(self, 'init_time')
-    
+
+        # MODEL SETUP:
+        self.device = device or utils.get_default_device()
+
+        self.yolov4 = YOLOv4(device=self.device, **yolo_cfg)
+        self.osnet = OSNet(device=self.device, **osnet_cfg)
+        self.face_iq = FaceIq(device=self.device, **faceiq_cfg)
+
+        self.osnet.activate_buffers(
+            file_prefix=video_file.split('.')[0],
+            structure='video_data'
+        )
+
+        # PATHS:
         self.project_root = io_utils.get_project_root()
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
@@ -61,15 +60,6 @@ class InferencePipeline:
 
         self.f_num = 0
 
-        # MODEL SETUP:
-        _instantiate_models(
-            model_info,
-            device,
-            yolo_params,
-            osnet_params,
-            faceiq_params,
-        )
-        
         # PARAMETERS:
         self.track_stride = max(1, self.fps // 10)
         self.id_stride = (self.fps // self.track_stride) * self.track_stride
@@ -95,7 +85,7 @@ class InferencePipeline:
         press_stopwatch(self, 'skim_time')
 
         cap = cv2.VideoCapture(self.video_path)
-        stride = self.fps * 2
+        stride = self.fps * 3
 
         prev_frame, f_num = (-1, 0)
         result = False
@@ -130,33 +120,33 @@ class InferencePipeline:
         press_stopwatch(self, 'skim_time')
         return result
 
-    def run(self):
-        def _process_frame(frame, focus='global'):
-            if self.f_num % self.track_stride == 0:
-                bboxes = self.yolov4.detect(frame, 0)
+    def process_frame(self, frame, focus='local'):
+        if self.f_num % self.track_stride == 0:
+            bboxes = self.yolov4.detect(frame, 0)
+            if bboxes:
+                self.osnet.extraction_batch(frame, bboxes, self.f_num)
+                self.object_detections[self.f_num] = bboxes
+                
+        face_dfs = []
+        if self.f_num % self.id_stride == 0:
+            if focus == 'local':
                 if bboxes:
-                    self.osnet.extraction_batch(frame, bboxes, self.f_num)
-                    self.object_detections[self.f_num] = bboxes
-                    
-            face_dfs = []
-            if self.f_num % self.id_stride == 0:
-                if focus == 'local':
-                    if bboxes:
-                        regions = utils.cluster_bboxes_into_regions(
-                            bboxes, *self.resolution
-                        )
-                        face_dfs = self.face_iq.identify_faces(
-                            frame, id_cutoff=0.8, regions=regions
-                        )
-                elif focus == 'global':
-                    if bboxes:
-                        face_dfs = self.face_iq.identify_faces(
-                            frame, id_cutoff=0.8
-                        )
-                if face_dfs:
-                    self.face_detections[self.f_num] = face_dfs
-    
-        def _continue_forward(cap, current_frame):
+                    regions = utils.cluster_bboxes_into_regions(
+                        bboxes, *self.resolution
+                    )
+                    face_dfs = self.face_iq.identify_faces(
+                        frame, id_cutoff=0.8, regions=regions
+                    )
+            elif focus == 'global':
+                if bboxes:
+                    face_dfs = self.face_iq.identify_faces(
+                        frame, id_cutoff=0.8
+                    )
+            if face_dfs:
+                self.face_detections[self.f_num] = face_dfs
+
+    def run(self):
+        def _continue(cap, current_frame):
             if self.track_stride <= 15:
                 self.f_num += 1
             else:
@@ -194,41 +184,28 @@ class InferencePipeline:
             if (not ret) or (current_frame == prev_frame):
                 break
 
-            _process_frame(frame, focus='local')
+            self.process_frame(frame, focus='local')
     
-            frame_position = _continue_forward(cap, current_frame)
+            frame_position = _continue(cap, current_frame)
             del frame
 
         logger.info(f'Exiting inference run on frame {self.f_num}')
         cap.release()
 
+        return self.finalize_run()
+
+    def finalize_run(self):
         if len(self.osnet.embedding_buffer) > 0:
             self.osnet.flush_buffers(structure='video_data', release=True)
         else:
             self.osnet.release_buffers()
 
         io_utils.clear_memory()
-
-        self.face_detections = self.consolidate_face_data(self.face_detections)
-
         self.save_runtime_data()
 
         press_stopwatch(self, 'primary_run_time')
-        return (self.object_detections, self.face_detections)
 
-    def consolidate_face_data(self, face_data):
-        merged_dfs = []
-        for frame, dfs in face_data.items():
-            valid_dfs = [df for df in dfs if not df.empty]
-            if valid_dfs:
-                merged_df = pd.concat(valid_dfs, ignore_index=True)
-                merged_df['f'] = frame
-                merged_dfs.append(merged_df)
-
-        if not merged_dfs:
-            return None
-
-        return pd.concat(merged_dfs, ignore_index=True)
+        return self.object_detections, self.face_detections
 
     def save_runtime_data(self):
         runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
