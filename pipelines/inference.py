@@ -120,77 +120,45 @@ class InferencePipeline:
         press_stopwatch(self, 'skim_time')
         return result
 
-    def process_frame(self, frame, focus='local'):
-        if self.f_num % self.track_stride == 0:
-            bboxes = self.yolov4.detect(frame, 0)
-            if bboxes:
-                self.osnet.extraction_batch(frame, bboxes, self.f_num)
-                self.object_detections[self.f_num] = bboxes
-                
-        face_dfs = []
-        if self.f_num % self.id_stride == 0:
-            if focus == 'local':
-                if bboxes:
-                    regions = utils.cluster_bboxes_into_regions(
-                        bboxes, *self.resolution
-                    )
-                    face_dfs = self.face_iq.identify_faces(
-                        frame, id_cutoff=0.8, regions=regions
-                    )
-            elif focus == 'global':
-                if bboxes:
-                    face_dfs = self.face_iq.identify_faces(
-                        frame, id_cutoff=0.8
-                    )
-            if face_dfs:
-                self.face_detections[self.f_num] = face_dfs
+    def collect_frames(self, batch_size: int = 32):
+        batch_end = min(self.total_frames, (self.f_num + batch_size))
 
-    def run(self):
-        def _continue(cap, current_frame):
-            if self.track_stride <= 15:
-                self.f_num += 1
-            else:
-                self.f_num += self.track_stride
-                cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
+        frames = []
+        while self.f_num < batch_end:
             
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+
+            frames.append(frame)
+            self.f_num += 1
+
             if self.f_num % self.progress_interval == 0:
                 progress = int(round((self.f_num / self.total_frames) * 100, 0))
                 logger.info(f'{progress}%')
-            
-            if (self.f_num % 100) == 0:
-                press_stopwatch(self, 'garbage_collection_time')
-                gc.collect()
-                torch.cuda.empty_cache()
-                press_stopwatch(self, 'garbage_collection_time')
-            
-            prev_frame = current_frame
-            current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
 
-            return (prev_frame, current_frame)
+        return frames
 
+    def process_batch(self, frames):
+        pass
+
+    def run(self, batch_size: int = 32):
         logger.info(f'Running inference pipeline for {self.video_file}...')
         press_stopwatch(self, 'primary_run_time')
 
-        cap = cv2.VideoCapture(self.video_path)
-        frame_position = (-1, 0)
+        self.cap = cv2.VideoCapture(self.video_path)
 
         while self.f_num < self.total_frames:
-            prev_frame, current_frame = frame_position
-
             press_stopwatch(self, 'read_time')
-            ret, frame = cap.read()
+            frames = self.collect_frames(batch_size=batch_size)
             press_stopwatch(self, 'read_time')
 
-            if (not ret) or (current_frame == prev_frame):
-                break
+            self.process_batch(frames)
 
-            self.process_frame(frame, focus='local')
-    
-            frame_position = _continue(cap, current_frame)
-            del frame
+            del frames
 
         logger.info(f'Exiting inference run on frame {self.f_num}')
-        cap.release()
+        self.cap.release()
 
         return self.finalize_run()
 
