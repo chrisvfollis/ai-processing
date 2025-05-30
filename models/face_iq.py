@@ -4,16 +4,16 @@ from typing import Any, Dict, Set, List, Union, Optional
 import pickle
 import gc
 import math
-from collections import defaultdict
 
 # 3rd-party dependencies
 import numpy as np
 import pandas as pd
 import cv2
 import torch
+import torch.nn.functional as F
 
 from deepface.commons import image_utils
-from deepface.modules import detection, representation, verification, recognition
+from deepface.modules import detection, representation
 from deepface.models.Detector import DetectedFace, FacialAreaRegion
 
 # internal dependencies
@@ -26,15 +26,15 @@ from utilities import general_utils as utils
 class FaceIq:
     def __init__(
             self,
-            recognition_model: str,
-            detection_model: str,
             id_cutoff: float = 0.8,
             device: torch.device = None,
-            detector_weights: str = 'centerface.pth',
-            enhancer_weights: str = '90000_G.pth',
+            centerface_cfg: dict = {},
+            clearface_cfg: dict = {},
+            facenet_cfg: dict = {},
         ):
         self.device = device or utils.get_default_device()
 
+        # PATHS:
         self.project_root = io_utils.get_project_root()
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
@@ -42,26 +42,21 @@ class FaceIq:
         self.face_dir = os.path.join(self.input_dir, 'faces/')
         self.db_path = os.path.join(self.project_root, 'files/', 'data.db')
 
-        self.rec_model_name = recognition_model
-        self.det_model_name = detection_model
-
-        self.face_detector = CenterFace(
-            device=self.device, weights_file=detector_weights
-        )
-        self.face_enhancer = ClearFace(
-            device=self.device, weights_file=enhancer_weights
-        )
+        # MODELS:
+        self.centerface = CenterFace(device=self.device, **centerface_cfg)
+        self.clearface = ClearFace(device=self.device, **clearface_cfg)
+        self.facenet512 = FaceNet512(device=self.device, **facenet_cfg)
 
         self.id_cutoff = id_cutoff
 
+        # PERFORMANCE DATA:
         self.identification_pipeline_time = 0
         self.face_detection_time = 0
         self.face_recognition_time = 0
         self.other_processing_time = 0
 
-        self.i = 0
+        # RESULTS:
         self.face_detections = {}
-
         self.results = {}
         self.id_matches = {}
 
@@ -278,7 +273,7 @@ class FaceIq:
 
         else:
             press_stopwatch(self, 'face_detection_time')
-            all_facial_areas = self.face_detector.detect_faces(imgs)
+            all_facial_areas = self.centerface.detect_faces(imgs)
             press_stopwatch(self, 'face_detection_time')
 
             press_stopwatch(self, 'other_processing_time')
@@ -324,13 +319,13 @@ class FaceIq:
         face_imgs: List[np.ndarray],
         facial_areas: List[dict],
         confidences: List[float],
-        model: FaceNet512,
         postprocess: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Args:
-            face_imgs (List[np.ndarray]): List of cropped face images (from detection pipeline).
-            facial_areas (List[dict]): List of facial area dicts {'x', 'y', 'w', 'h'}.
+            face_imgs (List[np.ndarray]): List of cropped face images (from
+                detection pipeline).
+            facial_areas (List[dict]): List of {'x', 'y', 'w', 'h'} dicts.
             confidences (List[float]): List of face detection confidence scores.
             model (FaceNet512): Initialized FaceNet512 model.
             postprocess (bool): Whether to convert embeddings to NumPy.
@@ -342,9 +337,9 @@ class FaceIq:
                 - 'face_confidence': float
         """
         if not (len(face_imgs) == len(facial_areas) == len(confidences)):
-            raise ValueError("face_imgs, facial_areas, and confidences must be the same length.")
+            raise ValueError('All input lists must be the same length')
 
-        embeddings = model.represent(face_imgs, postprocess=postprocess)
+        embeddings = self.facenet512.represent(face_imgs, postprocess=postprocess)
 
         if isinstance(embeddings, torch.Tensor):
             embeddings = embeddings.cpu().numpy()
@@ -352,9 +347,12 @@ class FaceIq:
         results = []
         for i, embedding in enumerate(embeddings):
             results.append({
-                "embedding": embedding.tolist() if isinstance(embedding, np.ndarray) else embedding,
-                "facial_area": facial_areas[i],
-                "face_confidence": confidences[i],
+                'embedding': (
+                    embedding.tolist() if isinstance(embedding, np.ndarray)
+                    else embedding
+                ),
+                'facial_area': facial_areas[i],
+                'face_confidence': confidences[i],
             })
 
         return results
@@ -367,7 +365,7 @@ class FaceIq:
     ):
         # Start timing
 
-        enhanced_face = self.face_enhancer.forward(img, is_rgb=is_rgb)
+        enhanced_face = self.clearface.forward(img, is_rgb=is_rgb)
 
         # End timing
         
@@ -380,9 +378,6 @@ class FaceIq:
         self, 
         img_path: list[np.ndarray],
         db_path: str,
-        model_name: str = 'Facenet512',
-        distance_metric: str = 'cosine',
-        detector_backend: str = 'centerface_gpu',
         expand_percentage: int = 0,
         enhance: bool = True,
         threshold: Optional[float] = None,
@@ -408,63 +403,56 @@ class FaceIq:
             enhance=enhance,
             expand_percentage=expand_percentage
         )
-        for source_obj in source_objs:
-            face_img = source_obj['face_img']
-            face_region = source_obj['facial_area']
+        face_imgs = [obj['face_img'] for obj in source_objs]
+        facial_areas = [obj['facial_area'] for obj in source_objs]
+        confidences = [obj['face_confidence'] for obj in source_objs]
 
-            press_stopwatch(self, 'face_recognition_time')
-            target_embedding_obj = representation.represent(
-                img_path=face_img,
-                model_name=model_name,
-                detector_backend='skip',
-                align=align,
-                normalization=normalization,
-            )
-            press_stopwatch(self, 'face_recognition_time')
+        press_stopwatch(self, 'face_recognition_time')
+        target_embedding_objs = self.represent(
+            face_imgs,
+            facial_areas,
+            confidences,
+            postprocess=False,
+        )
+        press_stopwatch(self, 'face_recognition_time')
 
-            press_stopwatch(self, 'other_processing_time')
-            target_representation = target_embedding_obj[0]['embedding']
+        press_stopwatch(self, 'other_processing_time')
+        source_embeddings = np.stack(df['embedding'].tolist())
+        target_embeddings = np.stack(
+            [obj['embedding'] for obj in target_embedding_objs]
+        )
+        source_tensor = torch.tensor(source_embeddings).to(self.device)
+        target_tensor = torch.tensor(target_embeddings).to(self.device)
+        source_tensor = F.normalize(source_tensor, p=2, dim=1)
+        target_tensor = F.normalize(target_tensor, p=2, dim=1)
 
-            result_df = df.copy()  # df will be filtered in each img
+        similarity = torch.mm(target_tensor, source_tensor.T)
+        distance_matrix = 1 - similarity
+
+        for i, embedding_obj in enumerate(target_embedding_objs):
+            face_region = embedding_obj['facial_area']
+
+            result_df = df.copy()
             result_df['source_x'] = face_region['x']
             result_df['source_y'] = face_region['y']
             result_df['source_w'] = face_region['w']
             result_df['source_h'] = face_region['h']
 
-            distances = []
-            for _, instance in df.iterrows():
-                source_representation = instance['embedding']
-                if source_representation is None:
-                    distances.append(float('inf'))  # no representation for this image
-                    continue
+            distances = distance_matrix[i].detach().cpu().numpy().tolist()
 
-                target_dims = len(list(target_representation))
-                source_dims = len(list(source_representation))
-                if target_dims != source_dims:
-                    raise ValueError(
-                        'Source and target embeddings must have same dimensions but '
-                        + f'{target_dims}:{source_dims}. Model structure may change'
-                        + ' after pickle created. Delete the {file_name} and re-run.'
-                    )
-
-                distance = verification.find_distance(
-                    source_representation, target_representation, distance_metric
-                )
-
-                distances.append(distance)
-
-            target_threshold = threshold or verification.find_threshold(model_name, distance_metric)
-
-            result_df['threshold'] = target_threshold
+            result_df['threshold'] = threshold
             result_df['distance'] = distances
 
             result_df = result_df.drop(columns=['embedding'])
-            result_df = result_df[result_df['distance'] <= target_threshold]
-            result_df = result_df.sort_values(by=['distance'], ascending=True).reset_index(drop=True)
+            result_df = result_df[result_df['distance'] <= threshold]
+            result_df = (
+                result_df.sort_values(by=['distance'], ascending=True)
+                .reset_index(drop=True)
+            )
 
             resp_obj.append(result_df)
 
-            press_stopwatch(self, 'other_processing_time')
+        press_stopwatch(self, 'other_processing_time')
 
         return resp_obj
 

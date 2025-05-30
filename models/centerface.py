@@ -20,7 +20,7 @@ class CenterFace:
     def __init__(
             self,
             device: torch.device = None,
-            weights_file: str = 'centerface.pth',
+            checkpoint: str = 'centerface.pth',
             conf_thresh: float = 0.65,
             min_area: Union[Iterable[int], int] = (40, 40),
             ignore_landmarks: bool = False,
@@ -32,7 +32,7 @@ class CenterFace:
         self.output_dir = os.path.join(self.project_root, 'files/output/')
 
         weights_path = os.path.join(
-            self.project_root, 'models/weights/', weights_file
+            self.project_root, 'models/weights/', checkpoint
         )
         self.model = torch.load(weights_path, map_location=self.device)
 
