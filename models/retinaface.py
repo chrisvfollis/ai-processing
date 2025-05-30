@@ -1,6 +1,7 @@
 # standard dependencies
 from itertools import product as product
 from math import ceil
+import os
 
 # 3rd-party dependencies
 import numpy as np
@@ -14,57 +15,79 @@ import torchvision.models as models
 from utilities import io_utils
 
 
-cfg_re50 = {
-    'variance': [0.1, 0.2],
-    'loc_weight': 2.0,
-    'ngpu': 4,
-    'decay1': 70,
-    'decay2': 90,
-}
-
-
 class RetinaFace:
     def __init__(
             self,
             checkpoint: str = 'retinaface.pth',
+            device: torch.device = None,
+            conf_thresh: float = 0.02,
+            nms_thresh: float = 0.4,
+            top_k: int = 5000,
+            keep_top_k: int = 750,
             min_sizes: list = [[16, 32], [64, 128], [256, 512]],
             steps: list = [8, 16, 32],
+            variance: list = [0.1, 0.2],
             clip: bool = False,
-            image_size: int = 840,
+            fp16: bool = False,
         ):
+        project_root = io_utils.get_project_root()
+        self.checkpoint_path = os.path.join(
+            project_root, 'models/weights/', checkpoint
+        )
+        self.fp16 = fp16
+        self.device = device or torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu'
+        )
 
+        self.model = RetinaFaceModel()
+        state_dict = torch.load(self.checkpoint_path, map_location=self.device)
+        self.model.load_state_dict(state_dict)
+        self.model.eval()
+        self.model.to(self.device)
+
+        if self.fp16:
+            self.model = self.model.half()
+
+        self.conf_thresh = conf_thresh
+        self.nms_thresh = nms_thresh
+        self.top_k = top_k
+        self.keep_top_k = keep_top_k
         self.min_sizes = min_sizes
         self.steps = steps
         self.clip = clip
-        self.image_size = image_size
-        self.feature_maps = [
-            [ceil(self.image_size[0]/step), ceil(self.image_size[1]/step)]
+        self.variance = variance
+    
+    def get_priors(self, image_size: tuple[int]):
+        image_size = image_size
+        feature_maps = [
+            [ceil(image_size[0]/step), ceil(image_size[1]/step)]
             for step in self.steps
         ]
-    
-    def get_priors(self):
+
         anchors = []
-        for k, f in enumerate(self.feature_maps):
+        for k, f in enumerate(feature_maps):
             min_sizes = self.min_sizes[k]
             for i, j in product(range(f[0]), range(f[1])):
                 for min_size in min_sizes:
-                    s_kx = min_size / self.image_size[1]
-                    s_ky = min_size / self.image_size[0]
+                    s_kx = min_size / image_size[1]
+                    s_ky = min_size / image_size[0]
                     dense_cx = [
-                        x * self.steps[k] / self.image_size[1]
+                        x * self.steps[k] / image_size[1]
                         for x in [j + 0.5]
                     ]
                     dense_cy = [
-                        y * self.steps[k] / self.image_size[0]
+                        y * self.steps[k] / image_size[0]
                         for y in [i + 0.5]
                     ]
                     for cy, cx in product(dense_cy, dense_cx):
                         anchors += [cx, cy, s_kx, s_ky]
 
         output = torch.Tensor(anchors).view(-1, 4)
+
         if self.clip:
             output.clamp_(max=1, min=0)
-        return output
+
+        return output.to(self.device)
 
     def decode(self, loc, priors, variances):
         """Decode locations from predictions using priors to undo
@@ -135,6 +158,67 @@ class RetinaFace:
             order = order[inds + 1]
 
         return keep
+
+    def preprocess(self, img):
+        img = img.copy()
+
+        img -= (104, 117, 123)
+        img = img.transpose(2, 0, 1)
+        img = torch.from_numpy(img).unsqueeze(0)
+        return img.to(self.device)
+
+    def detect(self, img):
+        img = np.float32(img)
+        img = self.preprocess(img)
+
+        im_height, im_width, _ = img.shape
+        scale = torch.Tensor(
+            [img.shape[1], img.shape[0], img.shape[1], img.shape[0]]
+        ).to(self.device)
+        resize = 1
+
+        loc, conf, landms = self.model(img)
+
+        priors = self.get_priors(image_size=(im_height, im_width))
+        prior_data = priors.data
+
+        boxes = self.decode(loc.data.squeeze(0), prior_data, self.variance)
+        boxes = boxes * scale / resize
+        boxes = boxes.cpu().numpy()
+        scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
+
+        landms = self.decode_landm(landms.data.squeeze(0), prior_data, self.variance)
+        scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
+                               img.shape[3], img.shape[2], img.shape[3], img.shape[2],
+                               img.shape[3], img.shape[2]])
+        scale1 = scale1.to(self.device)
+        landms = landms * scale1 / resize
+        landms = landms.cpu().numpy()
+
+        # ignore low scores
+        inds = np.where(scores > self.conf_thresh)[0]
+        boxes = boxes[inds]
+        landms = landms[inds]
+        scores = scores[inds]
+
+        # keep top-K before NMS
+        order = scores.argsort()[::-1][:self.top_k]
+        boxes = boxes[order]
+        landms = landms[order]
+        scores = scores[order]
+
+        # do NMS
+        dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+        keep = self.py_cpu_nms(dets, self.nms_thresh)
+        # keep = nms(dets, args.nms_threshold,force_cpu=args.cpu)
+        dets = dets[keep, :]
+        landms = landms[keep]
+
+        # keep top-K faster NMS
+        dets = dets[:self.keep_top_k, :]
+        landms = landms[:self.keep_top_k, :]
+
+        dets = np.concatenate((dets, landms), axis=1)
 
 
 # =============================================================================
