@@ -10,7 +10,7 @@ import cv2
 import torch
 
 # internal dependencies
-from models import YOLOv4, OSNet, FaceIq
+from models import YoloX, OSNet, FaceIq
 from utilities import general_utils as utils
 from utilities import io_utils
 from utilities.log_utils import get_logger, press_stopwatch
@@ -33,7 +33,7 @@ class InferencePipeline:
         # MODEL SETUP:
         self.device = device or utils.get_default_device()
 
-        self.yolov4 = YOLOv4(device=self.device, **yolo_cfg)
+        self.yolox = YoloX(device=self.device, **yolo_cfg)
         self.osnet = OSNet(device=self.device, **osnet_cfg)
         self.face_iq = FaceIq(device=self.device, **faceiq_cfg)
 
@@ -121,26 +121,60 @@ class InferencePipeline:
         return result
 
     def collect_frames(self, batch_size: int = 32):
-        batch_end = min(self.total_frames, (self.f_num + batch_size))
+        idx = 0
+        batch_start = self.f_num
+        batch_end = min(self.total_frames, (batch_start + batch_size))
 
         frames = []
+        id_frames = {}
+
         while self.f_num < batch_end:
-            
             ret, frame = self.cap.read()
             if not ret:
                 break
 
             frames.append(frame)
-            self.f_num += 1
+            if self.f_num % self.id_stride == 0:
+                id_frames[idx] = frame
 
+            idx += 1
+            self.f_num += 1
+            
             if self.f_num % self.progress_interval == 0:
                 progress = int(round((self.f_num / self.total_frames) * 100, 0))
                 logger.info(f'{progress}%')
+        
+        frame_data = {
+            'start': batch_start,    # included in the batch
+            'end': batch_end,   # not included: only marks the end
+            'frames': frames,
+            'id_frames': id_frames,
+        }
 
-        return frames
+        return frame_data
 
-    def process_batch(self, frames):
-        pass
+    def process_batch(self, frame_data):
+        frames = frame_data['frames']
+        id_frames = frame_data['id_frames']
+
+        object_detections = self.yolox.inference(frames)
+
+        for idx, img in id_frames.items():
+            detections = object_detections[idx]
+            if detections is None or len(detections) == 0:
+                continue
+
+            img_h, img_w = img.shape[:2]
+            regions = utils.cluster_bboxes_into_regions(detections, img_w, img_h)
+
+            crops = []
+            for x1, y1, w, h in regions:
+                crop = img[y1:y1+h, x1:x1+w]
+                crops.append(crop)
+
+            if not crops:
+                continue
+
 
     def run(self, batch_size: int = 32):
         logger.info(f'Running inference pipeline for {self.video_file}...')
@@ -150,12 +184,13 @@ class InferencePipeline:
 
         while self.f_num < self.total_frames:
             press_stopwatch(self, 'read_time')
-            frames = self.collect_frames(batch_size=batch_size)
+            frame_data = self.collect_frames(batch_size=batch_size)
             press_stopwatch(self, 'read_time')
 
-            self.process_batch(frames)
+            self.process_batch(frame_data)
 
-            del frames
+            del frame_data['frames']
+            del frame_data['id_frames']
 
         logger.info(f'Exiting inference run on frame {self.f_num}')
         self.cap.release()

@@ -25,7 +25,7 @@ class YoloX:
     '''YOLOX wrapper optimized for inference'''
     def __init__(
         self,
-        checkpoint: str,
+        checkpoint: str = 'yolox_mot17.pth.tar',
         num_classes: int = 1,
         depth: float = 1.33,
         width: float = 1.25,
@@ -235,7 +235,13 @@ class YoloX:
         return output
 
     def inference(self, imgs):
-        # imgs is a list of images (or a single image for backward compatibility)
+        '''
+        Returns (list[torch.tensor or None]): List of tensors, one for each
+            image (or None if there were no detections in that image). Each
+            tensor is of shape [num_detections, 7], where each detection
+            is as follows:
+                [x1, y1, x2, y2, object_conf, class_conf, class_pred]
+        '''
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]
 
