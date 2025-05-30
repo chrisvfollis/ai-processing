@@ -879,33 +879,6 @@ class TrackingPipeline:
                 except KeyError:
                     continue
 
-        def _filter_by_keypoints(target_trks, expected_kps=3,
-                                 expected_conf=.55):
-            expected_avg = (expected_kps * expected_conf) / 17
-
-            for trk_id, trk in target_trks.items():
-                if trk.identity:
-                    continue
-                n_frames = len(trk.keypoints.keys())
-                if n_frames == 0:
-                    trk.kp_avg = 0
-                    self.filtered_trks[trk_id] = trk
-                    continue
-
-                total_conf = sum(trk.keypoints[f][:, 2].sum()
-                                 for f in trk.keypoints.keys())
-                trk.kp_avg = total_conf / (n_frames * 17)
-
-                if trk.kp_avg < expected_avg:
-                    self.filtered_trks[trk_id] = trk
-                    self.kp_filtered += 1
-
-            for trk_id in self.filtered_trks.keys():
-                try:
-                    del target_trks[trk_id]
-                except KeyError:
-                    continue
-
         def _filter_by_size(target_trks):
             expected_avg = (
                 (self.resolution[0] / 22) *
@@ -1312,7 +1285,6 @@ class Track(KalmanFilter):
         self.object_detections = {args[0]: detection}
         self.face_detections = {}
         
-        self.keypoints = {}
         self.span = [args[0], args[0]]
 
         self.track_id = None
@@ -1370,9 +1342,6 @@ class Track(KalmanFilter):
     def add_detection(self, new_detection, frame_number):
         self.object_detections[frame_number] = new_detection
         self.span[1] = frame_number
-    
-    def add_keypoints(self, new_keypoints, frame_number):
-        self.keypoints[frame_number] = new_keypoints
 
     def add_face_detection(self, possible_matches, frame_number):
         self.face_detections[frame_number] = possible_matches
@@ -1625,25 +1594,3 @@ class Track(KalmanFilter):
             costs[identity] = cost
         
         return costs
-    
-    def get_high_keypoint_frames(self, percentile=50):
-        if not self.keypoints:
-            return None
-
-        frame_confidences = {
-            frame: self.keypoints[frame][:, 2].sum()
-            for frame in self.keypoints.keys()
-        }
-
-        confidences = np.array(list(frame_confidences.values()))
-        median_confidence = np.percentile(confidences, percentile)
-
-        qualifying_frames = [
-            frame for frame, total_conf in frame_confidences.items()
-            if total_conf >= median_confidence
-        ]
-
-        if not qualifying_frames:
-            return None
-
-        return qualifying_frames
