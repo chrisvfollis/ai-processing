@@ -593,7 +593,7 @@ class FaceIq:
 
     def detection_pipeline(
         self,
-        img_path: Union[str, np.ndarray, IO[bytes]],
+        imgs: list[np.ndarray],
         detector_backend: str = 'centerface_gpu',
         align: bool = True,
         expand_percentage: int = 0,
@@ -604,106 +604,113 @@ class FaceIq:
     ) -> List[Dict[str, Any]]:
 
         resp_objs = []
-        img, img_name = image_utils.load_image(img_path)
-
-        if img is None:
-            raise ValueError(f'Exception while loading {img_name}')
-
-        height, width, _ = img.shape
-
-        args_ = {
-            'color_face': color_face,
-            'width': width,
-            'height': height,
-            'normalize_face': normalize_face
-        }
-
-        base_region = FacialAreaRegion(x=0, y=0, w=width, h=height, confidence=0)
 
         if detector_backend == 'skip':
-            face_objs = [DetectedFace(img=img, facial_area=base_region, confidence=0)]
+            for img in imgs:
+                height, width, _ = img.shape
+                base_region = FacialAreaRegion(x=0, y=0, w=width, h=height, confidence=0)
+                face_obj = DetectedFace(img=img, facial_area=base_region, confidence=0)
+
+                args_ = {
+                    'color_face': color_face,
+                    'width': width,
+                    'height': height,
+                    'normalize_face': normalize_face
+                }
+
+                resp_obj = face_utils.format_response(face_obj, **args_)
+                resp_objs.append(resp_obj)
+
         else:
-            face_objs = self.detect_faces(
-                img=img,
+            face_objs_batch = self.detect_faces(
+                imgs=imgs,
                 align=align,
                 expand_percentage=expand_percentage,
                 enhance=enhance,
                 warn=warn
             )
 
-        if self.save_data:
-            self.face_objs.setdefault(self.i, []).extend(face_objs)
+            for img_idx, face_objs in enumerate(face_objs_batch):
+                img = imgs[img_idx]
+                height, width, _ = img.shape
 
-        for face_obj in face_objs:
-            resp_obj = face_utils.format_response(face_obj, **args_)
+                args_ = {
+                    'color_face': color_face,
+                    'width': width,
+                    'height': height,
+                    'normalize_face': normalize_face
+                }
 
-            resp_objs.append(resp_obj)
+                if self.save_data:
+                    self.face_objs.setdefault(self.i + img_idx, []).extend(face_objs)
+
+                for face_obj in face_objs:
+                    resp_obj = face_utils.format_response(face_obj, **args_)
+                    resp_objs.append(resp_obj)
+
+            if self.save_data:
+                self.i += len(imgs)
 
         return resp_objs
 
     def detect_faces(
         self,
-        img: np.ndarray,
+        imgs: Union[np.ndarray, List[np.ndarray]],
         align: bool = True,
         expand_percentage: int = 0,
         enhance: bool = True,
-        warn: bool = False
     ) -> List[DetectedFace]:
 
-        height, width, _ = img.shape
+        if isinstance(imgs, np.ndarray):
+            imgs = [imgs]
 
-        height_border, width_border = int(0.5 * height), int(0.5 * width)
-        if align is True:
-            img = cv2.copyMakeBorder(
-                img,
-                height_border,
-                height_border,
-                width_border,
-                width_border,
-                cv2.BORDER_CONSTANT,
-                value=[0, 0, 0],  # black border 
-            )
-        
-        args_ = {
+        results = []
+
+        args_template = {
             'expand_percentage': expand_percentage,
             'align': align,
-            'width_border': width_border,
-            'height_border': height_border,
             'save_data': self.save_data
-        } 
-        
+        }
+
         press_stopwatch(self, 'face_detection_time')
-        facial_areas = self.face_detector.detect_faces(img)
-        if warn and (not facial_areas):
-            print('No faces detected')
+        all_facial_areas = self.face_detector.detect_faces(imgs)
         press_stopwatch(self, 'face_detection_time')
 
         press_stopwatch(self, 'other_processing_time')
-        
-        if self.save_data:
-            self.face_detections.setdefault(self.i, []).extend(facial_areas)
-            args_['data_index'] = (self.i, self.i_f)
 
-        results = []
-        for facial_area in facial_areas:
-            facial_area, face_img = face_utils.adjust_and_extract(
-                facial_area, img, **args_
-            )
+        for img_idx, (img, facial_areas) in enumerate(zip(imgs, all_facial_areas)):
+            height, width, _ = img.shape
 
-            if enhance:
-                face_img = self.enhance_face(face_img, is_rgb=True)
+            height_border, width_border = int(0.5 * height), int(0.5 * width)
+            args_ = args_template.copy()
+            args_['width_border'] = width_border
+            args_['height_border'] = height_border
 
-            face_obj = DetectedFace(
-                img=face_img,
-                facial_area=facial_area,
-                confidence=facial_area.confidence
-            )
+            if align:
+                img = cv2.copyMakeBorder(
+                    img,
+                    height_border,
+                    height_border,
+                    width_border,
+                    width_border,
+                    cv2.BORDER_CONSTANT,
+                    value=[0, 0, 0],
+                )
 
-            results.append(face_obj)
+            for facial_area in facial_areas:
+                facial_area, face_img = face_utils.adjust_and_extract(
+                    facial_area, img, **args_
+                )
 
-            if self.save_data:
-                self.i_f += 1   # Increment secondary index
-                args_['data_index'] = (self.i, self.i_f)
+                if enhance:
+                    face_img = self.enhance_face(face_img, is_rgb=True)
+
+                face_obj = DetectedFace(
+                    img=face_img,
+                    facial_area=facial_area,
+                    confidence=facial_area.confidence
+                )
+                results.append(face_obj)
 
         press_stopwatch(self, 'other_processing_time')
 
