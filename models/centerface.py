@@ -9,8 +9,6 @@ import numpy as np
 import pandas as pd
 import cv2
 import torch
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
@@ -26,7 +24,7 @@ class CenterFace:
             conf_thresh: float = 0.65,
             min_area: Union[Iterable[int], int] = (40, 40),
             ignore_landmarks: bool = False,
-            save_data: bool = False
+            save_data: bool = False,
         ):
         self.device = device or utils.get_default_device()
 
@@ -46,275 +44,261 @@ class CenterFace:
 
         self.ignore_landmarks = ignore_landmarks
 
-        self.img_h_new, self.img_w_new = 0, 0
-        self.scale_h, self.scale_w = 0, 0
-
-        self.heatmaps = []
-
         self.save_data = save_data
         if self.save_data:
             self.i = 0
             self.face_detections = {}
 
-    def detect_faces(
-            self,
-            img: np.ndarray,
-            region: Sequence = None,
-            conf_thresh: float = None,
-            min_area: Union[Iterable[int], int] = None
-        ) -> List[FacialAreaRegion]:
+    def inference(self, img_data):
+        if isinstance(img_data, np.ndarray):
+            img_data = [img_data]
 
-        def _inference_pytorch(img, conf_thresh, min_area):
-            image_cv = cv2.resize(img, dsize=(self.img_w_new, self.img_h_new))
+        blobs = []
+        scales = []
+
+        for img in img_data:
+            h, w = img.shape[:2]
+            img_h_new = int(np.ceil(h / 32) * 32)
+            img_w_new = int(np.ceil(w / 32) * 32)
+
+            scale_h = img_h_new / h
+            scale_w = img_w_new / w
+
+            image_cv = cv2.resize(img, dsize=(img_w_new, img_h_new))
             blob = (
                 cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
                 .transpose(2, 0, 1)
                 .astype('float32')
             )
-            tensor = torch.from_numpy(blob).unsqueeze(0).to(self.device)
+            blobs.append(torch.from_numpy(blob))
+            scales.append((scale_h, scale_w))
 
-            with torch.no_grad():
-                outputs = self.model(tensor)
+        tensor = torch.stack(blobs).to(self.device)
+        with torch.no_grad():
+            outputs = self.model(tensor)
 
-            heatmap, scale, offset, lms = [
-                output.cpu().numpy() for output in outputs
-            ]
-            self.heatmaps.append(heatmap)
+        heatmaps, scales_out, offsets, landmarks = [
+            output.cpu().numpy() for output in outputs
+        ]
 
-            return _postprocess(heatmap, lms, offset, scale, conf_thresh, min_area)
-
-        def _postprocess(heatmap, lms, offset, scale, conf_thresh, min_area):
-            if not self.ignore_landmarks:
-                dets, lms = _decode(heatmap, scale, offset, lms,
-                                    (self.img_h_new, self.img_w_new),
-                                    conf_thresh, min_area)
-            else:
-                dets = _decode(heatmap, scale, offset, None,
-                               (self.img_h_new, self.img_w_new),
-                               conf_thresh, min_area)
-
-            if len(dets) > 0:
-                dets[:, 0:4:2] /= self.scale_w
-                dets[:, 1:4:2] /= self.scale_h
-                if not self.ignore_landmarks:
-                    lms[:, 0:10:2] /= self.scale_w
-                    lms[:, 1:10:2] /= self.scale_h
-            else:
-                dets = np.empty(shape=[0, 5], dtype=np.float32)
-                if not self.ignore_landmarks:
-                    lms = np.empty(shape=[0, 10], dtype=np.float32)
-
-            return dets if self.ignore_landmarks else (dets, lms)
-
-        def _decode(heatmap, scale, offset, landmark, size, conf_thresh, min_area):
-            def _translate_dims(i, scale0, scale1, y_idx, x_idx):
-                '''
-                Converts downsampled log-space model output to normal pixel
-                dimensions.
-                '''
-                log_h = scale0[y_idx, x_idx]    # predicted face height
-                log_w = scale1[y_idx, x_idx]    # predicted face width
-
-                h = np.exp(log_h)   # exponentiate to reverse the logarithm
-                w = np.exp(log_w)
-
-                h *= 4  # multiply by 4 to account for downsampling (stride)
-                w *= 4 
-
-                return h, w
-            
-            def _get_xyxy(i, offset0, offset1, y_idx, x_idx, h, w):   
-                o0 = offset0[y_idx, x_idx]  # predicted sub-cell offsets
-                o1 = offset1[y_idx, x_idx]
-
-                x_cntr = x_idx + 0.5    # center position in cell
-                y_cntr = y_idx + 0.5
-
-                x_cntr += o1    # apply predicted offsets
-                y_cntr += o0
-
-                x_cntr *= 4    # multiply by 4 to account for downsampling (stride)
-                y_cntr *= 4
-
-                x1 = max(0, (x_cntr - w / 2))
-                y1 = max(0, (y_cntr - h / 2))
-                x2 = min(size[1], (x1 + w))
-                y2 = min(size[0], (y1 + h))
-
-                return x1, y1, x2, y2
-
-            heatmap = np.squeeze(heatmap)
-
-            c0, c1 = np.where(heatmap > conf_thresh)
-
-            offset0 = offset[0, 0, :, :]    # detection offset within 4x4 grid cell
-            offset1 = offset[0, 1, :, :]
-
-            scale0 = scale[0, 0, :, :]  # log(height) predictions
-            scale1 =  scale[0, 1, :, :] # log(width) predictions
-            
-            if not self.ignore_landmarks:
-                boxes, lms = [], []
-            else:
-                boxes = []
-
-            if len(c0) > 0:
-                for i in range(len(c0)):
-                    y_idx, x_idx = c0[i], c1[i]   # grid cell indices
-
-                    h, w = _translate_dims(i, scale0, scale1, y_idx, x_idx)
-                    if math.prod((h, w)) < min_area:
-                        continue    # filter (skip) small detection
-
-                    x1, y1, x2, y2 = _get_xyxy(
-                        i, offset0, offset1, y_idx, x_idx, h, w
-                    )
-                    s = heatmap[y_idx, x_idx]
-
-                    if not self.ignore_landmarks:
-                        lm = []
-                        for j in range(5):
-                            lm_x = landmark[0, (j * 2), y_idx, x_idx]
-                            lm_y = landmark[0, (j * 2 + 1), y_idx, x_idx]
-
-                            lm_x = lm_x * w + x1
-                            lm_y = lm_y * h + y1
-
-                            lm.append(lm_x)
-                            lm.append(lm_y)
-                        lms.append(lm)
-                    
-                    boxes.append([x1, y1, x2, y2, s])
-
-                boxes = np.asarray(boxes, dtype=np.float32)
-                if boxes.size != 0:
-                    keep = _nms(boxes[:, :4], boxes[:, 4], 0.3)
-                    boxes = boxes[keep, :]
-
-                    if not self.ignore_landmarks:
-                        lms = np.asarray(lms, dtype=np.float32)
-                        lms = lms[keep, :]
-                else:
-                    boxes = boxes.reshape((0, 5))
-
-            if not self.ignore_landmarks:
-                return boxes, lms
-            else:
-                return boxes
-
-        def _nms(boxes, scores, nms_thresh):
-            keep = []
-
-            num_detections = boxes.shape[0]
-            suppressed = np.zeros((num_detections,), dtype=bool)
-
-            order = np.argsort(scores)[::-1]
-
-            x1, y1 = boxes[:, 0], boxes[:, 1]
-            x2, y2 = boxes[:, 2], boxes[:, 3]
-
-            areas = (x2 - x1) * (y2 - y1)
-
-            for _i in range(num_detections):
-                i = order[_i]
-                if suppressed[i]:
-                    continue
-                
-                keep.append(i)
+        return heatmaps, scales_out, offsets, landmarks, scales
     
-                ix1, iy1 = x1[i], y1[i]
-                ix2, iy2 = x2[i], y2[i]
+    def postprocess(self, heatmap, lms, offset, scale, img_shape, ignore_landmarks, conf_thresh, min_area, scale_h, scale_w):
+        if not ignore_landmarks:
+            dets, lms_out = self.decode(heatmap, scale, offset, lms, img_shape, ignore_landmarks, conf_thresh, min_area)
+        else:
+            dets = self.decode(heatmap, scale, offset, None, img_shape, ignore_landmarks, conf_thresh, min_area)
 
-                iarea = areas[i]
+        if len(dets) > 0:
+            dets[:, 0:4:2] /= scale_w
+            dets[:, 1:4:2] /= scale_h
+            if not ignore_landmarks:
+                lms_out[:, 0:10:2] /= scale_w
+                lms_out[:, 1:10:2] /= scale_h
+        else:
+            dets = np.empty(shape=[0, 5], dtype=np.float32)
+            if not ignore_landmarks:
+                lms_out = np.empty(shape=[0, 10], dtype=np.float32)
 
-                for _j in range(_i + 1, num_detections):
-                    j = order[_j]
-                    if suppressed[j]:
-                        continue
+        return dets if ignore_landmarks else (dets, lms_out)
 
-                    xx1, yy1 = max(ix1, x1[j]), max(iy1, y1[j])
-                    xx2, yy2 = min(ix2, x2[j]), min(iy2, y2[j])
+    def decode(self, heatmap, scale, offset, landmark, size, ignore_landmarks, conf_thresh, min_area):
+        def _translate_dims(scale0, scale1, y_idx, x_idx):
+            log_h = scale0[y_idx, x_idx]
+            log_w = scale1[y_idx, x_idx]
 
-                    w, h = max(0, xx2 - xx1), max(0, yy2 - yy1)
-                    inter = w * h
+            h = np.exp(log_h) * 4
+            w = np.exp(log_w) * 4
 
-                    iou = inter / (iarea + areas[j] - inter)
+            return h, w
 
-                    if iou >= nms_thresh:
-                        suppressed[j] = True
+        def _get_xyxy(offset0, offset1, y_idx, x_idx, h, w):
+            o0 = offset0[y_idx, x_idx]
+            o1 = offset1[y_idx, x_idx]
 
-            return keep
+            x_cntr = (x_idx + 0.5 + o1) * 4
+            y_cntr = (y_idx + 0.5 + o0) * 4
+
+            x1 = max(0, x_cntr - w / 2)
+            y1 = max(0, y_cntr - h / 2)
+            x2 = min(size[1], x1 + w)
+            y2 = min(size[0], y1 + h)
+
+            return x1, y1, x2, y2
+
+        heatmap = np.squeeze(heatmap)
+        c0, c1 = np.where(heatmap > conf_thresh)
+
+        offset0 = offset[0, 0, :, :]
+        offset1 = offset[0, 1, :, :]
+
+        scale0 = scale[0, 0, :, :]
+        scale1 = scale[0, 1, :, :]
+
+        boxes = []
+        lms_out = [] if not ignore_landmarks else None
+
+        for y_idx, x_idx in zip(c0, c1):
+            h, w = _translate_dims(scale0, scale1, y_idx, x_idx)
+            if h * w < min_area:
+                continue
+
+            x1, y1, x2, y2 = _get_xyxy(offset0, offset1, y_idx, x_idx, h, w)
+            s = heatmap[y_idx, x_idx]
+
+            if not ignore_landmarks:
+                lm = []
+                for j in range(5):
+                    lm_x = landmark[0, (j * 2), y_idx, x_idx] * w + x1
+                    lm_y = landmark[0, (j * 2 + 1), y_idx, x_idx] * h + y1
+                    lm.append(lm_x)
+                    lm.append(lm_y)
+                lms_out.append(lm)
+
+            boxes.append([x1, y1, x2, y2, s])
+
+        boxes = np.asarray(boxes, dtype=np.float32)
+        if boxes.size != 0:
+            keep = self.nms(boxes[:, :4], boxes[:, 4], 0.3)
+            boxes = boxes[keep, :]
+
+            if not ignore_landmarks:
+                lms_out = np.asarray(lms_out, dtype=np.float32)
+                lms_out = lms_out[keep, :]
+        else:
+            boxes = boxes.reshape((0, 5))
+            if not ignore_landmarks:
+                lms_out = np.empty(shape=[0, 10], dtype=np.float32)
+
+        return (boxes, lms_out) if not ignore_landmarks else boxes
+    
+    def nms(self, boxes, scores, nms_thresh):
+        keep = []
+        num_detections = boxes.shape[0]
+        suppressed = np.zeros((num_detections,), dtype=bool)
+
+        order = np.argsort(scores)[::-1]
+        x1, y1 = boxes[:, 0], boxes[:, 1]
+        x2, y2 = boxes[:, 2], boxes[:, 3]
+        areas = (x2 - x1) * (y2 - y1)
+
+        for _i in range(num_detections):
+            i = order[_i]
+            if suppressed[i]:
+                continue
+            keep.append(i)
+
+            ix1, iy1, ix2, iy2 = x1[i], y1[i], x2[i], y2[i]
+            iarea = areas[i]
+
+            for _j in range(_i + 1, num_detections):
+                j = order[_j]
+                if suppressed[j]:
+                    continue
+
+                xx1, yy1 = max(ix1, x1[j]), max(iy1, y1[j])
+                xx2, yy2 = min(ix2, x2[j]), min(iy2, y2[j])
+                w, h = max(0, xx2 - xx1), max(0, yy2 - yy1)
+                inter = w * h
+                iou = inter / (iarea + areas[j] - inter)
+
+                if iou >= nms_thresh:
+                    suppressed[j] = True
+    
+        return keep
+
+    def detect_faces(
+            self,
+            imgs: Union[np.ndarray, List[np.ndarray]],
+            region: Sequence = None,
+            conf_thresh: float = None,
+            min_area: Union[Iterable[int], int] = None
+        ) -> List[List[FacialAreaRegion]]:
+
+        if isinstance(imgs, np.ndarray):
+            imgs = [imgs]
 
         conf_thresh = conf_thresh or self.conf_thresh
         min_area = min_area or self.min_area
-
         if isinstance(min_area, Iterable):
             min_area = math.prod(min_area)
 
-        h, w = img.shape[:2]
-        if math.prod((h, w)) < min_area:
-            return []
+        heatmaps, scales_out, offsets, landmarks_out, scales_hw = self.inference(imgs)
 
-        self.img_h_new = int(np.ceil(h / 32) * 32)
-        self.img_w_new = int(np.ceil(w / 32) * 32)
+        all_results = []
 
-        self.scale_h = self.img_h_new / h
-        self.scale_w = self.img_w_new / w
+        for idx, img in enumerate(imgs):
+            h, w = img.shape[:2]
+            scale_h, scale_w = scales_hw[idx]
 
-        detections = _inference_pytorch(img, conf_thresh, min_area)
+            if h * w < min_area:
+                all_results.append([])
+                continue
 
-        if not self.ignore_landmarks:
-            all_dets, all_lms = detections
-        else:
-            all_dets = detections
-            lms = None
+            heatmap = heatmaps[idx]
+            scale_out = scales_out[idx]
+            offset = offsets[idx]
+            lms_out = landmarks_out[idx]
 
-        detected_faces = []
-        for i, box in enumerate(all_dets):
-
-            x1, y1, x2, y2 = map(int, box[:4])
-
-            w = x2 - x1
-            h = y2 - y1
-
-            score = float(box[4])
-
-            if region:
-                x1, y1 = utils.apply_offset((x1, y1), region)
-                x2, y2 = utils.apply_offset((x2, y2), region)
-            
-            if all_lms is not None:
-                lms = [
-                    tuple(
-                        map(int, all_lms[i][j:j+2])
-                    )
-                    for j in range(0, 9, 2)
-                ]
-                if region:
-                    lms = utils.apply_offset(lms, region)
-
-                left_eye, right_eye, nose, mouth_right, mouth_left = lms
+            if not self.ignore_landmarks:
+                dets, lms = self.postprocess(
+                    heatmap, lms_out, offset, scale_out,
+                    (int(np.ceil(h / 32) * 32), int(np.ceil(w / 32) * 32)),
+                    self.ignore_landmarks, conf_thresh, min_area, scale_h, scale_w
+                )
             else:
-                left_eye = right_eye = nose = mouth_right = mouth_left = None
+                dets = self.postprocess(
+                    heatmap, None, offset, scale_out,
+                    (int(np.ceil(h / 32) * 32), int(np.ceil(w / 32) * 32)),
+                    self.ignore_landmarks, conf_thresh, min_area, scale_h, scale_w
+                )
+                lms = None
 
-            face_region = FacialAreaRegion(
-                x=x1,
-                y=y1,
-                w=w,
-                h=h,
-                left_eye=left_eye,
-                right_eye=right_eye,
-                nose=nose,
-                mouth_right=mouth_right,
-                mouth_left=mouth_left,
-                confidence=score
-            )
-            detected_faces.append(face_region)
+            detected_faces = []
+            for i, box in enumerate(dets):
+                x1, y1, x2, y2 = map(int, box[:4])
+                score = float(box[4])
+                face_w = x2 - x1
+                face_h = y2 - y1
+
+                if region:
+                    x1, y1 = utils.apply_offset((x1, y1), region)
+                    x2, y2 = utils.apply_offset((x2, y2), region)
+
+                if lms is not None:
+                    lms_points = [
+                        tuple(map(int, lms[i][j:j+2]))
+                        for j in range(0, 9, 2)
+                    ]
+                    if region:
+                        lms_points = utils.apply_offset(lms_points, region)
+                    left_eye, right_eye, nose, mouth_right, mouth_left = lms_points
+                else:
+                    left_eye = right_eye = nose = mouth_right = mouth_left = None
+
+                face_region = FacialAreaRegion(
+                    x=x1,
+                    y=y1,
+                    w=face_w,
+                    h=face_h,
+                    left_eye=left_eye,
+                    right_eye=right_eye,
+                    nose=nose,
+                    mouth_right=mouth_right,
+                    mouth_left=mouth_left,
+                    confidence=score
+                )
+                detected_faces.append(face_region)
+
+            if self.save_data:
+                self.face_detections.setdefault(self.i + idx, []).extend(detected_faces)
+
+            all_results.append(detected_faces)
 
         if self.save_data:
-            self.face_detections.setdefault(self.i, []).extend(detected_faces)
+            self.i += len(imgs)
 
-        return detected_faces
+        return all_results
 
     def visualize_detections(
             self, image: np.ndarray, face_detections: List[FacialAreaRegion],
