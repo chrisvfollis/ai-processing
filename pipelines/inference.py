@@ -10,7 +10,7 @@ import cv2
 import torch
 
 # internal dependencies
-from models import YoloX, OSNet, FaceIq
+from models import YoloX, OSNet, CenterFace
 from utilities import general_utils as utils
 from utilities import io_utils
 from utilities.log_utils import get_logger, press_stopwatch
@@ -26,7 +26,7 @@ class InferencePipeline:
             device: torch.device = None,
             yolo_cfg: dict = {},
             osnet_cfg: dict = {},
-            faceiq_cfg: dict = {},
+            centerface_cfg: dict = {},
         ):
         press_stopwatch(self, 'init_time')
 
@@ -35,7 +35,7 @@ class InferencePipeline:
 
         self.yolox = YoloX(device=self.device, **yolo_cfg)
         self.osnet = OSNet(device=self.device, **osnet_cfg)
-        self.face_iq = FaceIq(device=self.device, **faceiq_cfg)
+        self.centerface = CenterFace(device=self.device, **centerface_cfg)
 
         self.osnet.activate_buffers(
             file_prefix=video_file.split('.')[0],
@@ -158,7 +158,9 @@ class InferencePipeline:
         id_frames = frame_data['id_frames']
 
         object_detections = self.yolox.inference(frames)
-
+        
+        all_regions = []
+        crops = []
         for idx, img in id_frames.items():
             detections = object_detections[idx]
             if detections is None or len(detections) == 0:
@@ -166,14 +168,13 @@ class InferencePipeline:
 
             img_h, img_w = img.shape[:2]
             regions = utils.cluster_bboxes_into_regions(detections, img_w, img_h)
+            all_regions.extend(regions)
 
-            crops = []
             for x1, y1, w, h in regions:
                 crop = img[y1:y1+h, x1:x1+w]
                 crops.append(crop)
 
-            if not crops:
-                continue
+        facial_areas = self.centerface.detect_faces(crops, all_regions)
 
 
     def run(self, batch_size: int = 32):

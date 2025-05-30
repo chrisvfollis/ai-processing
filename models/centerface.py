@@ -210,11 +210,10 @@ class CenterFace:
     def detect_faces(
             self,
             imgs: Union[np.ndarray, List[np.ndarray]],
-            region: Sequence = None,
+            regions: List[Sequence] = None,
             conf_thresh: float = None,
-            min_area: Union[Iterable[int], int] = None
+            min_area: Union[Iterable[int], int] = None,
         ) -> List[List[FacialAreaRegion]]:
-
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]
 
@@ -228,6 +227,7 @@ class CenterFace:
         all_results = []
 
         for idx, img in enumerate(imgs):
+            region = regions[idx] if regions is not None else None
             h, w = img.shape[:2]
             scale_h, scale_w = scales_hw[idx]
 
