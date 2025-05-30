@@ -1,7 +1,10 @@
 # standard dependencies
 import os
+from typing import Union
 
 # 3rd-party dependencies
+import numpy as np
+import cv2
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -10,7 +13,7 @@ from torch.nn import functional as F
 from utilities import io_utils
 
 
-class FaceNet512():
+class FaceNet512:
     def __init__(
             self,
             checkpoint: str = 'facenet512.pth',
@@ -35,16 +38,32 @@ class FaceNet512():
         if self.fp16:
             self.model = self.model.half()
 
-    def preprocess(self):
-        pass
+    def preprocess(self, face_imgs):
+        processed = []
+        for img in face_imgs:
+            img = cv2.resize(img, (160, 160))
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            img = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
+            if self.fp16:
+                img = img.half()
+            processed.append(img)
 
-    def postprocess(self):
-        pass
+        batch = torch.stack(processed).to(self.device)
+        return batch
+
+    def postprocess(self, embeddings):
+        embeddings = embeddings.cpu().numpy()
+        return embeddings
 
     @torch.no_grad()
-    def extract_features(self, imgs):
-        imgs = imgs.to(self.device)
-        return self.model(imgs)
+    def represent(self, imgs, postprocess=False) -> Union[torch.Tensor, np.ndarray]:
+        imgs = self.preprocess(imgs)
+        
+        embeddings = self.model(imgs)
+        if postprocess:
+            embeddings = self.postprocess(embeddings)
+
+        return embeddings
 
 
 # =============================================================================
@@ -135,7 +154,6 @@ class InceptionResnetV1(nn.Module):
 
 
 class BasicConv2d(nn.Module):
-
     def __init__(self, in_planes, out_planes, kernel_size, stride, padding=0):
         super().__init__()
         self.conv = nn.Conv2d(

@@ -4,6 +4,7 @@ from typing import Any, Dict, Set, List, Union, Optional
 import pickle
 import gc
 import math
+from collections import defaultdict
 
 # 3rd-party dependencies
 import numpy as np
@@ -16,11 +17,10 @@ from deepface.modules import detection, representation, verification, recognitio
 from deepface.models.Detector import DetectedFace, FacialAreaRegion
 
 # internal dependencies
-from models import CenterFace, ClearFace
-from utilities import face_utils
-from utilities import io_utils
-from utilities import general_utils as utils
+from models import CenterFace, ClearFace, FaceNet512
+from utilities import io_utils, face_utils
 from utilities.log_utils import press_stopwatch
+from utilities import general_utils as utils
 
 
 class FaceIq:
@@ -70,7 +70,6 @@ class FaceIq:
         db_path,
         model_name,
         detector_backend,
-        align,
         expand_percentage,
         normalization,
         refresh_database
@@ -78,7 +77,6 @@ class FaceIq:
         def __find_bulk_embeddings(
             employees: Set[str],
             model_name: str = 'VGG-Face',
-            detector_backend: str = 'opencv',
             align: bool = False,
             expand_percentage: int = 0,
             normalization: str = 'base',
@@ -152,18 +150,16 @@ class FaceIq:
         file_parts = [
             'ds', 'model', model_name,
             'detector', detector_backend,
-            'aligned' if align else 'unaligned',
             'normalization', normalization,
             'expand', str(expand_percentage),
         ]
-
         file_name = '_'.join(file_parts) + '.pkl'
         file_name = file_name.replace('-', '').lower()
 
         datastore_path = os.path.join(db_path, file_name)
         representations = []
 
-        # Required columns for representations
+        # required cols for representations:
         df_cols = {
             'identity',
             'hash',
@@ -181,7 +177,7 @@ class FaceIq:
         with open(datastore_path, 'rb') as f:
             representations = pickle.load(f)
 
-        # check each item of representations list has required keys
+        # check each item of representations list has required keys:
         for i, current_representation in enumerate(representations):
             missing_keys = df_cols - set(current_representation.keys())
             if len(missing_keys) > 0:
@@ -190,7 +186,7 @@ class FaceIq:
                     f'Consider to delete {datastore_path}'
                 )
 
-        # Get the list of images on storage
+        # Get the list of images on storage:
         storage_images = set(image_utils.yield_images(path=db_path))
 
         if len(storage_images) == 0 and refresh_database is True:
@@ -201,7 +197,7 @@ class FaceIq:
         must_save_pickle = False
         new_images, old_images, replaced_images = set(), set(), set()
 
-        # Enforce data consistency amongst on disk images and pickle file
+        # enforce data consistency amongst on disk images and pickle file:
         if refresh_database:
             pickled_images = {
                 representation['identity'] for representation in representations
@@ -210,7 +206,7 @@ class FaceIq:
             new_images = storage_images - pickled_images  # images added to storage
             old_images = pickled_images - storage_images  # images removed from storage
 
-            # Determine any replaced images
+            # determine any replaced images:
             for current_representation in representations:
                 identity = current_representation['identity']
                 if identity in old_images:
@@ -224,18 +220,17 @@ class FaceIq:
         new_images.update(replaced_images)
         old_images.update(replaced_images)
 
-        # Remove old images
+        # remove old images:
         if len(old_images) > 0:
             representations = [rep for rep in representations if rep['identity'] not in old_images]
             must_save_pickle = True
 
-        # Find representations for new images
+        # find representations for new images:
         if len(new_images) > 0:
             representations += __find_bulk_embeddings(
                 employees=new_images,
                 model_name=model_name,
                 detector_backend=detector_backend,
-                align=align,
                 expand_percentage=expand_percentage,
                 normalization=normalization,
             )
@@ -246,6 +241,232 @@ class FaceIq:
                 pickle.dump(representations, f, pickle.HIGHEST_PROTOCOL)
 
         return representations
+
+    def detect(
+        self,
+        imgs: Union[np.ndarray, List[np.ndarray]],
+        skip: bool = False,
+        expand_percentage: int = 0,
+        enhance: bool = True,
+        color_face: str = 'rgb',
+        normalize_face: bool = True,
+    ) -> List[Dict[str, Any]]:
+
+        if isinstance(imgs, np.ndarray):
+            imgs = [imgs]
+
+        resp_objs = []
+        args_template = {
+            'expand_percentage': expand_percentage,
+        }
+
+        if skip:
+            for img in imgs:
+                height, width, _ = img.shape
+                base_region = FacialAreaRegion(x=0, y=0, w=width, h=height, confidence=0)
+                face_obj = DetectedFace(img=img, facial_area=base_region, confidence=0)
+
+                args_ = {
+                    'color_face': color_face,
+                    'width': width,
+                    'height': height,
+                    'normalize_face': normalize_face
+                }
+
+                resp_obj = face_utils.format_response(face_obj, **args_)
+                resp_objs.append(resp_obj)
+
+        else:
+            press_stopwatch(self, 'face_detection_time')
+            all_facial_areas = self.face_detector.detect_faces(imgs)
+            press_stopwatch(self, 'face_detection_time')
+
+            press_stopwatch(self, 'other_processing_time')
+
+            for img_idx, (img, facial_areas) in enumerate(zip(imgs, all_facial_areas)):
+                height, width, _ = img.shape
+
+                height_border, width_border = int(0.5 * height), int(0.5 * width)
+                args_ = args_template.copy()
+                args_['width_border'] = width_border
+                args_['height_border'] = height_border
+
+                format_args = {
+                    'color_face': color_face,
+                    'width': width,
+                    'height': height,
+                    'normalize_face': normalize_face
+                }
+
+                for facial_area in facial_areas:
+                    facial_area, face_img = face_utils.adjust_and_extract(
+                        facial_area, img, **args_
+                    )
+
+                    if enhance:
+                        face_img = self.enhance(face_img, is_rgb=True)
+
+                    face_obj = DetectedFace(
+                        img=face_img,
+                        facial_area=facial_area,
+                        confidence=facial_area.confidence
+                    )
+
+                    resp_obj = face_utils.format_response(face_obj, **format_args)
+                    resp_objs.append(resp_obj)
+
+            press_stopwatch(self, 'other_processing_time')
+
+        return resp_objs
+
+    def represent(
+        self,
+        face_imgs: List[np.ndarray],
+        facial_areas: List[dict],
+        confidences: List[float],
+        model: FaceNet512,
+        postprocess: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Args:
+            face_imgs (List[np.ndarray]): List of cropped face images (from detection pipeline).
+            facial_areas (List[dict]): List of facial area dicts {'x', 'y', 'w', 'h'}.
+            confidences (List[float]): List of face detection confidence scores.
+            model (FaceNet512): Initialized FaceNet512 model.
+            postprocess (bool): Whether to convert embeddings to NumPy.
+
+        Returns:
+            List[Dict[str, Any]]: List of dicts, each containing:
+                - 'embedding': list[float]
+                - 'facial_area': dict
+                - 'face_confidence': float
+        """
+        if not (len(face_imgs) == len(facial_areas) == len(confidences)):
+            raise ValueError("face_imgs, facial_areas, and confidences must be the same length.")
+
+        embeddings = model.represent(face_imgs, postprocess=postprocess)
+
+        if isinstance(embeddings, torch.Tensor):
+            embeddings = embeddings.cpu().numpy()
+
+        results = []
+        for i, embedding in enumerate(embeddings):
+            results.append({
+                "embedding": embedding.tolist() if isinstance(embedding, np.ndarray) else embedding,
+                "facial_area": facial_areas[i],
+                "face_confidence": confidences[i],
+            })
+
+        return results
+
+    def enhance(
+        self,
+        img: np.ndarray,
+        is_rgb=True,
+        output_path=None
+    ):
+        # Start timing
+
+        enhanced_face = self.face_enhancer.forward(img, is_rgb=is_rgb)
+
+        # End timing
+        
+        if output_path:
+            cv2.imwrite(output_path, enhanced_face)
+
+        return enhanced_face
+
+    def find(
+        self, 
+        img_path: list[np.ndarray],
+        db_path: str,
+        model_name: str = 'Facenet512',
+        distance_metric: str = 'cosine',
+        detector_backend: str = 'centerface_gpu',
+        expand_percentage: int = 0,
+        enhance: bool = True,
+        threshold: Optional[float] = None,
+        normalization: str = 'base',
+        refresh_database: bool = True,
+    ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
+        resp_obj = []
+
+        representations = self.prepare_data(
+            db_path,
+            model_name,
+            detector_backend,
+            expand_percentage,
+            normalization,
+            refresh_database
+        )
+        if len(representations) == 0:
+            return []
+        df = pd.DataFrame(representations)
+        
+        source_objs = self.detect(
+            img_path=img_path,
+            enhance=enhance,
+            expand_percentage=expand_percentage
+        )
+        for source_obj in source_objs:
+            face_img = source_obj['face_img']
+            face_region = source_obj['facial_area']
+
+            press_stopwatch(self, 'face_recognition_time')
+            target_embedding_obj = representation.represent(
+                img_path=face_img,
+                model_name=model_name,
+                detector_backend='skip',
+                align=align,
+                normalization=normalization,
+            )
+            press_stopwatch(self, 'face_recognition_time')
+
+            press_stopwatch(self, 'other_processing_time')
+            target_representation = target_embedding_obj[0]['embedding']
+
+            result_df = df.copy()  # df will be filtered in each img
+            result_df['source_x'] = face_region['x']
+            result_df['source_y'] = face_region['y']
+            result_df['source_w'] = face_region['w']
+            result_df['source_h'] = face_region['h']
+
+            distances = []
+            for _, instance in df.iterrows():
+                source_representation = instance['embedding']
+                if source_representation is None:
+                    distances.append(float('inf'))  # no representation for this image
+                    continue
+
+                target_dims = len(list(target_representation))
+                source_dims = len(list(source_representation))
+                if target_dims != source_dims:
+                    raise ValueError(
+                        'Source and target embeddings must have same dimensions but '
+                        + f'{target_dims}:{source_dims}. Model structure may change'
+                        + ' after pickle created. Delete the {file_name} and re-run.'
+                    )
+
+                distance = verification.find_distance(
+                    source_representation, target_representation, distance_metric
+                )
+
+                distances.append(distance)
+
+            target_threshold = threshold or verification.find_threshold(model_name, distance_metric)
+
+            result_df['threshold'] = target_threshold
+            result_df['distance'] = distances
+
+            result_df = result_df.drop(columns=['embedding'])
+            result_df = result_df[result_df['distance'] <= target_threshold]
+            result_df = result_df.sort_values(by=['distance'], ascending=True).reset_index(drop=True)
+
+            resp_obj.append(result_df)
+
+            press_stopwatch(self, 'other_processing_time')
+
+        return resp_obj
 
     def identify_faces(
             self,
@@ -334,308 +555,6 @@ class FaceIq:
         results = _postprocess_output(all_face_dfs)
 
         return results
-
-    def recognize(
-            self, img: np.ndarray, id_cutoff: Optional[float] = None
-        ) -> pd.DataFrame:
-        '''
-        Only does recognition — should be used on cropped face detection images. 
-        '''
-
-        if not os.path.isdir(self.face_dir):
-            raise ValueError(f'Face DB path {self.face_dir} does not exist')
-
-        file_name = '_'.join([
-            'ds', 'model', self.rec_model_name,
-            'detector', self.det_model_name,
-            'unaligned',
-            'normalization', 'base',
-            'expand', '0'
-        ]).replace('-', '').lower() + '.pkl'
-
-        datastore_path = os.path.join(self.face_dir, file_name)
-        if not os.path.exists(datastore_path):
-            raise FileNotFoundError(f'Embedding cache {datastore_path} not found')
-
-        with open(datastore_path, 'rb') as f:
-            representations = pickle.load(f)
-
-        df = pd.DataFrame(representations)
-        if df.empty:
-            return pd.DataFrame()
-        print('Representations dataframe:')
-        print(df)
-        print(f'Columns: {list(df.columns)}')
-
-        press_stopwatch(self, 'face_recognition_time')
-        embedding_obj = representation.represent(
-            img_path=img,
-            model_name=self.rec_model_name,
-            detector_backend='skip',
-            align=False,
-            normalization='base',
-        )
-        press_stopwatch(self, 'face_recognition_time')
-
-        target_embedding = embedding_obj[0]['embedding']
-
-        distances = []
-        for _, row in df.iterrows():
-            src_embedding = row['embedding']
-            if src_embedding is None:
-                distances.append(float('inf'))
-                continue
-
-            distances.append(
-                verification.find_distance(
-                    src_embedding, target_embedding, 'cosine'
-                )
-            )
-        
-        print('Distances:')
-        print(distances)
-        
-        df['x'] = [0] * len(distances)
-        df['y'] = [0] * len(distances)
-        df['w'] = [img.shape[1]] * len(distances)
-        df['h'] = [img.shape[0]] * len(distances)
-
-        df['distance'] = distances
-        target_threshold = id_cutoff or verification.find_threshold(
-            self.rec_model_name, 'cosine'
-        )
-        df['threshold'] = target_threshold
-
-        print('Distances dataframe:')
-        print(df)
-
-        df = df[df['distance'] <= target_threshold]
-        df = df.sort_values(by='distance', ascending=True).reset_index(drop=True)
-
-        df = utils.reformat_face_df(df)
-
-        print('Formatted dataframe:')
-        print(df)
-
-        results = io_utils.lookup_identities(df['identity'])
-        print(df)
-        df[['identity', 'name', 'designation']] = pd.DataFrame(
-            [(result[1], f'{result[3]}_{result[4]}', result[5])
-            for result in results]
-        )
-        return df
-
-    def find(
-        self, 
-        img_path: list[np.ndarray],
-        db_path: str,
-        model_name: str = 'Facenet512',
-        distance_metric: str = 'cosine',
-        detector_backend: str = 'centerface_gpu',
-        expand_percentage: int = 0,
-        enhance: bool = True,
-        threshold: Optional[float] = None,
-        normalization: str = 'base',
-        refresh_database: bool = True,
-    ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
-
-        representations = self.prepare_data(
-            db_path,
-            model_name,
-            detector_backend,
-            expand_percentage,
-            normalization,
-            refresh_database
-        )
-
-        if len(representations) == 0:
-            return []
-        
-        source_objs = self.detection_pipeline(
-            img_path=img_path,
-            enhance=enhance,
-            expand_percentage=expand_percentage
-        )
-
-        df = pd.DataFrame(representations)
-
-        resp_obj = []
-
-        for source_obj in source_objs:
-            face_img = source_obj['face_img']
-            face_region = source_obj['facial_area']
-
-            press_stopwatch(self, 'face_recognition_time')
-            target_embedding_obj = representation.represent(
-                img_path=face_img,
-                model_name=model_name,
-                detector_backend='skip',
-                align=align,
-                normalization=normalization,
-            )
-            press_stopwatch(self, 'face_recognition_time')
-
-            press_stopwatch(self, 'other_processing_time')
-            target_representation = target_embedding_obj[0]['embedding']
-
-            result_df = df.copy()  # df will be filtered in each img
-            result_df['source_x'] = face_region['x']
-            result_df['source_y'] = face_region['y']
-            result_df['source_w'] = face_region['w']
-            result_df['source_h'] = face_region['h']
-
-            distances = []
-            for _, instance in df.iterrows():
-                source_representation = instance['embedding']
-                if source_representation is None:
-                    distances.append(float('inf'))  # no representation for this image
-                    continue
-
-                target_dims = len(list(target_representation))
-                source_dims = len(list(source_representation))
-                if target_dims != source_dims:
-                    raise ValueError(
-                        'Source and target embeddings must have same dimensions but '
-                        + f'{target_dims}:{source_dims}. Model structure may change'
-                        + ' after pickle created. Delete the {file_name} and re-run.'
-                    )
-
-                distance = verification.find_distance(
-                    source_representation, target_representation, distance_metric
-                )
-
-                distances.append(distance)
-
-            target_threshold = threshold or verification.find_threshold(model_name, distance_metric)
-
-            result_df['threshold'] = target_threshold
-            result_df['distance'] = distances
-
-            result_df = result_df.drop(columns=['embedding'])
-            result_df = result_df[result_df['distance'] <= target_threshold]
-            result_df = result_df.sort_values(by=['distance'], ascending=True).reset_index(drop=True)
-
-            resp_obj.append(result_df)
-
-            press_stopwatch(self, 'other_processing_time')
-
-        return resp_obj
-
-    def detection_pipeline(
-        self,
-        imgs: list[np.ndarray],
-        skip: bool = False,
-        expand_percentage: int = 0,
-        enhance: bool = True,
-        color_face: str = 'rgb',
-        normalize_face: bool = True,
-    ) -> List[Dict[str, Any]]:
-        resp_objs = []
-        
-        if skip:
-            for img in imgs:
-                height, width, _ = img.shape
-                base_region = FacialAreaRegion(x=0, y=0, w=width, h=height, confidence=0)
-                face_obj = DetectedFace(img=img, facial_area=base_region, confidence=0)
-
-                args_ = {
-                    'color_face': color_face,
-                    'width': width,
-                    'height': height,
-                    'normalize_face': normalize_face
-                }
-                resp_obj = face_utils.format_response(face_obj, **args_)
-                resp_objs.append(resp_obj)
-    
-        else:
-            face_objs_batch = self.detect_faces(
-                imgs=imgs,
-                expand_percentage=expand_percentage,
-                enhance=enhance,
-            )
-
-            for img_idx, face_objs in enumerate(face_objs_batch):
-                img = imgs[img_idx]
-                height, width, _ = img.shape
-
-                args_ = {
-                    'color_face': color_face,
-                    'width': width,
-                    'height': height,
-                    'normalize_face': normalize_face
-                }
-
-                for face_obj in face_objs:
-                    resp_obj = face_utils.format_response(face_obj, **args_)
-                    resp_objs.append(resp_obj)
-
-        return resp_objs
-
-    def detect_faces(
-        self,
-        imgs: Union[np.ndarray, List[np.ndarray]],
-        expand_percentage: int = 0,
-        enhance: bool = True,
-    ) -> List[DetectedFace]:
-
-        if isinstance(imgs, np.ndarray):
-            imgs = [imgs]
-
-        results = []
-
-        args_template = {
-            'expand_percentage': expand_percentage,
-        }
-
-        press_stopwatch(self, 'face_detection_time')
-        all_facial_areas = self.face_detector.detect_faces(imgs)
-        press_stopwatch(self, 'face_detection_time')
-
-        press_stopwatch(self, 'other_processing_time')
-
-        for img_idx, (img, facial_areas) in enumerate(zip(imgs, all_facial_areas)):
-            height, width, _ = img.shape
-
-            height_border, width_border = int(0.5 * height), int(0.5 * width)
-            args_ = args_template.copy()
-            args_['width_border'] = width_border
-            args_['height_border'] = height_border
-
-            for facial_area in facial_areas:
-                facial_area, face_img = face_utils.adjust_and_extract(
-                    facial_area, img, **args_
-                )
-
-                if enhance:
-                    face_img = self.enhance_face(face_img, is_rgb=True)
-
-                face_obj = DetectedFace(
-                    img=face_img,
-                    facial_area=facial_area,
-                    confidence=facial_area.confidence
-                )
-                results.append(face_obj)
-
-        press_stopwatch(self, 'other_processing_time')
-
-        return results
-
-    def enhance_face(
-        self,
-        img: np.ndarray,
-        is_rgb=True,
-        output_path=None
-    ):
-        # Start timing
-
-        enhanced_face = self.face_enhancer.forward(img, is_rgb=is_rgb)
-
-        # End timing
-        
-        if output_path:
-            cv2.imwrite(output_path, enhanced_face)
-
-        return enhanced_face
 
     def save_runtime_data(self):
         filename = os.path.join(self.output_dir, 'faceiq_data.xlsx')
