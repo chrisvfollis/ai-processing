@@ -1,6 +1,6 @@
 # standard dependencies
 import os
-from typing import Any, Dict, Set, List, IO, Union, Optional
+from typing import Any, Dict, Set, List, Union, Optional
 import pickle
 import gc
 import math
@@ -32,7 +32,6 @@ class FaceIq:
             device: torch.device = None,
             detector_weights: str = 'centerface.pth',
             enhancer_weights: str = '90000_G.pth',
-            save_data: bool = False, 
         ):
         self.device = device or utils.get_default_device()
 
@@ -60,20 +59,11 @@ class FaceIq:
         self.face_recognition_time = 0
         self.other_processing_time = 0
 
-        self.save_data = save_data
+        self.i = 0
+        self.face_detections = {}
 
-        if self.save_data:
-            self.i = 0
-            self.i_f = 0
-
-            self.regions = {}
-            self.face_detections = {}
-            self.face_objs = {}
-            self.source_objs = {}
-            self.det_recognition_dfs = {}
-
-            self.results = {}
-            self.id_matches = {}
+        self.results = {}
+        self.id_matches = {}
 
     def prepare_data(
         self,
@@ -301,9 +291,6 @@ class FaceIq:
         }
 
         all_face_dfs = []
-        
-        if self.save_data:
-            self.i_f = 0
 
         press_stopwatch(self, 'identification_pipeline_time')
 
@@ -315,9 +302,6 @@ class FaceIq:
                 all_face_dfs.append(df)
 
         else:
-            if self.save_data:
-                self.regions.setdefault(self.i, []).extend(regions)
-
             for region in regions:
                 img_crop = utils.crop_region(img, region)
                 local_face_dfs = self.find(
@@ -348,34 +332,6 @@ class FaceIq:
         press_stopwatch(self, 'identification_pipeline_time')
         
         results = _postprocess_output(all_face_dfs)
-
-        if self.save_data:
-            i_f = -1
-            for face_df in results:
-                i_f += 1
-                
-                if face_df.empty:
-                    continue
-
-                best_match = face_df.loc[face_df['distance'].idxmin()]
-
-                name = best_match['name']
-                distance = best_match['distance']
-
-                match_dict = {'name': name, 'distance': distance}
-
-                self.id_matches.setdefault(self.i, []).append(match_dict)
-
-                filename = f'{self.i}_{i_f}_{name}_detection.png'
-                output_path = os.path.join(self.output_dir, filename)
-
-                x, y, w, h = best_match[['x', 'y', 'w', 'h']]
-                x1, y1, x2, y2 = utils.xywh_xyxy([x, y, w, h])
-
-                face_img = img[y1:y2,x1:x2]
-                face_img = cv2.resize(face_img, (w * 10, h * 10))
-
-                cv2.imwrite(output_path, face_img)
 
         return results
 
@@ -471,25 +427,22 @@ class FaceIq:
 
     def find(
         self, 
-        img_path: Union[str, np.ndarray],
+        img_path: list[np.ndarray],
         db_path: str,
         model_name: str = 'Facenet512',
         distance_metric: str = 'cosine',
         detector_backend: str = 'centerface_gpu',
-        align: bool = True,
         expand_percentage: int = 0,
         enhance: bool = True,
         threshold: Optional[float] = None,
         normalization: str = 'base',
         refresh_database: bool = True,
-        batched: bool = False,
     ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
 
         representations = self.prepare_data(
             db_path,
             model_name,
             detector_backend,
-            align,
             expand_percentage,
             normalization,
             refresh_database
@@ -500,30 +453,10 @@ class FaceIq:
         
         source_objs = self.detection_pipeline(
             img_path=img_path,
-            detector_backend=detector_backend,
-            align=align,
             enhance=enhance,
             expand_percentage=expand_percentage
         )
-        if self.save_data:
-            self.source_objs.setdefault(self.i, []).extend(source_objs)
 
-        if batched:
-            press_stopwatch(self, 'face_recognition_time')
-
-            batched_results = recognition.find_batched(
-                representations,
-                source_objs,
-                model_name,
-                distance_metric,
-                align,
-                threshold,
-                normalization,
-            )
-            press_stopwatch(self, 'face_recognition_time')
-
-            return batched_results
-        
         df = pd.DataFrame(representations)
 
         resp_obj = []
@@ -586,26 +519,20 @@ class FaceIq:
 
             press_stopwatch(self, 'other_processing_time')
 
-        if self.save_data:
-            self.det_recognition_dfs.setdefault(self.i, []).extend(resp_obj)
-
         return resp_obj
 
     def detection_pipeline(
         self,
         imgs: list[np.ndarray],
-        detector_backend: str = 'centerface_gpu',
-        align: bool = True,
+        skip: bool = False,
         expand_percentage: int = 0,
         enhance: bool = True,
         color_face: str = 'rgb',
         normalize_face: bool = True,
-        warn: bool = False
     ) -> List[Dict[str, Any]]:
-
         resp_objs = []
-
-        if detector_backend == 'skip':
+        
+        if skip:
             for img in imgs:
                 height, width, _ = img.shape
                 base_region = FacialAreaRegion(x=0, y=0, w=width, h=height, confidence=0)
@@ -617,17 +544,14 @@ class FaceIq:
                     'height': height,
                     'normalize_face': normalize_face
                 }
-
                 resp_obj = face_utils.format_response(face_obj, **args_)
                 resp_objs.append(resp_obj)
-
+    
         else:
             face_objs_batch = self.detect_faces(
                 imgs=imgs,
-                align=align,
                 expand_percentage=expand_percentage,
                 enhance=enhance,
-                warn=warn
             )
 
             for img_idx, face_objs in enumerate(face_objs_batch):
@@ -641,22 +565,15 @@ class FaceIq:
                     'normalize_face': normalize_face
                 }
 
-                if self.save_data:
-                    self.face_objs.setdefault(self.i + img_idx, []).extend(face_objs)
-
                 for face_obj in face_objs:
                     resp_obj = face_utils.format_response(face_obj, **args_)
                     resp_objs.append(resp_obj)
-
-            if self.save_data:
-                self.i += len(imgs)
 
         return resp_objs
 
     def detect_faces(
         self,
         imgs: Union[np.ndarray, List[np.ndarray]],
-        align: bool = True,
         expand_percentage: int = 0,
         enhance: bool = True,
     ) -> List[DetectedFace]:
@@ -668,8 +585,6 @@ class FaceIq:
 
         args_template = {
             'expand_percentage': expand_percentage,
-            'align': align,
-            'save_data': self.save_data
         }
 
         press_stopwatch(self, 'face_detection_time')
@@ -685,17 +600,6 @@ class FaceIq:
             args_ = args_template.copy()
             args_['width_border'] = width_border
             args_['height_border'] = height_border
-
-            if align:
-                img = cv2.copyMakeBorder(
-                    img,
-                    height_border,
-                    height_border,
-                    width_border,
-                    width_border,
-                    cv2.BORDER_CONSTANT,
-                    value=[0, 0, 0],
-                )
 
             for facial_area in facial_areas:
                 facial_area, face_img = face_utils.adjust_and_extract(
@@ -728,18 +632,12 @@ class FaceIq:
 
         # End timing
         
-        if self.save_data or output_path:
-            if not output_path:
-                filename = f'{self.i}_{self.i_f}_enhanced_detection.png'
-                output_path = os.path.join(self.output_dir, filename)
-
+        if output_path:
             cv2.imwrite(output_path, enhanced_face)
 
         return enhanced_face
 
     def save_runtime_data(self):
-        if not self.save_data:
-            return
         filename = os.path.join(self.output_dir, 'faceiq_data.xlsx')
     
         detection_data = []
@@ -766,29 +664,9 @@ class FaceIq:
                 })
 
         detections_df = pd.DataFrame(detection_data)
-        
-        all_idxs = sorted(set([
-            *self.regions.keys(),
-            *self.face_detections.keys(),
-            *self.face_objs.keys(),
-            *self.source_objs.keys(),
-            *self.det_recognition_dfs.keys()
-        ]))
-
-        artifact_data = {
-            'idx': all_idxs,
-            'regions': [len(self.regions.get(i, [])) for i in all_idxs],
-            'face_detections': [len(self.face_detections.get(i, [])) for i in all_idxs],
-            'face_objs': [len(self.face_objs.get(i, [])) for i in all_idxs],
-            'source_objs': [len(self.source_objs.get(i, [])) for i in all_idxs],
-            'det_recognition_dfs': [len(self.det_recognition_dfs.get(i, [])) for i in all_idxs]
-        }
-        
-        artifact_df = pd.DataFrame(artifact_data)
 
         with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
             detections_df.to_excel(writer, sheet_name='Detections', index=False)
-            artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)
 
     def visualize_identifications(self, image, identifications, output_path: str = None):
         image = image.copy()
