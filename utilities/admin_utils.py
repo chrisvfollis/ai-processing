@@ -20,7 +20,6 @@ from utilities import conn_utils, io_utils
 from utilities.conn_utils import APIClient
 
 
-
 # =============================================================================
 #                             - GENERAL EC2 -
 # -----------------------------------------------------------------------------
@@ -91,7 +90,7 @@ def auto_scp(
         local_base_path: str = 'user_home',
         local_dir: str = 'Downloads/',
         nickname: str = None,
-        shop_id: str = None
+        shop_id: str = None,
     ):
     def _scp_download(remote_path, local_path, instance_info, recursive):
         key_path = os.path.join('files/keys/', instance_info['key_filename'])
@@ -314,36 +313,34 @@ def get_approved_records(shop_id=None) -> list[tuple]:
     Retrieve approved employee event records to get accurate labeled image data
     for training and/or fine tuning.
     '''
-    
-    conn, cursor = conn_utils.pg_db_connect(var_prefix='WEBAPP_DB')
+    webapp_api = APIClient(var_prefix='WEBAPP_API')
+    params = {}
+    if shop_id:
+        params['shop_id'] = shop_id
 
-    query = """
-        SELECT
-            eel.employee_id,
-            eel.shop_id,
-            eel.image,
-            eel.start_time,
-            sel.first_name,
-            sel.last_name
-        FROM employee_event_log_employeeevent eel
-        JOIN shop_employeelist sel ON eel.employee_id = sel.id
-        WHERE eel.review_status = 'approved'
-    """
-    params = ()
-    if shop_id is not None:
-        query += ' AND eel.shop_id = %s'
-        params = (shop_id,)
-    
     try:
-        print('Retrieving approved event records...')
-        cursor.execute(query, params)
-        approved_records = cursor.fetchall()
+        response = webapp_api.get('/approved-employee-events/', params=params)
+        response.raise_for_status()
+
+        data = response.json()
+        formatted_records = []
+        for record in data.get('results', []):
+            formatted_records.append((
+                record['employee_id'],
+                record['shop_id'],
+                record['image'],
+                record['start_time'],
+                record['first_name'],
+                record['last_name'],
+            ))
+        return formatted_records
+
+    except requests.RequestException as e:
+        print(f'Request failed: {e}')
+        return []
     except Exception as e:
-        print(f'Error: {e}')
-    finally:
-        conn_utils.close_pg_db(conn, cursor)
-    
-    return approved_records
+        print(f'Unexpected error: {e}')
+        return []
 
 
 def save_approved_img_data(
