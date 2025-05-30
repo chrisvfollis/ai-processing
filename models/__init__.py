@@ -3,6 +3,7 @@ from .yolox import YoloX
 from .osnet import OSNet
 from .centerface import CenterFace
 from .clearface import ClearFace
+from .facenet import FaceNet512
 from .face_iq import FaceIq
 
 
@@ -12,5 +13,6 @@ __all__ = [
     'OSNet',
     'CenterFace',
     'ClearFace',
+    'FaceNet512',
     'FaceIq',
 ]

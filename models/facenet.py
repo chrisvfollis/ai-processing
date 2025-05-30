@@ -13,7 +13,7 @@ from utilities import io_utils
 class FaceNet512(nn.Module):
     def __init__(
             self,
-            checkpoint: str = 'facenet512.pt',
+            checkpoint: str = 'facenet512.pth',
             device: torch.device = None,
             fp16: bool = False,
         ):
