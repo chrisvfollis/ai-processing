@@ -1,6 +1,6 @@
 # standard dependencies
 import os
-from typing import Any, Dict, Set, List, Union, Optional
+from typing import Union, Optional, Sequence
 import pickle
 import gc
 import math
@@ -21,7 +21,7 @@ from utilities.log_utils import press_stopwatch
 from utilities import general_utils as utils
 
 
-class FaceIq:
+class FaceAnalysis:
     def __init__(
             self,
             id_cutoff: float = 0.8,
@@ -58,7 +58,7 @@ class FaceIq:
         self.results = {}
         self.id_matches = {}
 
-    def prepare_data(
+    def _prepare_data(
         self,
         db_path,
         expand_percentage: int = 0,
@@ -67,7 +67,7 @@ class FaceIq:
         normalize_face: bool = True,
     ):
         def __find_bulk_embeddings(
-            employees: Set[str],
+            employees: set[str],
             expand_percentage: int = 0,
             enhance: bool = True,
         ) -> list[dict]:
@@ -236,7 +236,7 @@ class FaceIq:
 
     def detect(
         self,
-        imgs: Union[np.ndarray, List[np.ndarray]],
+        imgs: Union[np.ndarray, list[np.ndarray]],
         detector: str = 'centerface',
         expand_percentage: int = 0,
         enhance: bool = True,
@@ -314,13 +314,28 @@ class FaceIq:
 
         return per_image_resp_objs
 
+    def enhance(
+        self,
+        img: np.ndarray,
+        is_rgb=True,
+        output_path=None
+    ):
+        # Start timing
+        enhanced_face = self.clearface.forward(img, is_rgb=is_rgb)
+        # End timing
+        
+        if output_path:
+            cv2.imwrite(output_path, enhanced_face)
+
+        return enhanced_face
+
     def represent(
         self,
-        face_imgs: List[np.ndarray],
-        facial_areas: List[dict],
-        confidences: List[float],
+        face_imgs: list[np.ndarray],
+        facial_areas: list[dict],
+        confidences: list[float],
         postprocess: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict]:
         """
         Args:
             face_imgs (List[np.ndarray]): List of cropped face images (from
@@ -357,35 +372,18 @@ class FaceIq:
 
         return results
 
-    def enhance(
-        self,
-        img: np.ndarray,
-        is_rgb=True,
-        output_path=None
-    ):
-        # Start timing
-
-        enhanced_face = self.clearface.forward(img, is_rgb=is_rgb)
-
-        # End timing
-        
-        if output_path:
-            cv2.imwrite(output_path, enhanced_face)
-
-        return enhanced_face
-
     def find(
-        self,
-        imgs: list[np.ndarray],
-        db_path: str,
-        expand_percentage: int = 0,
-        enhance: bool = True,
-        threshold: Optional[float] = None,
-        refresh_database: bool = True,
-    ) -> Union[list[pd.DataFrame], list[list[dict]]]:
+            self,
+            imgs: list[np.ndarray],
+            db_path: str,
+            id_cutoff: Optional[float] = None,
+            expand_percentage: int = 0,
+            enhance: bool = True,
+            refresh_database: bool = True,
+        ) -> Union[list[pd.DataFrame], list[list[dict]]]:
         resp_obj = []
 
-        representations = self.prepare_data(
+        representations = self._prepare_data(
             db_path,
             expand_percentage=expand_percentage,
             refresh_database=refresh_database,
@@ -430,18 +428,17 @@ class FaceIq:
             face_region = embedding_obj['facial_area']
 
             result_df = df.copy()
-            result_df['source_x'] = face_region['x']
-            result_df['source_y'] = face_region['y']
-            result_df['source_w'] = face_region['w']
-            result_df['source_h'] = face_region['h']
+            result_df['x'] = face_region['x']
+            result_df['y'] = face_region['y']
+            result_df['w'] = face_region['w']
+            result_df['h'] = face_region['h']
 
             distances = distance_matrix[i].detach().cpu().numpy().tolist()
 
-            result_df['threshold'] = threshold
             result_df['distance'] = distances
 
             result_df = result_df.drop(columns=['embedding'])
-            result_df = result_df[result_df['distance'] <= threshold]
+            result_df = result_df[result_df['distance'] <= id_cutoff]
             result_df = (
                 result_df.sort_values(by=['distance'], ascending=True)
                 .reset_index(drop=True)
@@ -455,18 +452,30 @@ class FaceIq:
 
     def identify_faces(
             self,
-            img,
-            id_cutoff=None,
-            regions=None,
-            enhance=False,
-            config=None
+            img: np.ndarray,
+            regions: Optional[Sequence] = None,
+            id_cutoff: Optional[float] = None,
+            align: bool = False,
+            expand_percentage: int = 0,
+            enhance: bool = False,
+            db_path: Optional[str] = None,
         ) -> list[pd.DataFrame]:
         def _postprocess_output(all_face_dfs):
+            '''
+            - Adds employee names, UUIDs, and designations to the dataframes.
+            - Filters redundant results by retaining only the lowest distance
+                rows in cases where the same employee is predicted multiple
+                times for the same image.
+            - Drops irrelevant columns.
+            '''
             press_stopwatch(self, 'other_processing_time')
     
+            drop_cols = ['target_x', 'target_y', 'target_w', 'target_h']
             filtered_face_dfs = []
-    
+
             for df in all_face_dfs:
+                df = df.drop(drop_cols, axis=1)
+                
                 if not df.empty:
                     results = io_utils.lookup_identities(df['identity'])
 
@@ -474,10 +483,9 @@ class FaceIq:
                         [(result[1], f'{result[3]}_{result[4]}', result[5])
                         for result in results]
                     )
-
                     df = df.loc[df.groupby('identity')['distance'].idxmin()]
                     filtered_face_dfs.append(df)
-
+    
                 else:
                     filtered_face_dfs.append(df)
                     continue
@@ -486,57 +494,44 @@ class FaceIq:
 
             return filtered_face_dfs
 
+        press_stopwatch(self, 'identification_pipeline_time')
+        db_path = db_path or self.face_dir
         id_cutoff = id_cutoff or self.id_cutoff
-        config = config or {
-            'db_path': self.face_dir,
-            'threshold': id_cutoff,
-            'align': False,
-        }
+
+        batch_imgs = (
+            [img] if not regions else
+            [utils.crop_region(img, region) for region in regions]
+        )
+        face_dfs = self.find(
+            imgs=batch_imgs,
+            regions=regions,
+            id_cutoff=id_cutoff,
+            align=align,
+            expand_percentage=expand_percentage,
+            enhance=enhance,
+            db_path=db_path,
+        )
 
         all_face_dfs = []
+        for i, df in enumerate(face_dfs):
+            if regions and not df.empty:
+                region = regions[i]
 
-        press_stopwatch(self, 'identification_pipeline_time')
+                df[['x', 'y']] = df.apply(
+                    lambda row:
+                    utils.apply_offset(
+                        (row['x'], row['y']), region
+                    ),
+                    axis=1
+                ).apply(pd.Series)
 
-        if not regions:
-            face_dfs = self.find(img_path=img, enhance=enhance, **config)
-            for df in face_dfs:
-                df = utils.reformat_face_df(df)
+            all_face_dfs.append(df)
 
-                all_face_dfs.append(df)
-
-        else:
-            for region in regions:
-                img_crop = utils.crop_region(img, region)
-                local_face_dfs = self.find(
-                    img_path=img_crop,
-                    enhance=enhance,
-                    **config
-                )
-
-                del img_crop
-                gc.collect()
-
-                for df in local_face_dfs:
-                    df = utils.reformat_face_df(df)
-                    if df.empty:
-                        all_face_dfs.append(df)
-                        continue
-    
-                    df[['x', 'y']] = df.apply(
-                        lambda row:
-                        utils.apply_offset(
-                            (row['x'], row['y']), region
-                        ),
-                        axis=1
-                    ).apply(pd.Series)
-
-                    all_face_dfs.append(df)
+        all_face_dfs = _postprocess_output(all_face_dfs)
 
         press_stopwatch(self, 'identification_pipeline_time')
         
-        results = _postprocess_output(all_face_dfs)
-
-        return results
+        return all_face_dfs
 
     def save_runtime_data(self):
         filename = os.path.join(self.output_dir, 'faceiq_data.xlsx')

@@ -5,7 +5,6 @@ from .retinaface import RetinaFace
 from .centerface import CenterFace
 from .clearface import ClearFace
 from .facenet import FaceNet512
-from .face_iq import FaceIq
 
 
 __all__ = [
@@ -16,5 +15,4 @@ __all__ = [
     'CenterFace',
     'ClearFace',
     'FaceNet512',
-    'FaceIq',
 ]

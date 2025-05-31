@@ -527,36 +527,6 @@ def apply_offset(
         return (x1, y1)
 
 
-def reformat_face_df(
-        face_df: pd.DataFrame,
-        drop: Sequence = [
-            'target_x', 'target_y',
-            'target_w', 'target_h',
-            'threshold'
-        ],
-        rename: dict = {
-            'source_x': 'x',
-            'source_y': 'y',
-            'source_w': 'w',
-            'source_h': 'h'
-        }
-    ):  
-        if drop:
-            valid_drop_cols = [c for c in drop if c in face_df.columns]
-            face_df = face_df.drop(valid_drop_cols, axis=1)
-
-        if rename:
-            valid_renames = {}
-            rename_cols = list(rename.keys())
-            for col in rename_cols:
-                if col in face_df.columns:
-                    valid_renames[col] = rename[col]
-
-            face_df = face_df.rename(columns=valid_renames)
-
-        return face_df
-
-
 def crop_region(img, region):
     x1, y1 = region[0], region[1]
     x2, y2 = region[0] + region[2], region[1] + region[3]
