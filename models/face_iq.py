@@ -11,13 +11,11 @@ import pandas as pd
 import cv2
 import torch
 import torch.nn.functional as F
-
 from deepface.commons import image_utils
-from deepface.modules import detection, representation
 from deepface.models.Detector import DetectedFace, FacialAreaRegion
 
 # internal dependencies
-from models import CenterFace, ClearFace, FaceNet512
+from models import RetinaFace, CenterFace, ClearFace, FaceNet512
 from utilities import io_utils, face_utils
 from utilities.log_utils import press_stopwatch
 from utilities import general_utils as utils
@@ -63,90 +61,79 @@ class FaceIq:
     def prepare_data(
         self,
         db_path,
-        model_name,
-        detector_backend,
-        expand_percentage,
-        normalization,
-        refresh_database
+        expand_percentage: int = 0,
+        refresh_database: bool = True,
+        enhance: bool = True,
+        normalize_face: bool = True,
     ):
         def __find_bulk_embeddings(
             employees: Set[str],
-            model_name: str = 'VGG-Face',
-            align: bool = False,
             expand_percentage: int = 0,
-            normalization: str = 'base',
-        ) -> List[Dict['str', Any]]:
+            enhance: bool = True,
+        ) -> list[dict]:
+            employee_list = list(employees)
+            employee_imgs = [cv2.imread(employee) for employee in employee_list]
             
-            representations = []
-            employee_imgs = [cv2.imread(employee) for employee in employees]
-            file_hashes = [
-                image_utils.find_image_hash(employee) for employee in employees
-            ]
-            img_objs = self.detect(
-                employee_imgs
+            img_objs_per_image = self.detect(
+                employee_imgs,
+                detector='retinaface',
+                expand_percentage=expand_percentage,
+                enhance=enhance,
+                color_face='bgr',
+                normalize_face=normalize_face,
             )
 
-            for employee in employees:
+            face_imgs = []
+            facial_areas = []
+            confidences = []
+            employee_face_paths = [] 
+
+            for employee, img_obj_list in zip(employee_list, img_objs_per_image):
+                if len(img_obj_list) == 0:
+                    continue
+
+                for img_obj in img_obj_list:
+                    face_imgs.append(img_obj['face'])
+                    facial_areas.append(img_obj['facial_area'])
+                    confidences.append(img_obj.get('confidence', 0))
+                    employee_face_paths.append(employee)
+
+            embedding_results = self.represent(
+                face_imgs,
+                facial_areas,
+                confidences,
+                postprocess=True,
+            )
+
+            processed_employees = set()
+            for i, result in enumerate(embedding_results):
+                employee = employee_face_paths[i]
                 file_hash = image_utils.find_image_hash(employee)
+                img_region = result['facial_area']
 
-                try:
-                    img_objs = self.detect(
+                representations.append({
+                    'identity': employee,
+                    'hash': file_hash,
+                    'embedding': result['embedding'],
+                    'target_x': img_region['x'],
+                    'target_y': img_region['y'],
+                    'target_w': img_region['w'],
+                    'target_h': img_region['h'],
+                })
+                processed_employees.add(employee)
 
-                    )
-                    img_objs = detection.extract_faces(
-                        img_path=employee,
-                        detector_backend='retinaface',
-                        grayscale=False,
-                        enforce_detection=False,
-                        align=False,
-                        expand_percentage=expand_percentage,
-                        color_face='bgr'  # `represent` expects images in bgr format.
-                    )
-                except ValueError as err:
-                    print(f'Exception while extracting faces from {employee}: {str(err)}')
-                    img_objs = []
-
-                if len(img_objs) != 0:
-                    for i, img_obj in enumerate(img_objs):
-                        img_content = img_obj['face']
-                        img_region = img_obj['facial_area']
-
-                        img_to_save = img_content
-                        if img_to_save.dtype == np.float32 or img_to_save.max() <= 1.0:
-                            img_to_save = (img_to_save * 255).astype(np.uint8)
-                        cv2.imwrite(f'{employee.split("/")[-1].split(".")[0]}_{i}.jpg', img_to_save)
-
-                        embedding_obj = representation.represent(
-                            img_path=img_content,
-                            model_name=model_name,
-                            detector_backend='skip',
-                            align=align,
-                            normalization=normalization,
-                        )
-                        img_representation = embedding_obj[0]['embedding']
-                        representations.append(
-                            {
-                                'identity': employee,
-                                'hash': file_hash,
-                                'embedding': img_representation,
-                                'target_x': img_region['x'],
-                                'target_y': img_region['y'],
-                                'target_w': img_region['w'],
-                                'target_h': img_region['h'],
-                            }
-                        )
-                else:
-                    representations.append(
-                        {
-                            'identity': employee,
-                            'hash': file_hash,
-                            'embedding': None,
-                            'target_x': 0,
-                            'target_y': 0,
-                            'target_w': 0,
-                            'target_h': 0,
-                        }
-                    )
+            for employee in employee_list:
+                if employee not in processed_employees:
+                    file_hash = image_utils.find_image_hash(employee)
+                    representations.append({
+                        'identity': employee,
+                        'hash': file_hash,
+                        'embedding': None,
+                        'target_x': 0,
+                        'target_y': 0,
+                        'target_w': 0,
+                        'target_h': 0,
+                    })
 
             return representations
 
@@ -154,9 +141,8 @@ class FaceIq:
             raise ValueError(f'Passed path {db_path} does not exist!')
 
         file_parts = [
-            'ds', 'model', model_name,
-            'detector', detector_backend,
-            'normalization', normalization,
+            'ds', 'model', 'facenet512',
+            'detector', 'centerface',
             'expand', str(expand_percentage),
         ]
         file_name = '_'.join(file_parts) + '.pkl'
@@ -233,12 +219,12 @@ class FaceIq:
 
         # find representations for new images:
         if len(new_images) > 0:
+            if not hasattr(self, 'retinaface'):
+                self.retinaface = RetinaFace(device=self.device)
             representations += __find_bulk_embeddings(
                 employees=new_images,
-                model_name=model_name,
-                detector_backend=detector_backend,
                 expand_percentage=expand_percentage,
-                normalization=normalization,
+                enhance=enhance,
             )
             must_save_pickle = True
 
@@ -251,64 +237,66 @@ class FaceIq:
     def detect(
         self,
         imgs: Union[np.ndarray, List[np.ndarray]],
-        skip: bool = False,
+        detector: str = 'centerface',
         expand_percentage: int = 0,
         enhance: bool = True,
         color_face: str = 'rgb',
         normalize_face: bool = True,
-    ) -> List[Dict[str, Any]]:
-
+    ) -> list[list[dict]]:
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]
 
-        resp_objs = []
+        per_image_resp_objs = []
         args_template = {
             'expand_percentage': expand_percentage,
         }
 
-        if skip:
+        if detector == 'skip':
             for img in imgs:
-                height, width, _ = img.shape
+                img_resp = []
+
+                height, width = img.shape[:2]
                 base_region = FacialAreaRegion(x=0, y=0, w=width, h=height, confidence=0)
-                face_obj = DetectedFace(img=img, facial_area=base_region, confidence=0)
+                face_obj = DetectedFace(img, facial_area=base_region, confidence=0)
 
                 args_ = {
                     'color_face': color_face,
                     'width': width,
                     'height': height,
-                    'normalize_face': normalize_face
+                    'normalize_face': normalize_face,
                 }
-
                 resp_obj = face_utils.format_response(face_obj, **args_)
-                resp_objs.append(resp_obj)
+                img_resp.append(resp_obj)
 
+                per_image_resp_objs.append(img_resp)
         else:
             press_stopwatch(self, 'face_detection_time')
-            all_facial_areas = self.centerface.detect_faces(imgs)
+            if detector == 'centerface':
+                all_facial_areas = self.centerface.detect_faces(imgs)
+            elif detector == 'retinaface':
+                all_facial_areas = self.retinaface.detect_faces(imgs)
             press_stopwatch(self, 'face_detection_time')
-
+        
             press_stopwatch(self, 'other_processing_time')
-
             for img_idx, (img, facial_areas) in enumerate(zip(imgs, all_facial_areas)):
-                height, width, _ = img.shape
+                height, width = img.shape[:2]
 
-                height_border, width_border = int(0.5 * height), int(0.5 * width)
                 args_ = args_template.copy()
-                args_['width_border'] = width_border
-                args_['height_border'] = height_border
+                args_['width_border'] = int(0.5 * width)
+                args_['height_border'] = int(0.5 * height)
 
                 format_args = {
                     'color_face': color_face,
                     'width': width,
                     'height': height,
-                    'normalize_face': normalize_face
+                    'normalize_face': normalize_face,
                 }
 
+                img_resp = []
                 for facial_area in facial_areas:
                     facial_area, face_img = face_utils.adjust_and_extract(
                         facial_area, img, **args_
                     )
-
                     if enhance:
                         face_img = self.enhance(face_img, is_rgb=True)
 
@@ -317,13 +305,14 @@ class FaceIq:
                         facial_area=facial_area,
                         confidence=facial_area.confidence
                     )
-
                     resp_obj = face_utils.format_response(face_obj, **format_args)
-                    resp_objs.append(resp_obj)
+                    img_resp.append(resp_obj)
+
+                per_image_resp_objs.append(img_resp)
 
             press_stopwatch(self, 'other_processing_time')
 
-        return resp_objs
+        return per_image_resp_objs
 
     def represent(
         self,
@@ -386,31 +375,28 @@ class FaceIq:
         return enhanced_face
 
     def find(
-        self, 
-        img_path: list[np.ndarray],
+        self,
+        imgs: list[np.ndarray],
         db_path: str,
         expand_percentage: int = 0,
         enhance: bool = True,
         threshold: Optional[float] = None,
-        normalization: str = 'base',
         refresh_database: bool = True,
-    ) -> Union[List[pd.DataFrame], List[List[Dict[str, Any]]]]:
+    ) -> Union[list[pd.DataFrame], list[list[dict]]]:
         resp_obj = []
 
         representations = self.prepare_data(
             db_path,
-            model_name,
-            detector_backend,
-            expand_percentage,
-            normalization,
-            refresh_database
+            expand_percentage=expand_percentage,
+            refresh_database=refresh_database,
+            enhance=enhance,
         )
         if len(representations) == 0:
             return []
         df = pd.DataFrame(representations)
         
         source_objs = self.detect(
-            img_path=img_path,
+            imgs,
             enhance=enhance,
             expand_percentage=expand_percentage
         )
@@ -503,11 +489,8 @@ class FaceIq:
         id_cutoff = id_cutoff or self.id_cutoff
         config = config or {
             'db_path': self.face_dir,
-            'model_name': self.rec_model_name,
-            'detector_backend': self.det_model_name,
             'threshold': id_cutoff,
-            'batched': False,
-            'align': False
+            'align': False,
         }
 
         all_face_dfs = []

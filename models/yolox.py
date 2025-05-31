@@ -22,7 +22,6 @@ logger = log_utils.get_logger(__name__)
 
 
 class YoloX:
-    '''YOLOX wrapper optimized for inference'''
     def __init__(
         self,
         checkpoint: str = 'yolox_mot17.pth.tar',
