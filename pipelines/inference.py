@@ -28,6 +28,8 @@ class InferencePipeline:
             yolo_cfg: dict = {},
             osnet_cfg: dict = {},
             faces_cfg: dict = {},
+            track_stride: int = 1,
+            id_freq: str = '1/s',
         ):
         press_stopwatch(self, 'init_time')
 
@@ -36,7 +38,7 @@ class InferencePipeline:
 
         self.yolox = YoloX(device=self.device, **yolo_cfg)
         self.osnet = OSNet(device=self.device, **osnet_cfg)
-        self.face_analyzer = FaceAnalysis(device=self.device, **faces_cfg)
+        self.face_analysis = FaceAnalysis(device=self.device, **faces_cfg)
 
         self.osnet.activate_buffers(
             file_prefix=video_file.split('.')[0],
@@ -57,21 +59,29 @@ class InferencePipeline:
         self.resolution = video_info[0]
         self.frame_diag = video_info[1]
         self.fps = video_info[2]
-        self.total_frames = video_info[3]
+        self.f_total = video_info[3]
 
         self.f_num = 0
 
         # PARAMETERS:
-        self.track_stride = max(1, self.fps // 10)
-        self.id_stride = (self.fps // self.track_stride) * self.track_stride
+        self.track_stride = track_stride
+
+        self.effective_fps = self.fps // self.track_stride
+        self.aligned_1s_interval = self.effective_fps * self.track_stride
+
+        if id_freq is '1/s':
+            self.id_stride = self.aligned_1s_interval
+        else:
+            id_freq = int(id_freq.split('/')[0])
+            self.id_stride = self.aligned_1s_interval // id_freq
 
         self.progress_interval = (
-            ((self.total_frames // 4) // self.track_stride) * self.track_stride
+            ((self.f_total // 4) // self.track_stride) * self.track_stride
         )
 
         # INFERENCE DATA STORAGE:
-        self.object_detections = {}
-        self.face_detections = {}
+        self.person_detections = {}
+        self.face_data = {}
 
         # TIMING ATTRIBUTES:
         self.primary_run_time = 0
@@ -90,7 +100,7 @@ class InferencePipeline:
 
         prev_frame, f_num = (-1, 0)
         result = False
-        while f_num < self.total_frames:
+        while f_num < self.f_total:
             cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
 
             current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
@@ -121,14 +131,36 @@ class InferencePipeline:
         press_stopwatch(self, 'skim_time')
         return result
 
+    def run(self, batch_size: int = 32):
+        logger.info(f'Running inference pipeline for {self.video_file}...')
+        press_stopwatch(self, 'primary_run_time')
+
+        self.cap = cv2.VideoCapture(self.video_path)
+
+        while self.f_num < self.f_total:
+            frame_data = self.collect_frames(batch_size)
+
+            batch_results = self.process_batch(frame_data)
+
+            self.person_detections = self.person_detections | batch_results[0]
+            self.face_data = self.face_data | batch_results[1]
+
+            del frame_data
+
+        logger.info(f'Exiting inference run on frame {self.f_num}')
+        self.cap.release()
+
+        return self.finalize_run()
+
     def collect_frames(self, batch_size: int = 32):
         idx = 0
         batch_start = self.f_num
-        batch_end = min(self.total_frames, (batch_start + batch_size))
+        batch_end = min(self.f_total, (batch_start + batch_size))
 
         frames = []
         id_frames = {}
 
+        press_stopwatch(self, 'read_time')
         while self.f_num < batch_end:
             ret, frame = self.cap.read()
             if not ret:
@@ -136,13 +168,16 @@ class InferencePipeline:
 
             frames.append(frame)
             if self.f_num % self.id_stride == 0:
-                id_frames[idx] = frame
+                id_frames[idx] = {
+                    'frame': frame,
+                    'f_num': self.f_num,
+                }
 
             idx += 1
             self.f_num += 1
             
             if self.f_num % self.progress_interval == 0:
-                progress = int(round((self.f_num / self.total_frames) * 100, 0))
+                progress = int(round((self.f_num / self.f_total) * 100, 0))
                 logger.info(f'{progress}%')
         
         frame_data = {
@@ -158,39 +193,33 @@ class InferencePipeline:
         frames = frame_data['frames']
         id_frames = frame_data['id_frames']
 
-        object_detections = self.yolox.inference(frames)
-        
-        for idx, img in id_frames.items():
-            detections = object_detections[idx]
+        yolo_output = self.yolox.inference(frames)
+
+        face_data = {}
+        for idx, id_frame in id_frames.items():
+            img = id_frame['frame']
+            f_num = id_frame['f_num']
+            
+            detections = yolo_output[idx]
             if detections is None or len(detections) == 0:
                 continue
 
+            self.osnet.extraction_batch(img, detections, f_num)
+
             img_h, img_w = img.shape[:2]
+            regions = utils.cluster_bboxes_into_regions(
+                detections, img_h, img_w, margin=15
+            )
+            facial_areas = self.face_analysis.identify_faces(img, regions)
+            face_data[f_num] = facial_areas
+        
+        person_detections = {}
+        for idx, detections in enumerate(yolo_output):
+            f_num = frame_data['start'] + idx
 
-            regions = utils.cluster_bboxes_into_regions(detections, img_w, img_h)
-            facial_areas = self.face_analyzer.identify_faces(img, regions)
+            person_detections[f_num] = detections
 
-
-    def run(self, batch_size: int = 32):
-        logger.info(f'Running inference pipeline for {self.video_file}...')
-        press_stopwatch(self, 'primary_run_time')
-
-        self.cap = cv2.VideoCapture(self.video_path)
-
-        while self.f_num < self.total_frames:
-            press_stopwatch(self, 'read_time')
-            frame_data = self.collect_frames(batch_size=batch_size)
-            press_stopwatch(self, 'read_time')
-
-            self.process_batch(frame_data)
-
-            del frame_data['frames']
-            del frame_data['id_frames']
-
-        logger.info(f'Exiting inference run on frame {self.f_num}')
-        self.cap.release()
-
-        return self.finalize_run()
+        return person_detections, face_data
 
     def finalize_run(self):
         if len(self.osnet.embedding_buffer) > 0:
@@ -203,7 +232,7 @@ class InferencePipeline:
 
         press_stopwatch(self, 'primary_run_time')
 
-        return self.object_detections, self.face_detections
+        return self.person_detections, self.face_data
 
     def save_runtime_data(self):
         runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')

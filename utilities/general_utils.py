@@ -363,8 +363,8 @@ def is_grayscale(frame, threshold=10):
 
 def cluster_bboxes_into_regions(
         bboxes: list,
-        img_width: int,
         img_height: int,
+        img_width: int,
         max_width: int = 1920,
         max_height: int = 1080,
         margin: int = 15,
@@ -375,8 +375,8 @@ def cluster_bboxes_into_regions(
     Args:
         bboxes (list): A list of bounding boxes in the format (x, y, w, h, c)
             where x, y are top-left.
-        img_width (int): Width of the original image.
         img_height (int): Height of the original image.
+        img_width (int): Width of the original image.
         max_width (int): Maximum allowable width for a region.
         max_height (int): Maximum allowable height for a region.
         margin (int): Number of pixels to expand around each region.
