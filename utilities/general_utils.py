@@ -384,7 +384,7 @@ def cluster_bboxes_into_regions(
     Returns (list): A list of region coordinates in the format (x1, y1, w, h)
         representing the cropped regions.
     '''
-
+    
     bbox_coords = np.array([(x, y, x + w, y + h) for x, y, w, h, _ in bboxes])
 
     # sort bounding boxes from top to bottom, then left to right:

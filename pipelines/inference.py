@@ -214,19 +214,23 @@ class InferencePipeline:
             detections = yolo_output[idx]
             if detections is None or len(detections) == 0:
                 continue
-
+            else:
+                detections = [
+                    utils.xywh_xyxy(d, out='xywh') for d in detections
+                ]
             self.osnet.extraction_batch(img, detections, f_num)
 
             img_h, img_w = img.shape[:2]
             regions = utils.cluster_bboxes_into_regions(
                 detections, img_h, img_w, margin=15
             )
+            
             facial_areas = self.face_analysis.identify_faces(img, regions)
             face_data[f_num] = facial_areas
         
         person_detections = {}
         for idx, detections in enumerate(yolo_output):
-            f_num = frame_data['start'] + idx
+            f_num = frame_data['start'] + (idx * self.track_stride)
 
             person_detections[f_num] = detections
 
