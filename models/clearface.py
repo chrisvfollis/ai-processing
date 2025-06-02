@@ -22,7 +22,7 @@ class ClearFace:
     def __init__(
             self,
             device: torch.device = None,
-            weights_file: str = '90000_G.pth',
+            checkpoint: str = '90000_G.pth',
             in_nc: int = 3,
             out_nc: int = 3,
             nf: int = 64,
@@ -32,7 +32,7 @@ class ClearFace:
 
         project_root = io_utils.get_project_root()
         self.weights_path = os.path.join(
-            project_root, 'models/weights/clearface/', weights_file
+            project_root, 'models/weights/clearface/', checkpoint
         )
 
         self.netG = RRDBNet(

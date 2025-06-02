@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models._utils as _utils
 import torchvision.models as models
+from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
 from utilities import io_utils
@@ -41,7 +42,11 @@ class RetinaFace:
 
         self.model = RetinaFaceModel()
         state_dict = torch.load(self.checkpoint_path, map_location=self.device)
-        self.model.load_state_dict(state_dict)
+        new_state_dict = {}
+        for key in state_dict:
+            new_key = key.replace('module.', '')
+            new_state_dict[new_key] = state_dict[key]
+        self.model.load_state_dict(new_state_dict, strict=False)
         self.model.eval()
         self.model.to(self.device)
 
@@ -82,7 +87,7 @@ class RetinaFace:
                     for cy, cx in product(dense_cy, dense_cx):
                         anchors += [cx, cy, s_kx, s_ky]
 
-        output = torch.Tensor(anchors).view(-1, 4)
+        output = torch.tensor(anchors).view(-1, 4)
 
         if self.clip:
             output.clamp_(max=1, min=0)
@@ -160,24 +165,27 @@ class RetinaFace:
         return keep
 
     def preprocess(self, img):
-        img = img.copy()
-
-        img -= (104, 117, 123)
+        img = img.astype(np.float32, copy=True)
+        img -= (104.0, 117.0, 123.0)
         img = img.transpose(2, 0, 1)
-        img = torch.from_numpy(img).unsqueeze(0)
-        return img.to(self.device)
+        img_tensor = torch.from_numpy(img).unsqueeze(0)
+        return img_tensor.to(self.device)
 
     def detect(self, img):
-        img = np.float32(img)
-        img = self.preprocess(img)
+        im_height, im_width = img.shape[:2]
 
-        im_height, im_width, _ = img.shape
-        scale = torch.Tensor(
-            [img.shape[1], img.shape[0], img.shape[1], img.shape[0]]
-        ).to(self.device)
+        img_np = np.float32(img)
+        img_tensor = self.preprocess(img)
+
+        with torch.no_grad():
+            loc, conf, landms = self.model(img_tensor)
+
+        scale = torch.tensor(
+            [im_width, im_height, im_width, im_height],
+            device=self.device,
+            dtype=loc.dtype,
+        )
         resize = 1
-
-        loc, conf, landms = self.model(img)
 
         priors = self.get_priors(image_size=(im_height, im_width))
         prior_data = priors.data
@@ -187,11 +195,12 @@ class RetinaFace:
         boxes = boxes.cpu().numpy()
         scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
 
+        scale1 = torch.tensor(
+            [im_width, im_height] * 5,
+            dtype=loc.dtype,
+            device=self.device
+        )
         landms = self.decode_landm(landms.data.squeeze(0), prior_data, self.variance)
-        scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-                               img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-                               img.shape[3], img.shape[2]])
-        scale1 = scale1.to(self.device)
         landms = landms * scale1 / resize
         landms = landms.cpu().numpy()
 
@@ -219,6 +228,50 @@ class RetinaFace:
         landms = landms[:self.keep_top_k, :]
 
         dets = np.concatenate((dets, landms), axis=1)
+        return dets
+
+    def detect_faces(self, img: np.ndarray) -> list[FacialAreaRegion]:
+        '''
+        Detect and align faces with RetinaFace.
+
+        Args:
+            img (np.ndarray): Pre-loaded image as numpy array.
+
+        Returns:
+            List[FacialAreaRegion]: A list of FacialAreaRegion objects.
+        '''
+        results = []
+        detections = self.detect(img)
+
+        for det in detections:
+            x1, y1, x2, y2 = det[0:4]
+            confidence = det[4]
+            w = x2 - x1
+            h = y2 - y1
+            x, y = int(x1), int(y1)
+
+            left_eye = tuple(map(int, det[5:7]))
+            right_eye = tuple(map(int, det[7:9]))
+            nose = tuple(map(int, det[9:11]))
+            mouth_left = tuple(map(int, det[11:13]))
+            mouth_right = tuple(map(int, det[13:15]))
+
+            facial_area = FacialAreaRegion(
+                x=x,
+                y=y,
+                w=int(w),
+                h=int(h),
+                left_eye=left_eye,
+                right_eye=right_eye,
+                nose=nose,
+                mouth_left=mouth_left,
+                mouth_right=mouth_right,
+                confidence=float(confidence)
+            )
+            results.append(facial_area)
+
+        return results
+
 
 
 # =============================================================================
@@ -283,14 +336,17 @@ class RetinaFaceModel(nn.Module):
         feature3 = self.ssh3(fpn[2])
         features = [feature1, feature2, feature3]
 
-        bbox_regressions = torch.cat([self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1)
-        classifications = torch.cat([self.ClassHead[i](feature) for i, feature in enumerate(features)],dim=1)
-        ldm_regressions = torch.cat([self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1)
+        bbox_regressions = torch.cat(
+            [self.BboxHead[i](feature) for i, feature in enumerate(features)], dim=1
+        )
+        classifications = torch.cat(
+            [self.ClassHead[i](feature) for i, feature in enumerate(features)], dim=1
+        )
+        ldm_regressions = torch.cat(
+            [self.LandmarkHead[i](feature) for i, feature in enumerate(features)], dim=1
+        )
 
-        if self.phase == 'train':
-            output = (bbox_regressions, classifications, ldm_regressions)
-        else:
-            output = (bbox_regressions, F.softmax(classifications, dim=-1), ldm_regressions)
+        output = (bbox_regressions, F.softmax(classifications, dim=-1), ldm_regressions)
         return output
 
 

@@ -13,15 +13,13 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 import seaborn as sns
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
 # internal dependencies
 from testing import test_utils
-from models.face_iq import FaceIq
+from modules import FaceAnalysis
 
 
 def generate_id_data(id_cutoff=0.6, img_dir='../files/output/event_imgs/'):
-    face_iq = FaceIq('Facenet512', 'centerface_gpu', save_data=False)
+    face_iq = FaceAnalysis('Facenet512', 'centerface_gpu', save_data=False)
 
     all_images = [img for img in os.listdir(img_dir)
                   if not img.endswith('.gitkeep')]

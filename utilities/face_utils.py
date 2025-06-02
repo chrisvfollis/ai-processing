@@ -89,9 +89,28 @@ def format_response(
         color_face = None,
         width = None,
         height = None,
-        normalize_face: bool = False
-    ):
+        normalize_face: bool = False,
+    ) -> dict:
+    '''
+    Returns:
+        dict: A dictionary with:
+            - 'face_img' (numpy.ndarray): The (possibly color-converted and normalized) face image.
+            - 'facial_area' (dict):
+                - 'x' (int): Clamped X coordinate.
+                - 'y' (int): Clamped Y coordinate.
+                - 'w' (int): Clamped width.
+                - 'h' (int): Clamped height.
+                - 'left_eye' (any, optional): Included only if not None.
+                - 'right_eye' (any, optional): Included only if not None.
+                - 'nose' (any, optional): Included only if not None.
+                - 'mouth_left' (any, optional): Included only if not None.
+                - 'mouth_right' (any, optional): Included only if not None.
+            - 'confidence' (float): Confidence score rounded to two decimals.
 
+    Notes:
+        - Landmark keys ('nose', 'mouth_left', 'mouth_right') are omitted if their value is None.
+        - 'face_img' is ready for downstream use, respecting color and normalization settings.
+    '''
     facial_area, face_img = face_obj.facial_area, face_obj.img
 
     face_img = convert_color(face_img, color_face)
@@ -112,20 +131,22 @@ def format_response(
         'left_eye': facial_area.left_eye,
         'right_eye': facial_area.right_eye,
     }
-
-    if facial_area.nose is not None:
-        facial_area_dict['nose'] = facial_area.nose
-    if facial_area.mouth_left is not None:
-        facial_area_dict['mouth_left'] = facial_area.mouth_left
-    if facial_area.mouth_right is not None:
-        facial_area_dict['mouth_right'] = facial_area.mouth_right
+    lower_facial_area_dict = {
+        'nose': facial_area.nose,
+        'mouth_left': facial_area.mouth_left,
+        'mouth_right': facial_area.mouth_right,
+    }
+    facial_area_dict = facial_area_dict | lower_facial_area_dict
+    
+    for k in lower_facial_area_dict.keys():
+        if facial_area_dict[k] is None:
+            del facial_area_dict[k]
 
     resp_obj = {
         'face_img': face_img,
         'facial_area': facial_area_dict,
         'confidence': round(float(facial_area.confidence or 0), 2),
     }
-
     return resp_obj
 
 

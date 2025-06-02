@@ -4,7 +4,7 @@
 # standard dependencies
 import math
 import os
-from typing import Union
+from typing import Union, Optional
 
 # 3rd-party dependencies
 import numpy as np
@@ -15,6 +15,7 @@ import torchvision
 
 # internal dependencies
 from utilities import io_utils, log_utils
+from utilities.log_utils import press_stopwatch
 import utilities.general_utils as utils
 
 
@@ -22,10 +23,9 @@ logger = log_utils.get_logger(__name__)
 
 
 class YoloX:
-    '''YOLOX wrapper optimized for inference'''
     def __init__(
         self,
-        checkpoint: str,
+        checkpoint: str = 'yolox_mot17.pth.tar',
         num_classes: int = 1,
         depth: float = 1.33,
         width: float = 1.25,
@@ -35,6 +35,7 @@ class YoloX:
         device: torch.device = None,
         fp16: bool = True,
         use_trt: bool = False,
+        decode: bool = True,
     ):
         def _configure_batchnorm(model):
             '''
@@ -110,7 +111,10 @@ class YoloX:
         self.rgb_means = (0.485, 0.456, 0.406)
         self.std = (0.229, 0.224, 0.225)
 
-        if use_trt:
+        # LOAD MODEL:
+        self.use_trt = use_trt
+        if self.use_trt:
+            self.fp16 = True    # override fp16 arg
             from torch2trt import TRTModule
             self.model = TRTModule()
             self.model.to(self.device)
@@ -118,14 +122,19 @@ class YoloX:
             trt_path = os.path.join(
                 io_utils.get_project_root(), 'models/weights/yolox/', checkpoint
             )
-            self.model.load_state_dict(torch.load(
-                trt_path, map_location=self.device
-            ))
+            sd = torch.load(trt_path, map_location=self.device)
+            self.model.load_state_dict(sd)
+
+            self.decoder = YoloXTRTDecoder(
+                input_size=self.input_size,
+                num_classes=self.num_classes,
+                strides=[8, 16, 32]
+            )
 
             self.model.eval()
         else:
             backbone = YOLOPAFPN(depth, width, in_channels=[256, 512, 1024])
-            head = YOLOXHead(num_classes, width, in_channels=[256, 512, 1024])
+            head = YOLOXHead(num_classes, width, in_channels=[256, 512, 1024], input_size=input_size, decode=decode)
             self.model = YOLOX(backbone, head)
 
             self.model.apply(_configure_batchnorm)
@@ -145,54 +154,98 @@ class YoloX:
             if self.fp16:
                 self.model = self.model.half()
 
-    def preprocess(self, image, input_size, mean, std, swap=(2, 0, 1)):
+        # TIMING ATTRS:
+        self.preprocess_time = 0
+        self.postprocess_time = 0
+        self.inference_time = 0
+        
+    def inference(
+            self,
+            img_data: Union[list[np.ndarray], np.ndarray],
+            conf_thresh: Optional[float] = None,
+            nms_thresh: Optional[float] = None,
+            num_classes: Optional[int] = None,
+        ) -> list[Union[torch.tensor, None]]:
         '''
-        Rescales, pads, and normalizes the input image. The image's aspect ratio
+        Returns (list[torch.tensor or None]): List of tensors, one for each
+            image (or None if there were no detections in that image). Each
+            tensor is of shape [num_detections, 7], where each detection
+            is as follows:
+                [x1, y1, x2, y2, object_conf, class_conf, class_pred]
+        '''
+        conf_thresh = conf_thresh or self.conf_thresh
+        nms_thresh = nms_thresh or self.nms_thresh
+        num_classes = num_classes or self.num_classes
+
+        if isinstance(img_data, np.ndarray):
+            img_data = [img_data]
+
+        img_data = [img.copy() for img in img_data]
+        img_tensor = self.preprocess(
+            img_data, self.input_size, self.rgb_means, self.std
+        )
+        if self.fp16:
+            img_tensor = img_tensor.half()
+        with torch.no_grad():
+            press_stopwatch(self, 'inference_time')
+            outputs = self.model(img_tensor)
+            press_stopwatch(self, 'inference_time')
+
+            if self.use_trt:
+                outputs = self.decoder.decode_outputs(
+                    outputs, dtype=outputs[0].dtype
+                )
+            outputs = self.postprocess(
+                outputs,
+                conf_thresh,
+                nms_thresh,
+                num_classes,
+            )
+            
+        return outputs
+
+    def preprocess(self, images, input_size, mean, std, swap=(2, 0, 1)):
+        '''
+        Rescales, pads, and normalizes input images. The image's aspect ratio
         is preserved through its rescaling, such that it fits within a canvas of
         shape `input_size` which is used to pad it.
         '''
-        if len(image.shape) == 3:
-            padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
-        else:
-            padded_img = np.ones(input_size) * 114.0
-        img = np.array(image)
-        r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
-        resized_img = cv2.resize(
-            img,
-            (int(img.shape[1] * r), int(img.shape[0] * r)),
-            interpolation=cv2.INTER_LINEAR,
-        ).astype(np.float32)
-        padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
-
-        padded_img = padded_img[:, :, ::-1]
-        padded_img /= 255.0
-        if mean is not None:
-            padded_img -= mean
-        if std is not None:
-            padded_img /= std
-        padded_img = padded_img.transpose(swap)
-        padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
-    
-        return padded_img
-    
-    def batch_preprocess(self, images, input_size, mean, std, swap=(2, 0, 1)):
+        press_stopwatch(self, 'preprocess_time')
         preprocessed_images = []
 
         for image in images:
-            preprocesesed = self.preprocess(image, input_size, mean, std, swap)
-            preprocessed_images.append(preprocesesed)
-        
+            if len(image.shape) == 3:
+                padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
+            else:
+                padded_img = np.ones(input_size) * 114.0
+            img = np.array(image)
+            r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
+            resized_img = cv2.resize(
+                img,
+                (int(img.shape[1] * r), int(img.shape[0] * r)),
+                interpolation=cv2.INTER_LINEAR,
+            ).astype(np.float32)
+            padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
+
+            padded_img = padded_img[:, :, ::-1]
+            padded_img /= 255.0
+            if mean is not None:
+                padded_img -= mean
+            if std is not None:
+                padded_img /= std
+            padded_img = padded_img.transpose(swap)
+            padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
+
+            preprocessed_images.append(padded_img)
+
         preprocessed_images = np.stack(preprocessed_images, axis=0)
-        
-        return torch.from_numpy(preprocessed_images).float()
+        preprocessed_images = torch.from_numpy(preprocessed_images).to(self.device)
 
-    def postprocess(
-            self, prediction, num_classes=None, conf_thresh=None, nms_thresh=None
-        ):
-        num_classes = num_classes or self.num_classes
-        conf_thresh = conf_thresh or self.conf_thresh
-        nms_thresh = nms_thresh or self.nms_thresh
+        press_stopwatch(self, 'preprocess_time')
+        return preprocessed_images
 
+    def postprocess(self, prediction, conf_thresh, nms_thresh, num_classes):
+        press_stopwatch(self, 'postprocess_time')
         box_corner = prediction.new(prediction.shape)
         box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
         box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
@@ -226,37 +279,16 @@ class YoloX:
                 )
             except:
                 import pdb; pdb.set_trace()
+
             detections = detections[nms_out_index]
+
             if output[i] is None:
                 output[i] = detections
             else:
                 output[i] = torch.cat((output[i], detections))
 
+        press_stopwatch(self, 'postprocess_time')
         return output
-
-    def inference(self, imgs):
-        # imgs is a list of images (or a single image for backward compatibility)
-        if isinstance(imgs, np.ndarray):
-            imgs = [imgs]
-
-        raw_imgs = [img.copy() for img in imgs]
-        img_tensor = self.batch_preprocess(
-            raw_imgs, self.input_size, self.rgb_means, self.std
-        )
-        img_tensor = img_tensor.float().to(self.device)
-
-        if self.fp16:
-            img_tensor = img_tensor.half()
-
-        with torch.no_grad():
-            outputs = self.model(img_tensor)
-            outputs = self.postprocess(
-                outputs,
-                self.num_classes,
-                self.conf_thresh,
-                self.nms_thresh,
-            )
-        return outputs
 
 
 # =============================================================================
@@ -268,16 +300,15 @@ class YOLOPAFPN(nn.Module):
     """
     YOLOv3 model. Darknet 53 is the default backbone of this model.
     """
-
     def __init__(
-        self,
-        depth=1.0,
-        width=1.0,
-        in_features=("dark3", "dark4", "dark5"),
-        in_channels=[256, 512, 1024],
-        depthwise=False,
-        act="silu",
-    ):
+            self,
+            depth=1.0,
+            width=1.0,
+            in_features=("dark3", "dark4", "dark5"),
+            in_channels=[256, 512, 1024],
+            depthwise=False,
+            act="silu",
+        ):
         super().__init__()
         self.backbone = CSPDarknet(depth, width, depthwise=depthwise, act=act)
         self.in_features = in_features
@@ -343,7 +374,6 @@ class YOLOPAFPN(nn.Module):
         Returns:
             Tuple[Tensor]: FPN feature.
         """
-
         #  backbone
         out_features = self.backbone(input)
         features = [out_features[f] for f in self.in_features]
@@ -373,14 +403,16 @@ class YOLOPAFPN(nn.Module):
 
 class YOLOXHead(nn.Module):
     def __init__(
-        self,
-        num_classes,
-        width=1.0,
-        strides=[8, 16, 32],
-        in_channels=[256, 512, 1024],
-        act="silu",
-        depthwise=False,
-    ):
+            self,
+            num_classes,
+            width=1.0,
+            strides=[8, 16, 32],
+            in_channels=[256, 512, 1024],
+            input_size=(800, 1440),
+            act="silu",
+            depthwise=False,
+            decode=True,
+        ):
         """
         Args:
             act (str): activation type of conv. Defalut value: "silu".
@@ -390,6 +422,8 @@ class YOLOXHead(nn.Module):
 
         self.n_anchors = 1
         self.num_classes = num_classes
+        self.hw = [(input_size[0] // s, input_size[1] // s) for s in strides]
+        self.decode = decode
 
         self.cls_convs = nn.ModuleList()
         self.reg_convs = nn.ModuleList()
@@ -496,7 +530,7 @@ class YOLOXHead(nn.Module):
         outputs = []
         for k, (cls_conv, reg_conv, x) in enumerate(
             zip(self.cls_convs, self.reg_convs, xin)
-        ):
+            ):
             x = self.stems[k](x)
             cls_x = x
             reg_x = x
@@ -515,13 +549,15 @@ class YOLOXHead(nn.Module):
 
             outputs.append(output)
 
-        self.hw = [x.shape[-2:] for x in outputs]
         # [batch, n_anchors_all, 85]
         outputs = torch.cat(
             [x.flatten(start_dim=2) for x in outputs], dim=2
         ).permute(0, 2, 1)
 
-        return self.decode_outputs(outputs, dtype=xin[0].type())
+        if self.decode:
+            return self.decode_outputs(outputs, dtype=xin[0].dtype)
+        else:
+            return outputs
 
     def get_output_and_grid(self, output, k, stride, dtype):
         grid = self.grids[k]
@@ -544,17 +580,19 @@ class YOLOXHead(nn.Module):
         return output, grid
 
     def decode_outputs(self, outputs, dtype):
+        device = outputs.device
+
         grids = []
         strides = []
         for (hsize, wsize), stride in zip(self.hw, self.strides):
-            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)])
+            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)], indexing='ij')
             grid = torch.stack((xv, yv), 2).view(1, -1, 2)
             grids.append(grid)
             shape = grid.shape[:2]
             strides.append(torch.full((*shape, 1), stride))
 
-        grids = torch.cat(grids, dim=1).type(dtype)
-        strides = torch.cat(strides, dim=1).type(dtype)
+        grids = torch.cat(grids, dim=1).type(dtype).to(device)
+        strides = torch.cat(strides, dim=1).type(dtype).to(device)
 
         outputs[..., :2] = (outputs[..., :2] + grids) * strides
         outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
@@ -860,3 +898,34 @@ class Focus(nn.Module):
             dim=1,
         )
         return self.conv(x)
+
+
+# =============================================================================
+#                            - TRT DECODING -
+# -----------------------------------------------------------------------------
+
+
+class YoloXTRTDecoder:
+    def __init__(self, input_size, num_classes, strides=[8, 16, 32]):
+        self.num_classes = num_classes
+        self.strides = strides
+        self.hw = [(input_size[0] // s, input_size[1] // s) for s in strides]
+
+    def decode_outputs(self, outputs, dtype):
+        device = outputs.device
+        grids = []
+        strides = []
+
+        for (hsize, wsize), stride in zip(self.hw, self.strides):
+            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)], indexing='ij')
+            grid = torch.stack((xv, yv), 2).view(1, -1, 2)
+            grids.append(grid)
+            shape = grid.shape[:2]
+            strides.append(torch.full((*shape, 1), stride))
+
+        grids = torch.cat(grids, dim=1).type(dtype).to(device)
+        strides = torch.cat(strides, dim=1).type(dtype).to(device)
+
+        outputs[..., :2] = (outputs[..., :2] + grids) * strides
+        outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
+        return outputs

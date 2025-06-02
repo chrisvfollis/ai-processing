@@ -10,7 +10,8 @@ import cv2
 import torch
 
 # internal dependencies
-from models import YOLOv4, OSNet, FaceIq
+from models import YoloX, OSNet
+from modules import FaceAnalysis
 from utilities import general_utils as utils
 from utilities import io_utils
 from utilities.log_utils import get_logger, press_stopwatch
@@ -20,30 +21,31 @@ logger = get_logger(__name__)
 
 
 class InferencePipeline:
-    def __init__(self, video_file, model_info, device, yolo_params=None,
-                 osnet_params=None, faceiq_params=None):
-        def _instantiate_models(model_info, device, yolo_params, osnet_params,
-                                faceiq_params):
-            if not yolo_params:
-                self.yolov4 = YOLOv4(model_info[0], device)
-            else:
-                self.yolov4 = YOLOv4(model_info[0], device, **yolo_params)
-            
-            if not osnet_params:
-                self.osnet = OSNet(model_info[1], device)
-            else:
-                self.osnet = OSNet(model_info[1], device, **osnet_params)
-            
-            file_prefix = video_file.split('.')[0]
-            self.osnet.activate_buffers(file_prefix, structure='video_data')
-            
-            if not faceiq_params:
-                self.face_iq = FaceIq(*model_info[2], device=device)
-            else:
-                self.face_iq = FaceIq(*model_info[2], device=device, **faceiq_params)
-
+    def __init__(
+            self,
+            video_file: str,
+            device: torch.device = None,
+            yolo_cfg: dict = {},
+            osnet_cfg: dict = {},
+            faces_cfg: dict = {},
+            track_stride: int = 1,
+            id_freq: str = '1/s',
+        ):
         press_stopwatch(self, 'init_time')
-    
+
+        # MODEL SETUP:
+        self.device = device or utils.get_default_device()
+
+        self.yolox = YoloX(device=self.device, **yolo_cfg)
+        self.osnet = OSNet(device=self.device, **osnet_cfg)
+        self.face_analysis = FaceAnalysis(device=self.device, **faces_cfg)
+
+        self.osnet.activate_buffers(
+            file_prefix=video_file.split('.')[0],
+            structure='video_data'
+        )
+
+        # PATHS:
         self.project_root = io_utils.get_project_root()
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
@@ -57,30 +59,29 @@ class InferencePipeline:
         self.resolution = video_info[0]
         self.frame_diag = video_info[1]
         self.fps = video_info[2]
-        self.total_frames = video_info[3]
+        self.f_total = video_info[3]
 
         self.f_num = 0
 
-        # MODEL SETUP:
-        _instantiate_models(
-            model_info,
-            device,
-            yolo_params,
-            osnet_params,
-            faceiq_params,
-        )
-        
         # PARAMETERS:
-        self.track_stride = max(1, self.fps // 10)
-        self.id_stride = (self.fps // self.track_stride) * self.track_stride
+        self.track_stride = track_stride
+
+        self.effective_fps = self.fps // self.track_stride
+        self.aligned_1s_interval = self.effective_fps * self.track_stride
+
+        if id_freq == '1/s':
+            self.id_stride = self.aligned_1s_interval
+        else:
+            id_freq = int(id_freq.split('/')[0])
+            self.id_stride = self.aligned_1s_interval // id_freq
 
         self.progress_interval = (
-            ((self.total_frames // 4) // self.track_stride) * self.track_stride
+            ((self.f_total // 4) // self.track_stride) * self.track_stride
         )
 
         # INFERENCE DATA STORAGE:
-        self.object_detections = {}
-        self.face_detections = {}
+        self.person_detections = {}
+        self.face_data = {}
 
         # TIMING ATTRIBUTES:
         self.primary_run_time = 0
@@ -95,11 +96,11 @@ class InferencePipeline:
         press_stopwatch(self, 'skim_time')
 
         cap = cv2.VideoCapture(self.video_path)
-        stride = self.fps * 2
+        stride = self.fps * 3
 
         prev_frame, f_num = (-1, 0)
         result = False
-        while f_num < self.total_frames:
+        while f_num < self.f_total:
             cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
 
             current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
@@ -113,7 +114,7 @@ class InferencePipeline:
                 break
 
             if f_num % stride == 0:
-                detections = self.yolov4.detect(frame, 0, conf_thresh=0.78)
+                detections = self.yolox.inference(frame, conf_thresh=0.78)
                 del frame
                 if detections:
                     result = True
@@ -130,105 +131,124 @@ class InferencePipeline:
         press_stopwatch(self, 'skim_time')
         return result
 
-    def run(self):
-        def _process_frame(frame, focus='global'):
-            if self.f_num % self.track_stride == 0:
-                bboxes = self.yolov4.detect(frame, 0)
-                if bboxes:
-                    self.osnet.extraction_batch(frame, bboxes, self.f_num)
-                    self.object_detections[self.f_num] = bboxes
-                    
-            face_dfs = []
-            if self.f_num % self.id_stride == 0:
-                if focus == 'local':
-                    if bboxes:
-                        regions = utils.cluster_bboxes_into_regions(
-                            bboxes, *self.resolution
-                        )
-                        face_dfs = self.face_iq.identify_faces(
-                            frame, id_cutoff=0.8, regions=regions
-                        )
-                elif focus == 'global':
-                    if bboxes:
-                        face_dfs = self.face_iq.identify_faces(
-                            frame, id_cutoff=0.8
-                        )
-                if face_dfs:
-                    self.face_detections[self.f_num] = face_dfs
-    
-        def _continue_forward(cap, current_frame):
-            if self.track_stride <= 15:
-                self.f_num += 1
-            else:
-                self.f_num += self.track_stride
-                cap.set(cv2.CAP_PROP_POS_FRAMES, self.f_num)
-            
-            if self.f_num % self.progress_interval == 0:
-                progress = int(round((self.f_num / self.total_frames) * 100, 0))
-                logger.info(f'{progress}%')
-            
-            if (self.f_num % 100) == 0:
-                press_stopwatch(self, 'garbage_collection_time')
-                gc.collect()
-                torch.cuda.empty_cache()
-                press_stopwatch(self, 'garbage_collection_time')
-            
-            prev_frame = current_frame
-            current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
-
-            return (prev_frame, current_frame)
-
+    def run(self, batch_size: int = 16):
+        self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
         press_stopwatch(self, 'primary_run_time')
 
-        cap = cv2.VideoCapture(self.video_path)
-        frame_position = (-1, 0)
+        self.cap = cv2.VideoCapture(self.video_path)
 
-        while self.f_num < self.total_frames:
-            prev_frame, current_frame = frame_position
+        while self.f_num < self.f_total:
+            frame_batch, log_progress = self.collect_frames(batch_size)
+            results = self.process_batch(frame_batch)
 
-            press_stopwatch(self, 'read_time')
-            ret, frame = cap.read()
-            press_stopwatch(self, 'read_time')
+            self.person_detections = self.person_detections | results[0]
+            self.face_data = self.face_data | results[1]
 
-            if (not ret) or (current_frame == prev_frame):
-                break
+            del frame_batch
 
-            _process_frame(frame, focus='local')
-    
-            frame_position = _continue_forward(cap, current_frame)
-            del frame
+            if log_progress == True:
+                logger.info(f'{self.progress}%')
 
         logger.info(f'Exiting inference run on frame {self.f_num}')
-        cap.release()
+        self.cap.release()
 
+        return self.finalize_run()
+
+    def collect_frames(self, batch_size: int = 16):
+        log_progress_update = False
+
+        batch_start = self.f_num
+        batch_end = min(self.f_total, (
+            batch_start + (batch_size * self.track_stride)
+        ))
+        frames = []
+        id_frames = {}
+
+        press_stopwatch(self, 'read_time')
+        while self.f_num < batch_end:
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+            
+            if self.f_num % self.track_stride == 0:
+                frames.append(frame)
+                idx = len(frames) - 1
+                if self.f_num % self.id_stride == 0:
+                    id_frames[idx] = {
+                        'frame': frame,
+                        'f_num': self.f_num,
+                    }
+
+            self.f_num += 1
+            
+            if self.f_num % self.progress_interval == 0:
+                log_progress_update = True
+
+                percent_complete = self.f_num / self.f_total * 100
+                self.progress = int(round(percent_complete, 0))
+
+        press_stopwatch(self, 'read_time')
+
+        frame_batch = {
+            'start': batch_start,    # included in the batch
+            'end': batch_end,   # not included: only marks the end
+            'frames': frames,
+            'id_frames': id_frames,
+        }
+
+        return frame_batch, log_progress_update
+
+    def process_batch(self, frame_data):
+        frames = frame_data['frames']
+        id_frames = frame_data['id_frames']
+
+        yolo_output = self.yolox.inference(frames)
+
+        face_data = {}
+        for idx, id_frame in id_frames.items():
+            if idx >= len(yolo_output):
+                continue
+            img = id_frame['frame']
+            f_num = id_frame['f_num']
+            
+            detections = yolo_output[idx]
+            if detections is None or len(detections) == 0:
+                continue
+            else:
+                detections = [
+                    utils.xywh_xyxy(d, out='xywh') for d in detections
+                ]
+            self.osnet.extraction_batch(img, detections, f_num)
+
+            img_h, img_w = img.shape[:2]
+            regions = utils.cluster_bboxes_into_regions(
+                detections, img_h, img_w, margin=15
+            )
+
+            facial_areas = self.face_analysis.identify_faces(img, regions)
+            face_data[f_num] = facial_areas
+        
+        person_detections = {}
+        for idx, detections in enumerate(yolo_output):
+            f_num = frame_data['start'] + (idx * self.track_stride)
+
+            person_detections[f_num] = detections
+
+        return person_detections, face_data
+
+    def finalize_run(self):
         if len(self.osnet.embedding_buffer) > 0:
             self.osnet.flush_buffers(structure='video_data', release=True)
         else:
             self.osnet.release_buffers()
 
         io_utils.clear_memory()
-
-        self.face_detections = self.consolidate_face_data(self.face_detections)
-
         self.save_runtime_data()
 
         press_stopwatch(self, 'primary_run_time')
-        return (self.object_detections, self.face_detections)
 
-    def consolidate_face_data(self, face_data):
-        merged_dfs = []
-        for frame, dfs in face_data.items():
-            valid_dfs = [df for df in dfs if not df.empty]
-            if valid_dfs:
-                merged_df = pd.concat(valid_dfs, ignore_index=True)
-                merged_df['f'] = frame
-                merged_dfs.append(merged_df)
-
-        if not merged_dfs:
-            return None
-
-        return pd.concat(merged_dfs, ignore_index=True)
+        return self.person_detections, self.face_data
 
     def save_runtime_data(self):
         runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
@@ -247,27 +267,28 @@ class InferencePipeline:
         config_data = {
             'module': [
                 *['software'] * 2,
-                *['video'] * 2,
-                *['yolov4'] * 3,
+                *['pipeline'] * 3,
+                *['yolox'] * 3,
                 *['osnet'] * 2,
-                *['faceiq'] * 2
+                *['face_analysis'] * 2,
             ],
             'parameter': [
                 'git_commit_hash',          # Software
                 'git_commit_datetime',
 
-                'resolution',               # Video
-                'fps',
+                'resolution',               # Video processing
+                'nominal_fps',
+                'effective_fps',
                 
-                'input_dims',               # YOLOv4
-                'nms_threshold',
-                'confidence_threshold',
+                'input_dims',               # YOLOX
+                'nms_thresh',
+                'conf_thresh',
 
                 'input_dims',               # OSNet
                 'output_shape',
 
-                'detection_model',          # Faceiq
-                'recognition_model'
+                'id_cutoff',                # Face analysis
+                'enhance',
             ],
             'value': [
                 commit_hash,                                    
@@ -275,26 +296,27 @@ class InferencePipeline:
 
                 f'{self.resolution[0]}x{self.resolution[1]}',   
                 f'{self.fps} fps',
+                f'{self.effective_fps} fps',
 
-                self.yolov4.input_dims,                         
-                self.yolov4.nms_thresh,
-                self.yolov4.conf_thresh,
+                self.yolox.input_size,                         
+                self.yolox.nms_thresh,
+                self.yolox.conf_thresh,
 
                 self.osnet.input_dims,                          
                 self.osnet.output_shape,
     
-                self.face_iq.det_model_name,
-                self.face_iq.rec_model_name
-            ]
+                self.face_analysis.id_cutoff,
+                self.face_analysis.enhance_faces,
+            ],
         }
         config_df = pd.DataFrame(config_data)
 
         performance_data = {
             'module': [
                 *['pipeline'] * 5,
-                *['yolov4'] * 3,
+                *['yolox'] * 3,
                 *['osnet'] * 3,
-                *['faceiq'] * 4
+                *['face_analysis'] * 4
             ],
             'metric': [             
                 'primary_run_time',                 # Pipeline            
@@ -323,19 +345,19 @@ class InferencePipeline:
                 self.init_time,
                 self.skim_time,
                 
-                self.yolov4.preprocess_time,
-                self.yolov4.detection_time,
-                self.yolov4.postprocess_time,
+                self.yolox.preprocess_time,
+                self.yolox.inference_time,
+                self.yolox.postprocess_time,
 
                 self.osnet.preprocess_time,
                 self.osnet.embedding_time,
                 self.osnet.flush_time,
 
-                self.face_iq.identification_pipeline_time,
-                self.face_iq.face_detection_time,
-                self.face_iq.face_recognition_time,
-                self.face_iq.other_processing_time
-            ]
+                self.face_analysis.identification_pipeline_time,
+                self.face_analysis.face_detection_time,
+                self.face_analysis.face_recognition_time,
+                self.face_analysis.other_processing_time,
+            ],
         }
         performance_df = pd.DataFrame(performance_data)
         
@@ -361,14 +383,23 @@ class InferencePipeline:
 
         # make shallow copy and remove unpickleable objects
         state = self.__dict__.copy()
-        state['yolov4'] = None
+        state['yolox'] = None
         state['osnet'] = None
-        state['face_iq'] = None
+        state['face_analysis'] = None
 
-        for f, detections in state['object_detections'].items():
-            for i, det in enumerate(detections):
-                if isinstance(det, torch.Tensor):
-                    detections[i] = det.cpu().numpy().tolist()
+        state['cap'] = None
+
+        for f, dets in state['person_detections'].items():
+            if isinstance(dets, torch.Tensor):
+                state['person_detections'][f] = dets.detach().cpu().numpy().tolist()
+            else:
+                converted = []
+                for d in dets:
+                    if isinstance(d, torch.Tensor):
+                        converted.append(d.detach().cpu().numpy().tolist())
+                    else:
+                        converted.append(d)
+                state['person_detections'][f] = converted
 
         press_stopwatch(self, 'pkl_io')
         with open(save_path, "wb") as f:
