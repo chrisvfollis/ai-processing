@@ -426,3 +426,7 @@ class CenterFace:
         with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
             detections_df.to_excel(writer, sheet_name='Detections', index=False)
             artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)   
+
+    def forward(self, x):
+        heatmaps, scales_out, offsets, landmarks = self.model(x)
+        return heatmaps

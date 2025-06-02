@@ -19,29 +19,38 @@ class FaceNet512:
             checkpoint: str = 'facenet512.pth',
             device: torch.device = None,
             fp16: bool = False,
+            use_trt: bool = False,
         ):
         project_root = io_utils.get_project_root()
         self.checkpoint_path = os.path.join(
-            project_root, 'models/weights/', checkpoint
+            project_root, 'models/weights/facenet/', checkpoint
         )
         self.fp16 = fp16
+        self.use_trt = use_trt
 
         self.device = device or torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
-        self.model = InceptionResnetV1()
 
-        state_dict = torch.load(self.checkpoint_path, map_location=self.device)
-        # drop the classifier head
-        state_dict.pop("logits.weight", None)
-        state_dict.pop("logits.bias",  None)
-        
-        self.model.load_state_dict(state_dict, strict=False)
-        self.model.eval()
-        self.model.to(self.device)
+        if use_trt:
+            from torch2trt import TRTModule
+            self.model = TRTModule()
+            state_dict = torch.load(self.checkpoint_path, map_location=self.device)
+            self.model.load_state_dict(state_dict)
+            self.model.eval().to(self.device)
+        else:
+            self.model = InceptionResnetV1()
 
-        if self.fp16:
-            self.model = self.model.half()
+            state_dict = torch.load(self.checkpoint_path, map_location=self.device)
+            # drop the classifier head
+            state_dict.pop("logits.weight", None)
+            state_dict.pop("logits.bias",  None)
+            
+            self.model.load_state_dict(state_dict, strict=False)
+            self.model.eval().to(self.device)
+
+            if self.fp16:
+                self.model = self.model.half()
 
     def preprocess(self, face_imgs):
         processed = []
@@ -188,7 +197,6 @@ class BasicConv2d(nn.Module):
 
 
 class Block35(nn.Module):
-
     def __init__(self, scale=1.0):
         super().__init__()
 
@@ -222,7 +230,6 @@ class Block35(nn.Module):
 
 
 class Block17(nn.Module):
-
     def __init__(self, scale=1.0):
         super().__init__()
 
@@ -250,7 +257,6 @@ class Block17(nn.Module):
 
 
 class Block8(nn.Module):
-
     def __init__(self, scale=1.0, noReLU=False):
         super().__init__()
 
@@ -281,7 +287,6 @@ class Block8(nn.Module):
 
 
 class Mixed_6a(nn.Module):
-
     def __init__(self):
         super().__init__()
 
@@ -304,7 +309,6 @@ class Mixed_6a(nn.Module):
 
 
 class Mixed_7a(nn.Module):
-
     def __init__(self):
         super().__init__()
 
