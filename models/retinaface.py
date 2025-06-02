@@ -42,7 +42,11 @@ class RetinaFace:
 
         self.model = RetinaFaceModel()
         state_dict = torch.load(self.checkpoint_path, map_location=self.device)
-        self.model.load_state_dict(state_dict)
+        new_state_dict = {}
+        for key in state_dict:
+            new_key = key.replace('module.', '')
+            new_state_dict[new_key] = state_dict[key]
+        self.model.load_state_dict(new_state_dict, strict=False)
         self.model.eval()
         self.model.to(self.device)
 
@@ -83,7 +87,7 @@ class RetinaFace:
                     for cy, cx in product(dense_cy, dense_cx):
                         anchors += [cx, cy, s_kx, s_ky]
 
-        output = torch.Tensor(anchors).view(-1, 4)
+        output = torch.tensor(anchors).view(-1, 4)
 
         if self.clip:
             output.clamp_(max=1, min=0)
@@ -161,24 +165,27 @@ class RetinaFace:
         return keep
 
     def preprocess(self, img):
-        img = img.copy()
-
-        img -= (104, 117, 123)
+        img = img.astype(np.float32, copy=True)
+        img -= (104.0, 117.0, 123.0)
         img = img.transpose(2, 0, 1)
-        img = torch.from_numpy(img).unsqueeze(0)
-        return img.to(self.device)
+        img_tensor = torch.from_numpy(img).unsqueeze(0)
+        return img_tensor.to(self.device)
 
     def detect(self, img):
-        img = np.float32(img)
-        img = self.preprocess(img)
+        im_height, im_width = img.shape[:2]
 
-        im_height, im_width, _ = img.shape
-        scale = torch.Tensor(
-            [img.shape[1], img.shape[0], img.shape[1], img.shape[0]]
-        ).to(self.device)
+        img_np = np.float32(img)
+        img_tensor = self.preprocess(img)
+
+        with torch.no_grad():
+            loc, conf, landms = self.model(img_tensor)
+
+        scale = torch.tensor(
+            [im_width, im_height, im_width, im_height],
+            device=self.device,
+            dtype=loc.dtype,
+        )
         resize = 1
-
-        loc, conf, landms = self.model(img)
 
         priors = self.get_priors(image_size=(im_height, im_width))
         prior_data = priors.data
@@ -188,11 +195,12 @@ class RetinaFace:
         boxes = boxes.cpu().numpy()
         scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
 
+        scale1 = torch.tensor(
+            [im_width, im_height] * 5,
+            dtype=loc.dtype,
+            device=self.device
+        )
         landms = self.decode_landm(landms.data.squeeze(0), prior_data, self.variance)
-        scale1 = torch.Tensor([img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-                               img.shape[3], img.shape[2], img.shape[3], img.shape[2],
-                               img.shape[3], img.shape[2]])
-        scale1 = scale1.to(self.device)
         landms = landms * scale1 / resize
         landms = landms.cpu().numpy()
 

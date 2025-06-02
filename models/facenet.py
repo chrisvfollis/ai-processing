@@ -30,8 +30,13 @@ class FaceNet512:
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
         self.model = InceptionResnetV1()
+
         state_dict = torch.load(self.checkpoint_path, map_location=self.device)
-        self.model.load_state_dict(state_dict)
+        # drop the classifier head
+        state_dict.pop("logits.weight", None)
+        state_dict.pop("logits.bias",  None)
+        
+        self.model.load_state_dict(state_dict, strict=False)
         self.model.eval()
         self.model.to(self.device)
 
@@ -41,6 +46,12 @@ class FaceNet512:
     def preprocess(self, face_imgs):
         processed = []
         for img in face_imgs:
+            if img.dtype == np.float64:
+                img = (img * 255).clip(0, 255).astype(np.uint8)
+            elif img.dtype == np.float32 and img.max() <= 1.0:
+                img = (img * 255).astype(np.uint8)
+            elif img.dtype != np.uint8:
+                img = img.astype(np.uint8)  
             img = cv2.resize(img, (160, 160))
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0

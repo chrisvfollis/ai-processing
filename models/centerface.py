@@ -235,10 +235,10 @@ class CenterFace:
                 all_results.append([])
                 continue
 
-            heatmap = heatmaps[idx]
-            scale_out = scales_out[idx]
-            offset = offsets[idx]
-            lms_out = landmarks_out[idx]
+            heatmap = heatmaps[idx : idx+1]   # keep batch axis
+            scale_out = scales_out[idx : idx+1]
+            offset = offsets[idx  : idx+1]
+            lms_out = landmarks_out[idx : idx+1]
 
             if not self.ignore_landmarks:
                 dets, lms = self.postprocess(

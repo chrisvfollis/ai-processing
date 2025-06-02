@@ -184,11 +184,25 @@ class OSNet:
         self.embedding_idx += 1
         return embedding
 
+    @staticmethod
+    def _safe_crop(img, box_xywh):
+        """Clamp box to image; return None if it becomes empty."""
+        x, y, w, h = [int(round(v.item() if torch.is_tensor(v) else v)) for v in box_xywh]
+        H, W = img.shape[:2]
+        x1, y1 = max(0, x), max(0, y)
+        x2, y2 = min(W, x + w), min(H, y + h)
+        if x2 <= x1 or y2 <= y1:
+            return None
+        return img[y1:y2, x1:x2]
+
     def extraction_batch(self, img, detections, f_num):                
-        batch_images = []
-        for box in detections:
-            x, y, w, h, = box[:4]
-            batch_images.append(img[y:y+h, x:x+w])
+        batch_images, kept = [], []
+        for i, box in enumerate(detections):
+            crop = self._safe_crop(img, box[:4])
+            if crop is None:
+                continue
+            batch_images.append(crop)
+            kept.append(i)
 
         batch_tensor = self.preprocess_input(batch_images)
 

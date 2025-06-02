@@ -385,7 +385,7 @@ def cluster_bboxes_into_regions(
         representing the cropped regions.
     '''
     
-    bbox_coords = np.array([(x, y, x + w, y + h) for x, y, w, h, _ in bboxes])
+    bbox_coords = np.array([xywh_xyxy(box, out='xyxy') for box in bboxes])
 
     # sort bounding boxes from top to bottom, then left to right:
     bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]
@@ -528,12 +528,18 @@ def apply_offset(
 
 
 def crop_region(img, region):
-    x1, y1 = region[0], region[1]
-    x2, y2 = region[0] + region[2], region[1] + region[3]
+    x1, y1, x2, y2 = [int(round(v)) for v in region[:4]]
+    if x2 <= x1 or y2 <= y1:
+        return None
     return img[y1:y2, x1:x2].copy()
 
 
 def xywh_xyxy(coordinates, out='xyxy'):
+    if torch.is_tensor(coordinates):
+        coordinates = coordinates.detach().cpu().numpy()
+    elif not isinstance(coordinates, np.ndarray):
+        coordinates = np.asarray(coordinates, dtype=float)
+
     if out == 'xyxy':
         x1, y1, w, h = coordinates[:4]
 

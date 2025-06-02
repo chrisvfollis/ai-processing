@@ -64,80 +64,67 @@ class FaceAnalysis:
         self.id_matches = {}
 
     def _prepare_data(
-        self,
-        db_path,
-        expand_percentage: int = 0,
-        refresh_database: bool = True,
-        enhance: bool = True,
-        normalize_face: bool = True,
-    ):
-        def __find_bulk_embeddings(
-            employees: set[str],
+            self,
+            db_path,
             expand_percentage: int = 0,
+            refresh_database: bool = True,
             enhance: bool = True,
-        ) -> list[dict]:
-            employee_list = list(employees)
-            employee_imgs = [cv2.imread(employee) for employee in employee_list]
-            
-            img_objs_per_image = self.detect(
-                employee_imgs,
-                detector='retinaface',
-                expand_percentage=expand_percentage,
-                enhance=enhance,
-                color_face='bgr',
-                normalize_face=normalize_face,
-            )
+            normalize_face: bool = True,
+        ):
+        def __find_bulk_embeddings(
+                employees: set[str],
+                expand_percentage: int = 0,
+                enhance: bool = True,
+            ) -> list[dict]:
 
-            face_imgs = []
-            facial_areas = []
-            confidences = []
-            employee_face_paths = [] 
+            representations: list[dict] = []
+            employee_list = sorted(employees)
 
-            for employee, img_obj_list in zip(employee_list, img_objs_per_image):
-                if len(img_obj_list) == 0:
+            for employee_path in employee_list:
+                img = cv2.imread(employee_path)
+                if img is None:
                     continue
 
-                for img_obj in img_obj_list:
-                    face_imgs.append(img_obj['face'])
-                    facial_areas.append(img_obj['facial_area'])
-                    confidences.append(img_obj.get('confidence', 0))
-                    employee_face_paths.append(employee)
+                img_obj_list = self.detect(
+                    img,
+                    detector="retinaface",
+                    expand_percentage=expand_percentage,
+                    enhance=enhance,
+                    color_face="bgr",
+                    normalize_face=normalize_face,
+                )[0]
 
-            embedding_results = self.represent(
-                face_imgs,
-                facial_areas,
-                confidences,
-                postprocess=True,
-            )
-
-            processed_employees = set()
-            for i, result in enumerate(embedding_results):
-                employee = employee_face_paths[i]
-                file_hash = image_utils.find_image_hash(employee)
-                img_region = result['facial_area']
-
-                representations.append({
-                    'identity': employee,
-                    'hash': file_hash,
-                    'embedding': result['embedding'],
-                    'target_x': img_region['x'],
-                    'target_y': img_region['y'],
-                    'target_w': img_region['w'],
-                    'target_h': img_region['h'],
-                })
-                processed_employees.add(employee)
-
-            for employee in employee_list:
-                if employee not in processed_employees:
-                    file_hash = image_utils.find_image_hash(employee)
+                if not img_obj_list:
                     representations.append({
-                        'identity': employee,
-                        'hash': file_hash,
-                        'embedding': None,
-                        'target_x': 0,
-                        'target_y': 0,
-                        'target_w': 0,
-                        'target_h': 0,
+                        "identity": employee_path,
+                        "hash": image_utils.find_image_hash(employee_path),
+                        "embedding": None,
+                        "target_x": 0, "target_y": 0,
+                        "target_w": 0, "target_h": 0,
+                    })
+                    continue
+
+                face_imgs, facial_areas, confidences = [], [], []
+                for obj in img_obj_list:
+                    face_imgs.append(obj["face_img"])
+                    facial_areas.append(obj["facial_area"])
+                    confidences.append(obj.get("confidence", 0))
+
+                embed_results = self.represent(
+                    face_imgs,
+                    facial_areas,
+                    confidences,
+                    postprocess=True,
+                )
+
+                for res in embed_results:
+                    fa = res["facial_area"]
+                    representations.append({
+                        "identity": employee_path,
+                        "hash": image_utils.find_image_hash(employee_path),
+                        "embedding": res["embedding"],
+                        "target_x": fa["x"], "target_y": fa["y"],
+                        "target_w": fa["w"], "target_h": fa["h"],
                     })
 
             return representations
@@ -240,14 +227,14 @@ class FaceAnalysis:
         return representations
 
     def detect(
-        self,
-        imgs: Union[np.ndarray, list[np.ndarray]],
-        detector: str = 'centerface',
-        expand_percentage: int = 0,
-        enhance: bool = True,
-        color_face: str = 'rgb',
-        normalize_face: bool = True,
-    ) -> list[list[dict]]:
+            self,
+            imgs: Union[np.ndarray, list[np.ndarray]],
+            detector: str = 'centerface',
+            expand_percentage: int = 0,
+            enhance: bool = True,
+            color_face: str = 'rgb',
+            normalize_face: bool = True,
+        ) -> list[list[dict]]:
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]
 
@@ -279,7 +266,7 @@ class FaceAnalysis:
             if detector == 'centerface':
                 all_facial_areas = self.centerface.detect_faces(imgs)
             elif detector == 'retinaface':
-                all_facial_areas = self.retinaface.detect_faces(imgs)
+                all_facial_areas = [self.retinaface.detect_faces(imgs[0])]
             press_stopwatch(self, 'face_detection_time')
         
             press_stopwatch(self, 'other_processing_time')
@@ -335,12 +322,12 @@ class FaceAnalysis:
         return enhanced_face
 
     def represent(
-        self,
-        face_imgs: list[np.ndarray],
-        facial_areas: list[dict],
-        confidences: list[float],
-        postprocess: bool = True,
-    ) -> list[dict]:
+            self,
+            face_imgs: list[np.ndarray],
+            facial_areas: list[dict],
+            confidences: list[float],
+            postprocess: bool = True,
+        ) -> list[dict]:
         """
         Args:
             face_imgs (List[np.ndarray]): List of cropped face images (from
@@ -386,6 +373,9 @@ class FaceAnalysis:
             enhance: bool = True,
             refresh_database: bool = True,
         ) -> Union[list[pd.DataFrame], list[list[dict]]]:
+
+        id_cutoff = id_cutoff or self.id_cutoff
+
         resp_obj = []
 
         representations = self._prepare_data(
@@ -398,58 +388,64 @@ class FaceAnalysis:
             return []
         df = pd.DataFrame(representations)
         
-        source_objs = self.detect(
+        per_image_objs = self.detect(
             imgs,
             enhance=enhance,
             expand_percentage=expand_percentage
         )
-        face_imgs = [obj['face_img'] for obj in source_objs]
-        facial_areas = [obj['facial_area'] for obj in source_objs]
-        confidences = [obj['face_confidence'] for obj in source_objs]
+        for source_objs in per_image_objs:
+            if not source_objs:
+                resp_obj.append(pd.DataFrame())
+                continue
+            face_imgs = [obj['face_img'] for obj in source_objs]
+            facial_areas = [obj['facial_area'] for obj in source_objs]
+            confidences = [obj['confidence'] for obj in source_objs]
 
-        press_stopwatch(self, 'face_recognition_time')
-        target_embedding_objs = self.represent(
-            face_imgs,
-            facial_areas,
-            confidences,
-            postprocess=False,
-        )
-        press_stopwatch(self, 'face_recognition_time')
-
-        press_stopwatch(self, 'other_processing_time')
-        source_embeddings = np.stack(df['embedding'].tolist())
-        target_embeddings = np.stack(
-            [obj['embedding'] for obj in target_embedding_objs]
-        )
-        source_tensor = torch.tensor(source_embeddings).to(self.device)
-        target_tensor = torch.tensor(target_embeddings).to(self.device)
-        source_tensor = F.normalize(source_tensor, p=2, dim=1)
-        target_tensor = F.normalize(target_tensor, p=2, dim=1)
-
-        similarity = torch.mm(target_tensor, source_tensor.T)
-        distance_matrix = 1 - similarity
-
-        for i, embedding_obj in enumerate(target_embedding_objs):
-            face_region = embedding_obj['facial_area']
-
-            result_df = df.copy()
-            result_df['x'] = face_region['x']
-            result_df['y'] = face_region['y']
-            result_df['w'] = face_region['w']
-            result_df['h'] = face_region['h']
-
-            distances = distance_matrix[i].detach().cpu().numpy().tolist()
-
-            result_df['distance'] = distances
-
-            result_df = result_df.drop(columns=['embedding'])
-            result_df = result_df[result_df['distance'] <= id_cutoff]
-            result_df = (
-                result_df.sort_values(by=['distance'], ascending=True)
-                .reset_index(drop=True)
+            press_stopwatch(self, 'face_recognition_time')
+            target_embedding_objs = self.represent(
+                face_imgs,
+                facial_areas,
+                confidences,
+                postprocess=False,
             )
+            press_stopwatch(self, 'face_recognition_time')
 
-            resp_obj.append(result_df)
+            press_stopwatch(self, 'other_processing_time')
+            source_embeddings = np.stack(df['embedding'].tolist())
+            target_embeddings = np.stack(
+                [obj['embedding'] for obj in target_embedding_objs]
+            )
+            source_tensor = torch.tensor(source_embeddings).to(self.device)
+            target_tensor = torch.tensor(target_embeddings).to(self.device)
+            source_tensor = F.normalize(source_tensor, p=2, dim=1)
+            target_tensor = F.normalize(target_tensor, p=2, dim=1)
+
+            similarity = torch.mm(target_tensor, source_tensor.T)
+            distance_matrix = 1 - similarity
+
+            img_df_parts = []
+            for i, embedding_obj in enumerate(target_embedding_objs):
+                face_region = embedding_obj['facial_area']
+
+                result_df = df.copy()
+                result_df['x'] = face_region['x']
+                result_df['y'] = face_region['y']
+                result_df['w'] = face_region['w']
+                result_df['h'] = face_region['h']
+
+                distances = distance_matrix[i].detach().cpu().numpy().tolist()
+
+                result_df['distance'] = distances
+
+                result_df = result_df.drop(columns=['embedding'])
+                result_df = result_df[result_df['distance'] <= id_cutoff]
+                result_df = (
+                    result_df.sort_values(by=['distance'], ascending=True)
+                    .reset_index(drop=True)
+                )
+                img_df_parts.append(result_df)
+
+            resp_obj.append(pd.concat(img_df_parts, ignore_index=True) if img_df_parts else pd.DataFrame())
 
         press_stopwatch(self, 'other_processing_time')
 
@@ -476,10 +472,12 @@ class FaceAnalysis:
             press_stopwatch(self, 'other_processing_time')
     
             drop_cols = ['target_x', 'target_y', 'target_w', 'target_h']
+
             filtered_face_dfs = []
 
             for df in all_face_dfs:
-                df = df.drop(drop_cols, axis=1)
+                validated_drop_cols = [c for c in drop_cols if c in df.columns]
+                df = df.drop(validated_drop_cols, axis=1)
                 
                 if not df.empty:
                     results = io_utils.lookup_identities(df['identity'])
@@ -509,33 +507,38 @@ class FaceAnalysis:
 
         press_stopwatch(self, 'identification_pipeline_time')
 
-        batch_imgs = (
-            [img] if not regions else
-            [utils.crop_region(img, region) for region in regions]
-        )
+        if not regions:
+            batch_imgs = [img]
+            kept_regions = []
+        else:
+            batch_imgs = []
+            kept_regions = []
+            for region in regions:
+                crop = utils.crop_region(img, region)
+
+                if crop is None or crop.size == 0:
+                    continue
+                batch_imgs.append(crop)
+                kept_regions.append(region)
+            if not batch_imgs:
+                return []
+
         face_dfs = self.find(
             imgs=batch_imgs,
-            regions=regions,
             id_cutoff=id_cutoff,
-            align=align,
             expand_percentage=expand_percentage,
             enhance=enhance,
             db_path=db_path,
         )
 
         all_face_dfs = []
-        for i, df in enumerate(face_dfs):
-            if regions and not df.empty:
-                region = regions[i]
-
+        for df, region in zip(face_dfs, kept_regions):
+            if not df.empty:
+                # apply offset so coords map back to full frame
                 df[['x', 'y']] = df.apply(
-                    lambda row:
-                    utils.apply_offset(
-                        (row['x'], row['y']), region
-                    ),
-                    axis=1
-                ).apply(pd.Series)
-
+                    lambda row: utils.apply_offset((row['x'], row['y']), region),
+                    axis=1, result_type="expand"
+                )
             all_face_dfs.append(df)
 
         all_face_dfs = _postprocess_output(all_face_dfs)

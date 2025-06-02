@@ -69,7 +69,7 @@ class InferencePipeline:
         self.effective_fps = self.fps // self.track_stride
         self.aligned_1s_interval = self.effective_fps * self.track_stride
 
-        if id_freq is '1/s':
+        if id_freq == '1/s':
             self.id_stride = self.aligned_1s_interval
         else:
             id_freq = int(id_freq.split('/')[0])
@@ -131,7 +131,7 @@ class InferencePipeline:
         press_stopwatch(self, 'skim_time')
         return result
 
-    def run(self, batch_size: int = 32):
+    def run(self, batch_size: int = 16):
         self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
         press_stopwatch(self, 'primary_run_time')
@@ -155,10 +155,9 @@ class InferencePipeline:
 
         return self.finalize_run()
 
-    def collect_frames(self, batch_size: int = 32):
+    def collect_frames(self, batch_size: int = 16):
         log_progress_update = False
 
-        idx = 0
         batch_start = self.f_num
         batch_end = min(self.f_total, (
             batch_start + (batch_size * self.track_stride)
@@ -174,12 +173,12 @@ class InferencePipeline:
             
             if self.f_num % self.track_stride == 0:
                 frames.append(frame)
+                idx = len(frames) - 1
                 if self.f_num % self.id_stride == 0:
                     id_frames[idx] = {
                         'frame': frame,
                         'f_num': self.f_num,
                     }
-                idx += 1
 
             self.f_num += 1
             
@@ -208,6 +207,8 @@ class InferencePipeline:
 
         face_data = {}
         for idx, id_frame in id_frames.items():
+            if idx >= len(yolo_output):
+                continue
             img = id_frame['frame']
             f_num = id_frame['f_num']
             
@@ -295,6 +296,7 @@ class InferencePipeline:
 
                 f'{self.resolution[0]}x{self.resolution[1]}',   
                 f'{self.fps} fps',
+                f'{self.effective_fps} fps',
 
                 self.yolox.input_size,                         
                 self.yolox.nms_thresh,
@@ -385,10 +387,19 @@ class InferencePipeline:
         state['osnet'] = None
         state['face_analysis'] = None
 
-        for f, detections in state['person_detections'].items():
-            for i, det in enumerate(detections):
-                if isinstance(det, torch.Tensor):
-                    detections[i] = det.cpu().numpy().tolist()
+        state['cap'] = None
+
+        for f, dets in state['person_detections'].items():
+            if isinstance(dets, torch.Tensor):
+                state['person_detections'][f] = dets.detach().cpu().numpy().tolist()
+            else:
+                converted = []
+                for d in dets:
+                    if isinstance(d, torch.Tensor):
+                        converted.append(d.detach().cpu().numpy().tolist())
+                    else:
+                        converted.append(d)
+                state['person_detections'][f] = converted
 
         press_stopwatch(self, 'pkl_io')
         with open(save_path, "wb") as f:
