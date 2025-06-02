@@ -246,6 +246,8 @@ class InferencePipeline:
         io_utils.clear_memory()
         self.save_runtime_data()
 
+        self.face_data = self.face_analysis.consolidate_face_data(self.face_data)
+
         press_stopwatch(self, 'primary_run_time')
 
         return self.person_detections, self.face_data

@@ -534,20 +534,36 @@ class FaceAnalysis:
         for region_dfs, region in zip(per_image_face_dfs, kept_regions):
             for df in region_dfs:
                 if not df.empty:
-                    # apply offset so coords map back to full frame
                     df[['x', 'y']] = df.apply(
                         lambda row: utils.apply_offset(
                             (row['x'], row['y']), region
                         ),
                         axis=1,
-                        result_type="expand",
+                        result_type='expand',
                     )
                 all_face_dfs.append(df)
+
         all_face_dfs = _postprocess_output(all_face_dfs)
 
         press_stopwatch(self, 'identification_pipeline_time')
         
         return all_face_dfs
+
+    def consolidate_face_data(
+            self, face_data: dict[list[pd.DataFrame]]
+        ) -> pd.DataFrame:
+        merged_dfs = []
+        for frame, dfs in face_data.items():
+            valid_dfs = [df for df in dfs if not df.empty]
+            if valid_dfs:
+                merged_df = pd.concat(valid_dfs, ignore_index=True)
+                merged_df['f'] = frame
+                merged_dfs.append(merged_df)
+
+        if not merged_dfs:
+            return None
+
+        return pd.concat(merged_dfs, ignore_index=True)
 
     def save_runtime_data(self):
         filename = os.path.join(self.output_dir, 'faceiq_data.xlsx')

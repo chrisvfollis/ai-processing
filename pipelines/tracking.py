@@ -29,8 +29,8 @@ class TrackingPipeline:
             self,
             video_file: str,
             time_prefix: str,
-            person_detections,
-            face_data,
+            person_detections: dict,
+            face_data: pd.DataFrame,
             credentials,
             device: torch.device = None,
             yolox_input_size: tuple[int] = (800, 1440),
@@ -124,12 +124,19 @@ class TrackingPipeline:
             # tracks
 
     def assign_faces(self):
-        face_data = self.face_data.get(self.f_num, [])
-        
+        face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
+
+        face_boxes = (
+            face_df[['x', 'y', 'w', 'h']].drop_duplicates()
+            .values().tolist()
+        )
+        person_boxes = []
+
         for trk_id, trk in self.ocsort.active_trks.items():
             f_idx = trk.frame_mapping[self.f_num]
-
             bbox = trk.observations[f_idx]
+            bbox = utils.xywh_xyxy(bbox, out='xywh')
+            person_boxes.append(bbox)
         
         # construct cost matrix
 
