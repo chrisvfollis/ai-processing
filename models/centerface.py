@@ -11,9 +11,9 @@ import cv2
 import torch
 
 # internal dependencies
+from modules.data_structures import FacialAreaRegion
 from utilities import general_utils as utils
 from utilities import io_utils
-from modules.face_analysis import FacialAreaRegion
 
 
 class CenterFace:
@@ -26,6 +26,7 @@ class CenterFace:
             ignore_landmarks: bool = False,
             save_data: bool = False,
         ):
+        
         self.device = device or utils.get_default_device()
 
         self.project_root = io_utils.get_project_root()

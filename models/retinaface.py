@@ -13,7 +13,7 @@ import torchvision.models as models
 
 # internal dependencies
 from utilities import io_utils
-from modules.face_analysis import FacialAreaRegion
+from modules.data_structures import FacialAreaRegion
 
 
 class RetinaFace:
@@ -271,7 +271,6 @@ class RetinaFace:
             results.append(facial_area)
 
         return results
-
 
 
 # =============================================================================

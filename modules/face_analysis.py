@@ -4,7 +4,6 @@ from typing import Union, Optional, Sequence, Tuple
 import pickle
 import gc
 import math
-from dataclasses import dataclass
 
 # 3rd-party dependencies
 import numpy as np
@@ -14,7 +13,7 @@ import torch
 import torch.nn.functional as F
 
 # internal dependencies
-from models import RetinaFace, CenterFace, ClearFace, FaceNet512
+from modules.data_structures import DetectedFace, FacialAreaRegion
 from utilities import io_utils, face_utils, image_utils
 from utilities.log_utils import press_stopwatch
 from utilities import general_utils as utils
@@ -40,13 +39,16 @@ class FaceAnalysis:
         self.db_path = os.path.join(self.project_root, 'files/', 'data.db')
 
         # MODELS:
+        from models import CenterFace, FaceNet512
         self.centerface = CenterFace(device=self.device, **centerface_cfg)
         self.facenet512 = FaceNet512(device=self.device, **facenet_cfg)
 
         if clearface_cfg is None:
             self.enhance_faces = False
         else:
+            from models import ClearFace
             self.enhance_faces = True
+            
             self.clearface = ClearFace(device=self.device, **clearface_cfg)
 
         self.id_cutoff = id_cutoff
@@ -211,6 +213,7 @@ class FaceAnalysis:
         # find representations for new images:
         if len(new_images) > 0:
             if not hasattr(self, 'retinaface'):
+                from models import RetinaFace
                 self.retinaface = RetinaFace(device=self.device)
             representations += __find_bulk_embeddings(
                 employees=new_images,
@@ -306,11 +309,11 @@ class FaceAnalysis:
         return per_image_resp_objs
 
     def enhance(
-        self,
-        img: np.ndarray,
-        is_rgb=True,
-        output_path=None
-    ):
+            self,
+            img: np.ndarray,
+            is_rgb=True,
+            output_path=None
+        ):
         # Start timing
         enhanced_face = self.clearface.forward(img, is_rgb=is_rgb)
         # End timing
@@ -394,7 +397,7 @@ class FaceAnalysis:
         for source_objs in per_image_objs:
             resp_obj = []
             if not source_objs:
-                resp_obj.append(pd.DataFrame)
+                resp_obj.append(pd.DataFrame())
                 per_image_resp_objs.append(resp_obj)
                 continue
             face_imgs = [obj['face_img'] for obj in source_objs]
@@ -474,6 +477,8 @@ class FaceAnalysis:
             filtered_face_dfs = []
 
             for df in all_face_dfs:
+                print(type(df))
+                print(df.head())
                 validated_drop_cols = [c for c in drop_cols if c in df.columns]
                 df = df.drop(validated_drop_cols, axis=1)
                 
@@ -614,54 +619,3 @@ class FaceAnalysis:
             cv2.imwrite(output_path, image)
 
         return image
-
-
-# =============================================================================
-#                        - FACIAL DATA STRUCTURES -
-# -----------------------------------------------------------------------------
-
-
-@dataclass
-class FacialAreaRegion:
-    """
-    Initialize a Face object.
-
-    Args:
-        x (int): The x-coordinate of the top-left corner of the bounding box.
-        y (int): The y-coordinate of the top-left corner of the bounding box.
-        w (int): The width of the bounding box.
-        h (int): The height of the bounding box.
-        left_eye (tuple): The coordinates (x, y) of the left eye with respect to
-            the person instead of observer. Default is None.
-        right_eye (tuple): The coordinates (x, y) of the right eye with respect to
-            the person instead of observer. Default is None.
-        confidence (float, optional): Confidence score associated with the face detection.
-            Default is None.
-    """
-
-    x: int
-    y: int
-    w: int
-    h: int
-    left_eye: Optional[Tuple[int, int]] = None
-    right_eye: Optional[Tuple[int, int]] = None
-    confidence: Optional[float] = None
-    nose: Optional[Tuple[int, int]] = None
-    mouth_right: Optional[Tuple[int, int]] = None
-    mouth_left: Optional[Tuple[int, int]] = None
-
-
-@dataclass
-class DetectedFace:
-    """
-    Initialize detected face object.
-
-    Args:
-        img (np.ndarray): detected face image as numpy array
-        facial_area (FacialAreaRegion): detected face's metadata (e.g. bounding box)
-        confidence (float): confidence score for face detection
-    """
-
-    img: np.ndarray
-    facial_area: FacialAreaRegion
-    confidence: float

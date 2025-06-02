@@ -10,7 +10,7 @@ import torch
 
 # internal dependencies
 from models import YoloX, OSNet
-from modules import FaceAnalysis
+from modules.face_analysis import FaceAnalysis
 from utilities import general_utils as utils
 from utilities import io_utils
 from utilities.log_utils import get_logger, press_stopwatch
