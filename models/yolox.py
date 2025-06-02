@@ -188,6 +188,11 @@ class YoloX:
                 nms_thresh,
                 num_classes,
             )
+
+        if isinstance(outputs, list) and len(outputs) > 0:
+            print("First batch element shape/type:", type(outputs[0]), np.shape(outputs[0]))
+            print("First batch element contents:", outputs[0])
+            
         return outputs
 
     def preprocess(self, images, input_size, mean, std, swap=(2, 0, 1)):
