@@ -9,11 +9,11 @@ import numpy as np
 import pandas as pd
 import cv2
 import torch
-from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
 from utilities import general_utils as utils
 from utilities import io_utils
+from modules.face_analysis import FacialAreaRegion
 
 
 class CenterFace:

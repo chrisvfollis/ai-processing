@@ -64,7 +64,7 @@ class TrackingPipeline:
             delta_t,
             asso_func,
             inertia,
-            use_byte
+            use_byte,
         )
         
         # VIDEO ATTRIBUTES:

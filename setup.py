@@ -23,13 +23,10 @@ setup(
         'torchvision',
         'torchreid',
         'onnx2torch',
-        'tensorflow==2.15.0',
-        'keras==2.15.0',
 
         # Image/Video Processing and Computer Vision:
         'opencv-contrib-python',
         'pillow',
-        'deepface @ git+https://github.com/serengil/deepface.git@master',
         'facenet-pytorch',
 
         # Data Manipulation:

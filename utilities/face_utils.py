@@ -1,14 +1,13 @@
 # standard dependencies
-from typing import Tuple
 import os
 
 # 3rd-party dependencies
 import numpy as np
 import cv2
-from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
 from utilities import general_utils as utils
+from modules.face_analysis import FacialAreaRegion
 
 
 def adjust_and_extract(
@@ -265,8 +264,8 @@ def align_img_wrt_eyes(img: np.ndarray, detection: FacialAreaRegion):
 
 
 def project_facial_area(
-    facial_area: Tuple[int, int, int, int], angle: float, size: Tuple[int, int]
-) -> Tuple[int, int, int, int]:
+    facial_area: tuple[int, int, int, int], angle: float, size: tuple[int, int]
+) -> tuple[int, int, int, int]:
     '''
     Update pre-calculated facial area coordinates after image itself
         rotated with respect to the eyes.
