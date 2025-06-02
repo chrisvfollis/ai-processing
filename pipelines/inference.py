@@ -139,7 +139,6 @@ class InferencePipeline:
 
         while self.f_num < self.f_total:
             frame_data = self.collect_frames(batch_size)
-
             batch_results = self.process_batch(frame_data)
 
             self.person_detections = self.person_detections | batch_results[0]
@@ -155,7 +154,9 @@ class InferencePipeline:
     def collect_frames(self, batch_size: int = 32):
         idx = 0
         batch_start = self.f_num
-        batch_end = min(self.f_total, (batch_start + batch_size))
+        batch_end = min(self.f_total, (
+            batch_start + (batch_size * self.track_stride)
+        ))
 
         frames = []
         id_frames = {}
@@ -165,21 +166,24 @@ class InferencePipeline:
             ret, frame = self.cap.read()
             if not ret:
                 break
+            
+            if self.f_num % self.track_stride == 0:
+                frames.append(frame)
+                if self.f_num % self.id_stride == 0:
+                    id_frames[idx] = {
+                        'frame': frame,
+                        'f_num': self.f_num,
+                    }
+                idx += 1
 
-            frames.append(frame)
-            if self.f_num % self.id_stride == 0:
-                id_frames[idx] = {
-                    'frame': frame,
-                    'f_num': self.f_num,
-                }
-
-            idx += 1
             self.f_num += 1
             
             if self.f_num % self.progress_interval == 0:
                 progress = int(round((self.f_num / self.f_total) * 100, 0))
                 logger.info(f'{progress}%')
-        
+
+        press_stopwatch(self, 'read_time')
+
         frame_data = {
             'start': batch_start,    # included in the batch
             'end': batch_end,   # not included: only marks the end
