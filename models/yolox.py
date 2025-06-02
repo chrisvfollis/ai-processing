@@ -35,6 +35,7 @@ class YoloX:
         device: torch.device = None,
         fp16: bool = True,
         use_trt: bool = False,
+        decode: bool = True,
     ):
         def _configure_batchnorm(model):
             '''
@@ -111,7 +112,9 @@ class YoloX:
         self.std = (0.229, 0.224, 0.225)
 
         # LOAD MODEL:
-        if use_trt:
+        self.use_trt = use_trt
+        if self.use_trt:
+            self.fp16 = True    # override fp16 arg
             from torch2trt import TRTModule
             self.model = TRTModule()
             self.model.to(self.device)
@@ -119,14 +122,19 @@ class YoloX:
             trt_path = os.path.join(
                 io_utils.get_project_root(), 'models/weights/yolox/', checkpoint
             )
-            self.model.load_state_dict(torch.load(
-                trt_path, map_location=self.device
-            ))
+            sd = torch.load(trt_path, map_location=self.device)
+            self.model.load_state_dict(sd)
+
+            self.decoder = YoloXTRTDecoder(
+                input_size=self.input_size,
+                num_classes=self.num_classes,
+                strides=[8, 16, 32]
+            )
 
             self.model.eval()
         else:
             backbone = YOLOPAFPN(depth, width, in_channels=[256, 512, 1024])
-            head = YOLOXHead(num_classes, width, in_channels=[256, 512, 1024])
+            head = YOLOXHead(num_classes, width, in_channels=[256, 512, 1024], input_size=input_size, decode=decode)
             self.model = YOLOX(backbone, head)
 
             self.model.apply(_configure_batchnorm)
@@ -166,14 +174,14 @@ class YoloX:
                 [x1, y1, x2, y2, object_conf, class_conf, class_pred]
         '''
         conf_thresh = conf_thresh or self.conf_thresh
-        nms_thresh = nms_thresh or self.conf_thresh
+        nms_thresh = nms_thresh or self.nms_thresh
         num_classes = num_classes or self.num_classes
 
         if isinstance(img_data, np.ndarray):
             img_data = [img_data]
 
         img_data = [img.copy() for img in img_data]
-        img_tensor, resize_ratios = self.preprocess(
+        img_tensor = self.preprocess(
             img_data, self.input_size, self.rgb_means, self.std
         )
         if self.fp16:
@@ -182,9 +190,13 @@ class YoloX:
             press_stopwatch(self, 'inference_time')
             outputs = self.model(img_tensor)
             press_stopwatch(self, 'inference_time')
+
+            if self.use_trt:
+                outputs = self.decoder.decode_outputs(
+                    outputs, dtype=outputs[0].dtype
+                )
             outputs = self.postprocess(
                 outputs,
-                resize_ratios,
                 conf_thresh,
                 nms_thresh,
                 num_classes,
@@ -199,9 +211,7 @@ class YoloX:
         shape `input_size` which is used to pad it.
         '''
         press_stopwatch(self, 'preprocess_time')
-
         preprocessed_images = []
-        resize_ratios = []
 
         for image in images:
             if len(image.shape) == 3:
@@ -227,15 +237,14 @@ class YoloX:
             padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
 
             preprocessed_images.append(padded_img)
-            resize_ratios.append(r)
 
         preprocessed_images = np.stack(preprocessed_images, axis=0)
         preprocessed_images = torch.from_numpy(preprocessed_images).to(self.device)
 
         press_stopwatch(self, 'preprocess_time')
-        return preprocessed_images, resize_ratios
+        return preprocessed_images
 
-    def postprocess(self, prediction, resize_ratios, conf_thresh, nms_thresh, num_classes):
+    def postprocess(self, prediction, conf_thresh, nms_thresh, num_classes):
         press_stopwatch(self, 'postprocess_time')
         box_corner = prediction.new(prediction.shape)
         box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
@@ -272,10 +281,6 @@ class YoloX:
                 import pdb; pdb.set_trace()
 
             detections = detections[nms_out_index]
-            r = resize_ratios[i]
-            
-            detections[:, [0, 2]] /= r
-            detections[:, [1, 3]] /= r
 
             if output[i] is None:
                 output[i] = detections
@@ -295,16 +300,15 @@ class YOLOPAFPN(nn.Module):
     """
     YOLOv3 model. Darknet 53 is the default backbone of this model.
     """
-
     def __init__(
-        self,
-        depth=1.0,
-        width=1.0,
-        in_features=("dark3", "dark4", "dark5"),
-        in_channels=[256, 512, 1024],
-        depthwise=False,
-        act="silu",
-    ):
+            self,
+            depth=1.0,
+            width=1.0,
+            in_features=("dark3", "dark4", "dark5"),
+            in_channels=[256, 512, 1024],
+            depthwise=False,
+            act="silu",
+        ):
         super().__init__()
         self.backbone = CSPDarknet(depth, width, depthwise=depthwise, act=act)
         self.in_features = in_features
@@ -370,7 +374,6 @@ class YOLOPAFPN(nn.Module):
         Returns:
             Tuple[Tensor]: FPN feature.
         """
-
         #  backbone
         out_features = self.backbone(input)
         features = [out_features[f] for f in self.in_features]
@@ -400,14 +403,16 @@ class YOLOPAFPN(nn.Module):
 
 class YOLOXHead(nn.Module):
     def __init__(
-        self,
-        num_classes,
-        width=1.0,
-        strides=[8, 16, 32],
-        in_channels=[256, 512, 1024],
-        act="silu",
-        depthwise=False,
-    ):
+            self,
+            num_classes,
+            width=1.0,
+            strides=[8, 16, 32],
+            in_channels=[256, 512, 1024],
+            input_size=(800, 1440),
+            act="silu",
+            depthwise=False,
+            decode=True,
+        ):
         """
         Args:
             act (str): activation type of conv. Defalut value: "silu".
@@ -417,6 +422,8 @@ class YOLOXHead(nn.Module):
 
         self.n_anchors = 1
         self.num_classes = num_classes
+        self.hw = [(input_size[0] // s, input_size[1] // s) for s in strides]
+        self.decode = decode
 
         self.cls_convs = nn.ModuleList()
         self.reg_convs = nn.ModuleList()
@@ -523,7 +530,7 @@ class YOLOXHead(nn.Module):
         outputs = []
         for k, (cls_conv, reg_conv, x) in enumerate(
             zip(self.cls_convs, self.reg_convs, xin)
-        ):
+            ):
             x = self.stems[k](x)
             cls_x = x
             reg_x = x
@@ -542,13 +549,15 @@ class YOLOXHead(nn.Module):
 
             outputs.append(output)
 
-        self.hw = [x.shape[-2:] for x in outputs]
         # [batch, n_anchors_all, 85]
         outputs = torch.cat(
             [x.flatten(start_dim=2) for x in outputs], dim=2
         ).permute(0, 2, 1)
 
-        return self.decode_outputs(outputs, dtype=xin[0].type())
+        if self.decode:
+            return self.decode_outputs(outputs, dtype=xin[0].dtype)
+        else:
+            return outputs
 
     def get_output_and_grid(self, output, k, stride, dtype):
         grid = self.grids[k]
@@ -571,17 +580,19 @@ class YOLOXHead(nn.Module):
         return output, grid
 
     def decode_outputs(self, outputs, dtype):
+        device = outputs.device
+
         grids = []
         strides = []
         for (hsize, wsize), stride in zip(self.hw, self.strides):
-            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)])
+            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)], indexing='ij')
             grid = torch.stack((xv, yv), 2).view(1, -1, 2)
             grids.append(grid)
             shape = grid.shape[:2]
             strides.append(torch.full((*shape, 1), stride))
 
-        grids = torch.cat(grids, dim=1).type(dtype)
-        strides = torch.cat(strides, dim=1).type(dtype)
+        grids = torch.cat(grids, dim=1).type(dtype).to(device)
+        strides = torch.cat(strides, dim=1).type(dtype).to(device)
 
         outputs[..., :2] = (outputs[..., :2] + grids) * strides
         outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
@@ -887,3 +898,34 @@ class Focus(nn.Module):
             dim=1,
         )
         return self.conv(x)
+
+
+# =============================================================================
+#                            - TRT DECODING -
+# -----------------------------------------------------------------------------
+
+
+class YoloXTRTDecoder:
+    def __init__(self, input_size, num_classes, strides=[8, 16, 32]):
+        self.num_classes = num_classes
+        self.strides = strides
+        self.hw = [(input_size[0] // s, input_size[1] // s) for s in strides]
+
+    def decode_outputs(self, outputs, dtype):
+        device = outputs.device
+        grids = []
+        strides = []
+
+        for (hsize, wsize), stride in zip(self.hw, self.strides):
+            yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)], indexing='ij')
+            grid = torch.stack((xv, yv), 2).view(1, -1, 2)
+            grids.append(grid)
+            shape = grid.shape[:2]
+            strides.append(torch.full((*shape, 1), stride))
+
+        grids = torch.cat(grids, dim=1).type(dtype).to(device)
+        strides = torch.cat(strides, dim=1).type(dtype).to(device)
+
+        outputs[..., :2] = (outputs[..., :2] + grids) * strides
+        outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
+        return outputs
