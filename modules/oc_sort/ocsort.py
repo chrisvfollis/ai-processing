@@ -55,7 +55,7 @@ class OCSort:
         self.use_byte = use_byte
         KalmanBoxTracker.count = 0
 
-    def update(self, output_results, img_info, img_size):
+    def update(self, output_results, img_info, img_size, f_num=None):
         """
         Params:
           dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
@@ -123,7 +123,7 @@ class OCSort:
         matched, unmatched_dets, unmatched_trks = assoc_results
 
         for m in matched:
-            self.trackers[m[1]].update(dets[m[0], :])
+            self.trackers[m[1]].update(dets[m[0], :], f_num)
 
         """
             Second round of associaton by OCR
@@ -145,7 +145,7 @@ class OCSort:
                     det_ind, trk_ind = m[0], unmatched_trks[m[1]]
                     if iou_left[m[0], m[1]] < self.iou_threshold:
                         continue
-                    self.trackers[trk_ind].update(dets_second[det_ind, :])
+                    self.trackers[trk_ind].update(dets_second[det_ind, :], f_num)
                     to_remove_trk_indices.append(trk_ind)
                 unmatched_trks = np.setdiff1d(unmatched_trks, np.array(to_remove_trk_indices))
 
@@ -167,14 +167,14 @@ class OCSort:
                     det_ind, trk_ind = unmatched_dets[m[0]], unmatched_trks[m[1]]
                     if iou_left[m[0], m[1]] < self.iou_threshold:
                         continue
-                    self.trackers[trk_ind].update(dets[det_ind, :])
+                    self.trackers[trk_ind].update(dets[det_ind, :], f_num)
                     to_remove_det_indices.append(det_ind)
                     to_remove_trk_indices.append(trk_ind)
                 unmatched_dets = np.setdiff1d(unmatched_dets, np.array(to_remove_det_indices))
                 unmatched_trks = np.setdiff1d(unmatched_trks, np.array(to_remove_trk_indices))
 
         for m in unmatched_trks:
-            self.trackers[m].update(None)
+            self.trackers[m].update(None, f_num)
 
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:
@@ -222,7 +222,6 @@ class KalmanBoxTracker:
     This class represents the internal state of individual tracked objects observed as bbox.
     """
     count = 0
-
     def __init__(self, bbox, delta_t=3):
         """
         Initialises a tracker using initial bounding box.
@@ -268,10 +267,11 @@ class KalmanBoxTracker:
         self.last_observation = np.array([-1, -1, -1, -1, -1])  # placeholder
         self.observations = dict()
         self.history_observations = []
+        self.frame_mapping = {}
         self.velocity = None
         self.delta_t = delta_t
 
-    def update(self, bbox):
+    def update(self, bbox, f_num=None):
         """
         Updates the state vector with observed bbox.
         """
@@ -297,6 +297,9 @@ class KalmanBoxTracker:
             self.last_observation = bbox
             self.observations[self.age] = bbox
             self.history_observations.append(bbox)
+            
+            if f_num is not None:
+                self.frame_mapping[f_num] = self.age
 
             self.time_since_update = 0
             self.history = []
