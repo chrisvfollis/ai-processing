@@ -14,7 +14,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import utilities.general_utils as utils
 from utilities import io_utils, log_utils
 from models import YoloX
-from trackers import OCSort
+from modules import OCSort
 
 
 logger = log_utils.get_logger(__name__)
