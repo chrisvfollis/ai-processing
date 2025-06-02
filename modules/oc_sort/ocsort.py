@@ -5,7 +5,7 @@ pass
 import numpy as np
 
 # internal dependencies
-from .association import *
+from modules.oc_sort import association
 from .kalmanfilter import KalmanFilterNew as KalmanFilter
 from utilities.general_utils import convert_bbox_to_z, convert_x_to_bbox
 
@@ -22,10 +22,10 @@ from utilities.general_utils import convert_bbox_to_z, convert_x_to_bbox
     the best practice.
 """
 ASSO_FUNCS = {
-    "iou": iou_batch,
-    "giou": giou_batch,
-    "ciou": ciou_batch,
-    "diou": diou_batch,
+    "iou": association.iou_batch,
+    "giou": association.giou_batch,
+    "ciou": association.ciou_batch,
+    "diou": association.diou_batch,
 }
 
 class OCSort:
@@ -46,7 +46,8 @@ class OCSort:
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
-        self.trackers = []
+        self.active_trks = {}
+        self.inactive_trks = {}
         self.frame_count = 0
         self.det_thresh = det_thresh
         self.delta_t = delta_t
@@ -54,6 +55,7 @@ class OCSort:
         self.inertia = inertia
         self.use_byte = use_byte
         KalmanBoxTracker.count = 0
+
 
     def update(self, output_results, img_info, img_size, f_num=None):
         """
@@ -67,7 +69,57 @@ class OCSort:
             return np.empty((0, 5))
 
         self.frame_count += 1
-        # post_process detections
+
+        organized = self._organize_raw_detections(output_results, img_info, img_size)
+
+        dets, dets_second = organized[:2]
+        trk_preds = organized[2]
+        velocities = organized[3]
+        last_boxes, k_observations = organized[4:]
+
+        trk_id_list = list(self.active_trks.keys())
+        """
+            First round of association
+        """
+        assoc_results = association.associate(
+            dets,
+            trk_preds,
+            self.iou_threshold,
+            velocities,
+            k_observations,
+            self.inertia,
+        )
+        matched, unmatched_dets, unmatched_trks = assoc_results
+
+        for m in matched:
+            trk_id = trk_id_list[m[1]]
+            self.active_trks[trk_id].update(dets[m[0], :], f_num)
+
+        """
+            Second round of associaton
+        """
+        if self.use_byte and (len(dets_second) > 0) and (unmatched_trks.shape[0] > 0):
+            unmatched_trks = self._byte_association(dets_second, trk_preds, unmatched_trks, f_num)
+
+        if unmatched_dets.shape[0] > 0 and unmatched_trks.shape[0] > 0:
+            unmatched_dets, unmatched_trks = self._second_association_rematch(
+                dets, unmatched_dets, unmatched_trks, last_boxes, f_num
+            )
+
+        for m in unmatched_trks:
+            trk_id = trk_id_list[m]
+            self.active_trks[trk_id].update(None, f_num)
+
+        # create and initialise new trackers for unmatched detections
+        self._init_new_tracks(unmatched_dets, dets)
+
+        ret = self._finalize_tracks()
+        if(len(ret) <= 0):
+            return np.empty((0, 5))
+        
+        return np.concatenate(ret)
+
+    def _organize_raw_detections(self, output_results, img_info, img_size):
         if output_results.shape[1] == 5:
             scores = output_results[:, 4]
             bboxes = output_results[:, :4]
@@ -88,100 +140,92 @@ class OCSort:
 
         # get predicted locations from existing trackers:
         trk_preds = []
-        to_keep = []
-        ret = []
-        for i, tracker in enumerate(self.trackers):
-            pos = tracker.predict()[0]
+        to_keep = {}
+        for trk_id, trk in self.active_trks.items():
+            pos = trk.predict()[0]
             if np.any(np.isnan(pos)):
                 continue  # skip this tracker
             trk_preds.append([pos[0], pos[1], pos[2], pos[3], 0])
-            to_keep.append(tracker)
-        self.trackers = to_keep
+            to_keep[trk_id] = trk
+
+        self.active_trks = to_keep
         trk_preds = np.array(trk_preds)
 
         velocities = np.array([
             trk.velocity if (trk.velocity is not None) else np.array((0, 0))
-            for trk in self.trackers
+            for trk in self.active_trks.values()
         ])
-        last_boxes = np.array([trk.last_observation for trk in self.trackers])
+        last_boxes = np.array([trk.last_observation for trk in self.active_trks.values()])
         k_observations = np.array([
             self.k_previous_obs(trk.observations, trk.age, self.delta_t)
-            for trk in self.trackers
+            for trk in self.active_trks.values()
         ])
 
-        """
-            First round of association
-        """
-        assoc_results = associate(
-            dets,
-            trk_preds,
-            self.iou_threshold,
-            velocities,
-            k_observations,
-            self.inertia,
-        )
-        matched, unmatched_dets, unmatched_trks = assoc_results
+        return dets, dets_second, trk_preds, velocities, last_boxes, k_observations
 
-        for m in matched:
-            self.trackers[m[1]].update(dets[m[0], :], f_num)
+    def _byte_association(self, dets_second, trk_preds, unmatched_trks, f_num=None):
+        trk_id_list = list(self.active_trks.keys())
 
-        """
-            Second round of associaton by OCR
-        """
-        # BYTE association
-        if self.use_byte and len(dets_second) > 0 and unmatched_trks.shape[0] > 0:
-            u_trks = trk_preds[unmatched_trks]
-            iou_left = self.asso_func(dets_second, u_trks)          # iou between low score detections and unmatched tracks
-            iou_left = np.array(iou_left)
-            if iou_left.max() > self.iou_threshold:
-                """
-                    NOTE: by using a lower threshold, e.g., self.iou_threshold - 0.1, you may
-                    get a higher performance especially on MOT17/MOT20 datasets. But we keep it
-                    uniform here for simplicity
-                """
-                matched_indices = linear_assignment(-iou_left)
-                to_remove_trk_indices = []
-                for m in matched_indices:
-                    det_ind, trk_ind = m[0], unmatched_trks[m[1]]
-                    if iou_left[m[0], m[1]] < self.iou_threshold:
-                        continue
-                    self.trackers[trk_ind].update(dets_second[det_ind, :], f_num)
-                    to_remove_trk_indices.append(trk_ind)
-                unmatched_trks = np.setdiff1d(unmatched_trks, np.array(to_remove_trk_indices))
+        u_trks = trk_preds[unmatched_trks]
+        iou_left = self.asso_func(dets_second, u_trks)          # iou between low score detections and unmatched tracks
+        iou_left = np.array(iou_left)
+        if iou_left.max() > self.iou_threshold:
+            """
+                NOTE: by using a lower threshold, e.g., self.iou_threshold - 0.1, you may
+                get a higher performance especially on MOT17/MOT20 datasets. But we keep it
+                uniform here for simplicity
+            """
+            matched_indices = association.linear_assignment(-iou_left)
+            to_remove_trk_indices = []
+            for m in matched_indices:
+                det_ind, trk_ind = m[0], unmatched_trks[m[1]]
+                if iou_left[m[0], m[1]] < self.iou_threshold:
+                    continue
+                trk_id = trk_id_list[trk_ind]
+                self.active_trks[trk_id].update(dets_second[det_ind, :], f_num)
+                to_remove_trk_indices.append(trk_ind)
+            unmatched_trks = np.setdiff1d(unmatched_trks, np.array(to_remove_trk_indices))
 
-        if unmatched_dets.shape[0] > 0 and unmatched_trks.shape[0] > 0:
-            left_dets = dets[unmatched_dets]
-            left_trks = last_boxes[unmatched_trks]
-            iou_left = self.asso_func(left_dets, left_trks)
-            iou_left = np.array(iou_left)
-            if iou_left.max() > self.iou_threshold:
-                """
-                    NOTE: by using a lower threshold, e.g., self.iou_threshold - 0.1, you may
-                    get a higher performance especially on MOT17/MOT20 datasets. But we keep it
-                    uniform here for simplicity
-                """
-                rematched_indices = linear_assignment(-iou_left)
-                to_remove_det_indices = []
-                to_remove_trk_indices = []
-                for m in rematched_indices:
-                    det_ind, trk_ind = unmatched_dets[m[0]], unmatched_trks[m[1]]
-                    if iou_left[m[0], m[1]] < self.iou_threshold:
-                        continue
-                    self.trackers[trk_ind].update(dets[det_ind, :], f_num)
-                    to_remove_det_indices.append(det_ind)
-                    to_remove_trk_indices.append(trk_ind)
-                unmatched_dets = np.setdiff1d(unmatched_dets, np.array(to_remove_det_indices))
-                unmatched_trks = np.setdiff1d(unmatched_trks, np.array(to_remove_trk_indices))
+        return unmatched_trks
 
-        for m in unmatched_trks:
-            self.trackers[m].update(None, f_num)
+    def _second_association_rematch(self, dets, unmatched_dets, unmatched_trks, last_boxes, f_num=None):
+        trk_id_list = list(self.active_trks.keys())
 
-        # create and initialise new trackers for unmatched detections
+        left_dets = dets[unmatched_dets]
+        left_trks = last_boxes[unmatched_trks]
+        iou_left = self.asso_func(left_dets, left_trks)
+        iou_left = np.array(iou_left)
+        if iou_left.max() > self.iou_threshold:
+            """
+                NOTE: by using a lower threshold, e.g., self.iou_threshold - 0.1, you may
+                get a higher performance especially on MOT17/MOT20 datasets. But we keep it
+                uniform here for simplicity
+            """
+            rematched_indices = association.linear_assignment(-iou_left)
+            to_remove_det_indices = []
+            to_remove_trk_indices = []
+            for m in rematched_indices:
+                det_ind, trk_ind = unmatched_dets[m[0]], unmatched_trks[m[1]]
+                if iou_left[m[0], m[1]] < self.iou_threshold:
+                    continue
+                trk_id = trk_id_list[trk_ind]
+                self.active_trks[trk_id].update(dets[det_ind, :], f_num)
+                to_remove_det_indices.append(det_ind)
+                to_remove_trk_indices.append(trk_ind)
+            unmatched_dets = np.setdiff1d(unmatched_dets, np.array(to_remove_det_indices))
+            unmatched_trks = np.setdiff1d(unmatched_trks, np.array(to_remove_trk_indices))
+
+        return unmatched_dets, unmatched_trks
+
+    def _init_new_tracks(self, unmatched_dets, dets):
         for i in unmatched_dets:
             trk = KalmanBoxTracker(dets[i, :], delta_t=self.delta_t)
-            self.trackers.append(trk)
-        i = len(self.trackers)
-        for trk in reversed(self.trackers):
+            self.active_trks[trk.id] = trk
+    
+    def _finalize_tracks(self):
+        ret = []
+        to_delete = {}
+        for trk_id, trk in self.active_trks.items():
             if trk.last_observation.sum() < 0:
                 d = trk.get_state()[0]
             else:
@@ -193,13 +237,16 @@ class OCSort:
             if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
                 # +1 as MOT benchmark requires positive
                 ret.append(np.concatenate((d, [trk.id+1])).reshape(1, -1))
-            i -= 1
+
             # remove dead tracklet
             if(trk.time_since_update > self.max_age):
-                self.trackers.pop(i)
-        if(len(ret) > 0):
-            return np.concatenate(ret)
-        return np.empty((0, 5))
+                self.inactive_trks[trk_id] = trk
+                to_delete[trk_id] = trk
+
+        for trk_id, trk in to_delete.items():
+            del self.active_trks[trk_id]
+
+        return ret
 
     def k_previous_obs(self, observations, cur_age, k):
         if len(observations) == 0:
