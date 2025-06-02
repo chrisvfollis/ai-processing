@@ -189,7 +189,7 @@ if __name__ == "__main__":
     parser.add_argument('--min-box-area', type=float, default=100)
 
     # model args:
-    parser.add_argument("--checkpoint", type=str, default='ocsort_x_mot17.pth.tar')
+    parser.add_argument("--checkpoint", type=str, default='yolox_mot17.pth.tar')
     parser.add_argument("--use-trt", action="store_true", default=False)
     parser.add_argument("--full-precision", action="store_true", default=False)
     parser.add_argument("--conf", default=0.05, type=float)

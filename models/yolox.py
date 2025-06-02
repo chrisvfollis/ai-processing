@@ -173,7 +173,7 @@ class YoloX:
             img_data = [img_data]
 
         img_data = [img.copy() for img in img_data]
-        img_tensor = self.preprocess(
+        img_tensor, resize_ratios = self.preprocess(
             img_data, self.input_size, self.rgb_means, self.std
         )
         if self.fp16:
@@ -184,14 +184,11 @@ class YoloX:
             press_stopwatch(self, 'inference_time')
             outputs = self.postprocess(
                 outputs,
+                resize_ratios,
                 conf_thresh,
                 nms_thresh,
                 num_classes,
             )
-
-        if isinstance(outputs, list) and len(outputs) > 0:
-            print("First batch element shape/type:", type(outputs[0]), np.shape(outputs[0]))
-            print("First batch element contents:", outputs[0])
             
         return outputs
 
@@ -202,7 +199,9 @@ class YoloX:
         shape `input_size` which is used to pad it.
         '''
         press_stopwatch(self, 'preprocess_time')
+
         preprocessed_images = []
+        resize_ratios = []
 
         for image in images:
             if len(image.shape) == 3:
@@ -228,14 +227,15 @@ class YoloX:
             padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
 
             preprocessed_images.append(padded_img)
+            resize_ratios.append(r)
 
         preprocessed_images = np.stack(preprocessed_images, axis=0)
         preprocessed_images = torch.from_numpy(preprocessed_images).to(self.device)
 
         press_stopwatch(self, 'preprocess_time')
-        return preprocessed_images
+        return preprocessed_images, resize_ratios
 
-    def postprocess(self, prediction, conf_thresh, nms_thresh, num_classes):
+    def postprocess(self, prediction, resize_ratios, conf_thresh, nms_thresh, num_classes):
         press_stopwatch(self, 'postprocess_time')
         box_corner = prediction.new(prediction.shape)
         box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
@@ -270,7 +270,13 @@ class YoloX:
                 )
             except:
                 import pdb; pdb.set_trace()
+
             detections = detections[nms_out_index]
+            r = resize_ratios[i]
+            
+            detections[:, [0, 2]] /= r
+            detections[:, [1, 3]] /= r
+
             if output[i] is None:
                 output[i] = detections
             else:
