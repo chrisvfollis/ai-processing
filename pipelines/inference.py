@@ -224,7 +224,7 @@ class InferencePipeline:
             regions = utils.cluster_bboxes_into_regions(
                 detections, img_h, img_w, margin=15
             )
-            
+
             facial_areas = self.face_analysis.identify_faces(img, regions)
             face_data[f_num] = facial_areas
         
@@ -266,27 +266,28 @@ class InferencePipeline:
         config_data = {
             'module': [
                 *['software'] * 2,
-                *['video'] * 2,
-                *['yolov4'] * 3,
+                *['pipeline'] * 3,
+                *['yolox'] * 3,
                 *['osnet'] * 2,
-                *['faceiq'] * 2
+                *['face_analysis'] * 2,
             ],
             'parameter': [
                 'git_commit_hash',          # Software
                 'git_commit_datetime',
 
-                'resolution',               # Video
-                'fps',
+                'resolution',               # Video processing
+                'nominal_fps',
+                'effective_fps',
                 
-                'input_dims',               # YOLOv4
-                'nms_threshold',
-                'confidence_threshold',
+                'input_dims',               # YOLOX
+                'nms_thresh',
+                'conf_thresh',
 
                 'input_dims',               # OSNet
                 'output_shape',
 
-                'detection_model',          # Faceiq
-                'recognition_model'
+                'id_cutoff',                # Face analysis
+                'enhance',
             ],
             'value': [
                 commit_hash,                                    
@@ -295,25 +296,25 @@ class InferencePipeline:
                 f'{self.resolution[0]}x{self.resolution[1]}',   
                 f'{self.fps} fps',
 
-                self.yolov4.input_dims,                         
-                self.yolov4.nms_thresh,
-                self.yolov4.conf_thresh,
+                self.yolox.input_size,                         
+                self.yolox.nms_thresh,
+                self.yolox.conf_thresh,
 
                 self.osnet.input_dims,                          
                 self.osnet.output_shape,
     
-                self.face_iq.det_model_name,
-                self.face_iq.rec_model_name
-            ]
+                self.face_analysis.id_cutoff,
+                self.face_analysis.enhance_faces,
+            ],
         }
         config_df = pd.DataFrame(config_data)
 
         performance_data = {
             'module': [
                 *['pipeline'] * 5,
-                *['yolov4'] * 3,
+                *['yolox'] * 3,
                 *['osnet'] * 3,
-                *['faceiq'] * 4
+                *['face_analysis'] * 4
             ],
             'metric': [             
                 'primary_run_time',                 # Pipeline            
@@ -342,19 +343,19 @@ class InferencePipeline:
                 self.init_time,
                 self.skim_time,
                 
-                self.yolov4.preprocess_time,
-                self.yolov4.detection_time,
-                self.yolov4.postprocess_time,
+                self.yolox.preprocess_time,
+                self.yolox.inference_time,
+                self.yolox.postprocess_time,
 
                 self.osnet.preprocess_time,
                 self.osnet.embedding_time,
                 self.osnet.flush_time,
 
-                self.face_iq.identification_pipeline_time,
-                self.face_iq.face_detection_time,
-                self.face_iq.face_recognition_time,
-                self.face_iq.other_processing_time
-            ]
+                self.face_analysis.identification_pipeline_time,
+                self.face_analysis.face_detection_time,
+                self.face_analysis.face_recognition_time,
+                self.face_analysis.other_processing_time,
+            ],
         }
         performance_df = pd.DataFrame(performance_data)
         
@@ -380,11 +381,11 @@ class InferencePipeline:
 
         # make shallow copy and remove unpickleable objects
         state = self.__dict__.copy()
-        state['yolov4'] = None
+        state['yolox'] = None
         state['osnet'] = None
-        state['face_iq'] = None
+        state['face_analysis'] = None
 
-        for f, detections in state['object_detections'].items():
+        for f, detections in state['person_detections'].items():
             for i, det in enumerate(detections):
                 if isinstance(det, torch.Tensor):
                     detections[i] = det.cpu().numpy().tolist()

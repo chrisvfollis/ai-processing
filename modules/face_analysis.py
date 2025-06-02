@@ -27,7 +27,7 @@ class FaceAnalysis:
             id_cutoff: float = 0.8,
             device: torch.device = None,
             centerface_cfg: dict = {},
-            clearface_cfg: dict = {},
+            clearface_cfg: Optional[dict] = None,
             facenet_cfg: dict = {},
         ):
         self.device = device or utils.get_default_device()
@@ -42,8 +42,13 @@ class FaceAnalysis:
 
         # MODELS:
         self.centerface = CenterFace(device=self.device, **centerface_cfg)
-        self.clearface = ClearFace(device=self.device, **clearface_cfg)
         self.facenet512 = FaceNet512(device=self.device, **facenet_cfg)
+
+        if clearface_cfg is None:
+            self.enhance_faces = False
+        else:
+            self.enhance_faces = True
+            self.clearface = ClearFace(device=self.device, **clearface_cfg)
 
         self.id_cutoff = id_cutoff
 
@@ -457,7 +462,7 @@ class FaceAnalysis:
             id_cutoff: Optional[float] = None,
             align: bool = False,
             expand_percentage: int = 0,
-            enhance: bool = False,
+            enhance: Optional[bool] = None,
             db_path: Optional[str] = None,
         ) -> list[pd.DataFrame]:
         def _postprocess_output(all_face_dfs):
@@ -494,9 +499,15 @@ class FaceAnalysis:
 
             return filtered_face_dfs
 
-        press_stopwatch(self, 'identification_pipeline_time')
+        if enhance is None:
+            enhance = self.enhance_faces
+        elif enhance == True and (not hasattr(self, 'clearface')):
+            self.clearface = ClearFace(device=self.device)
+
         db_path = db_path or self.face_dir
         id_cutoff = id_cutoff or self.id_cutoff
+
+        press_stopwatch(self, 'identification_pipeline_time')
 
         batch_imgs = (
             [img] if not regions else

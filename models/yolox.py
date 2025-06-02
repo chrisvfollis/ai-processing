@@ -15,6 +15,7 @@ import torchvision
 
 # internal dependencies
 from utilities import io_utils, log_utils
+from utilities.log_utils import press_stopwatch
 import utilities.general_utils as utils
 
 
@@ -109,6 +110,7 @@ class YoloX:
         self.rgb_means = (0.485, 0.456, 0.406)
         self.std = (0.229, 0.224, 0.225)
 
+        # LOAD MODEL:
         if use_trt:
             from torch2trt import TRTModule
             self.model = TRTModule()
@@ -144,6 +146,11 @@ class YoloX:
             if self.fp16:
                 self.model = self.model.half()
 
+        # TIMING ATTRS:
+        self.preprocess_time = 0
+        self.postprocess_time = 0
+        self.inference_time = 0
+        
     def inference(
             self,
             img_data: Union[list[np.ndarray], np.ndarray],
@@ -171,9 +178,10 @@ class YoloX:
         )
         if self.fp16:
             img_tensor = img_tensor.half()
-        
         with torch.no_grad():
+            press_stopwatch(self, 'inference_time')
             outputs = self.model(img_tensor)
+            press_stopwatch(self, 'inference_time')
             outputs = self.postprocess(
                 outputs,
                 conf_thresh,
@@ -188,6 +196,7 @@ class YoloX:
         is preserved through its rescaling, such that it fits within a canvas of
         shape `input_size` which is used to pad it.
         '''
+        press_stopwatch(self, 'preprocess_time')
         preprocessed_images = []
 
         for image in images:
@@ -214,11 +223,15 @@ class YoloX:
             padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
 
             preprocessed_images.append(padded_img)
-        preprocessed_images = np.stack(preprocessed_images, axis=0)   
 
-        return torch.from_numpy(preprocessed_images).to(self.device)
+        preprocessed_images = np.stack(preprocessed_images, axis=0)
+        preprocessed_images = torch.from_numpy(preprocessed_images).to(self.device)
+
+        press_stopwatch(self, 'preprocess_time')
+        return preprocessed_images
 
     def postprocess(self, prediction, conf_thresh, nms_thresh, num_classes):
+        press_stopwatch(self, 'postprocess_time')
         box_corner = prediction.new(prediction.shape)
         box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
         box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
@@ -258,6 +271,7 @@ class YoloX:
             else:
                 output[i] = torch.cat((output[i], detections))
 
+        press_stopwatch(self, 'postprocess_time')
         return output
 
 
