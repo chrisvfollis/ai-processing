@@ -114,7 +114,7 @@ class InferencePipeline:
                 break
 
             if f_num % stride == 0:
-                detections = self.yolov4.detect(frame, 0, conf_thresh=0.78)
+                detections = self.yolox.inference(frame, conf_thresh=0.78)
                 del frame
                 if detections:
                     result = True
@@ -132,19 +132,23 @@ class InferencePipeline:
         return result
 
     def run(self, batch_size: int = 32):
+        self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
         press_stopwatch(self, 'primary_run_time')
 
         self.cap = cv2.VideoCapture(self.video_path)
 
         while self.f_num < self.f_total:
-            frame_data = self.collect_frames(batch_size)
-            batch_results = self.process_batch(frame_data)
+            frame_batch, log_progress = self.collect_frames(batch_size)
+            results = self.process_batch(frame_batch)
 
-            self.person_detections = self.person_detections | batch_results[0]
-            self.face_data = self.face_data | batch_results[1]
+            self.person_detections = self.person_detections | results[0]
+            self.face_data = self.face_data | results[1]
 
-            del frame_data
+            del frame_batch
+
+            if log_progress == True:
+                logger.info(f'{self.progress}%')
 
         logger.info(f'Exiting inference run on frame {self.f_num}')
         self.cap.release()
@@ -152,12 +156,13 @@ class InferencePipeline:
         return self.finalize_run()
 
     def collect_frames(self, batch_size: int = 32):
+        log_progress_update = False
+
         idx = 0
         batch_start = self.f_num
         batch_end = min(self.f_total, (
             batch_start + (batch_size * self.track_stride)
         ))
-
         frames = []
         id_frames = {}
 
@@ -179,19 +184,21 @@ class InferencePipeline:
             self.f_num += 1
             
             if self.f_num % self.progress_interval == 0:
-                progress = int(round((self.f_num / self.f_total) * 100, 0))
-                logger.info(f'{progress}%')
+                log_progress_update = True
+
+                percent_complete = self.f_num / self.f_total * 100
+                self.progress = int(round(percent_complete, 0))
 
         press_stopwatch(self, 'read_time')
 
-        frame_data = {
+        frame_batch = {
             'start': batch_start,    # included in the batch
             'end': batch_end,   # not included: only marks the end
             'frames': frames,
             'id_frames': id_frames,
         }
 
-        return frame_data
+        return frame_batch, log_progress_update
 
     def process_batch(self, frame_data):
         frames = frame_data['frames']

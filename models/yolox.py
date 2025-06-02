@@ -4,7 +4,7 @@
 # standard dependencies
 import math
 import os
-from typing import Union
+from typing import Union, Optional
 
 # 3rd-party dependencies
 import numpy as np
@@ -144,54 +144,81 @@ class YoloX:
             if self.fp16:
                 self.model = self.model.half()
 
-    def preprocess(self, image, input_size, mean, std, swap=(2, 0, 1)):
+    def inference(
+            self,
+            img_data: Union[list[np.ndarray], np.ndarray],
+            conf_thresh: Optional[float] = None,
+            nms_thresh: Optional[float] = None,
+            num_classes: Optional[int] = None,
+        ) -> list[Union[torch.tensor, None]]:
         '''
-        Rescales, pads, and normalizes the input image. The image's aspect ratio
+        Returns (list[torch.tensor or None]): List of tensors, one for each
+            image (or None if there were no detections in that image). Each
+            tensor is of shape [num_detections, 7], where each detection
+            is as follows:
+                [x1, y1, x2, y2, object_conf, class_conf, class_pred]
+        '''
+        conf_thresh = conf_thresh or self.conf_thresh
+        nms_thresh = nms_thresh or self.conf_thresh
+        num_classes = num_classes or self.num_classes
+
+        if isinstance(img_data, np.ndarray):
+            img_data = [img_data]
+
+        img_data = [img.copy() for img in img_data]
+        img_tensor = self.preprocess(
+            img_data, self.input_size, self.rgb_means, self.std
+        )
+        if self.fp16:
+            img_tensor = img_tensor.half()
+        
+        with torch.no_grad():
+            outputs = self.model(img_tensor)
+            outputs = self.postprocess(
+                outputs,
+                conf_thresh,
+                nms_thresh,
+                num_classes,
+            )
+        return outputs
+
+    def preprocess(self, images, input_size, mean, std, swap=(2, 0, 1)):
+        '''
+        Rescales, pads, and normalizes input images. The image's aspect ratio
         is preserved through its rescaling, such that it fits within a canvas of
         shape `input_size` which is used to pad it.
         '''
-        if len(image.shape) == 3:
-            padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
-        else:
-            padded_img = np.ones(input_size) * 114.0
-        img = np.array(image)
-        r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
-        resized_img = cv2.resize(
-            img,
-            (int(img.shape[1] * r), int(img.shape[0] * r)),
-            interpolation=cv2.INTER_LINEAR,
-        ).astype(np.float32)
-        padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
-
-        padded_img = padded_img[:, :, ::-1]
-        padded_img /= 255.0
-        if mean is not None:
-            padded_img -= mean
-        if std is not None:
-            padded_img /= std
-        padded_img = padded_img.transpose(swap)
-        padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
-    
-        return padded_img
-    
-    def batch_preprocess(self, images, input_size, mean, std, swap=(2, 0, 1)):
         preprocessed_images = []
 
         for image in images:
-            preprocesesed = self.preprocess(image, input_size, mean, std, swap)
-            preprocessed_images.append(preprocesesed)
-        
-        preprocessed_images = np.stack(preprocessed_images, axis=0)
-        
-        return torch.from_numpy(preprocessed_images).float()
+            if len(image.shape) == 3:
+                padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
+            else:
+                padded_img = np.ones(input_size) * 114.0
+            img = np.array(image)
+            r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
+            resized_img = cv2.resize(
+                img,
+                (int(img.shape[1] * r), int(img.shape[0] * r)),
+                interpolation=cv2.INTER_LINEAR,
+            ).astype(np.float32)
+            padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
 
-    def postprocess(
-            self, prediction, num_classes=None, conf_thresh=None, nms_thresh=None
-        ):
-        num_classes = num_classes or self.num_classes
-        conf_thresh = conf_thresh or self.conf_thresh
-        nms_thresh = nms_thresh or self.nms_thresh
+            padded_img = padded_img[:, :, ::-1]
+            padded_img /= 255.0
+            if mean is not None:
+                padded_img -= mean
+            if std is not None:
+                padded_img /= std
+            padded_img = padded_img.transpose(swap)
+            padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
 
+            preprocessed_images.append(padded_img)
+        preprocessed_images = np.stack(preprocessed_images, axis=0)   
+
+        return torch.from_numpy(preprocessed_images).to(self.device)
+
+    def postprocess(self, prediction, conf_thresh, nms_thresh, num_classes):
         box_corner = prediction.new(prediction.shape)
         box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
         box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
@@ -232,36 +259,6 @@ class YoloX:
                 output[i] = torch.cat((output[i], detections))
 
         return output
-
-    def inference(self, imgs):
-        '''
-        Returns (list[torch.tensor or None]): List of tensors, one for each
-            image (or None if there were no detections in that image). Each
-            tensor is of shape [num_detections, 7], where each detection
-            is as follows:
-                [x1, y1, x2, y2, object_conf, class_conf, class_pred]
-        '''
-        if isinstance(imgs, np.ndarray):
-            imgs = [imgs]
-
-        raw_imgs = [img.copy() for img in imgs]
-        img_tensor = self.batch_preprocess(
-            raw_imgs, self.input_size, self.rgb_means, self.std
-        )
-        img_tensor = img_tensor.float().to(self.device)
-
-        if self.fp16:
-            img_tensor = img_tensor.half()
-
-        with torch.no_grad():
-            outputs = self.model(img_tensor)
-            outputs = self.postprocess(
-                outputs,
-                self.num_classes,
-                self.conf_thresh,
-                self.nms_thresh,
-            )
-        return outputs
 
 
 # =============================================================================
