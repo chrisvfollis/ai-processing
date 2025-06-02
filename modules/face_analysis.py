@@ -372,11 +372,10 @@ class FaceAnalysis:
             expand_percentage: int = 0,
             enhance: bool = True,
             refresh_database: bool = True,
-        ) -> Union[list[pd.DataFrame], list[list[dict]]]:
+        ) -> list[list[pd.DataFrame]]:
+        per_image_resp_objs = []
 
         id_cutoff = id_cutoff or self.id_cutoff
-
-        resp_obj = []
 
         representations = self._prepare_data(
             db_path,
@@ -394,8 +393,10 @@ class FaceAnalysis:
             expand_percentage=expand_percentage
         )
         for source_objs in per_image_objs:
+            resp_obj = []
             if not source_objs:
-                resp_obj.append(pd.DataFrame())
+                resp_obj.append(pd.DataFrame)
+                per_image_resp_objs.append(resp_obj)
                 continue
             face_imgs = [obj['face_img'] for obj in source_objs]
             facial_areas = [obj['facial_area'] for obj in source_objs]
@@ -423,7 +424,6 @@ class FaceAnalysis:
             similarity = torch.mm(target_tensor, source_tensor.T)
             distance_matrix = 1 - similarity
 
-            img_df_parts = []
             for i, embedding_obj in enumerate(target_embedding_objs):
                 face_region = embedding_obj['facial_area']
 
@@ -443,13 +443,12 @@ class FaceAnalysis:
                     result_df.sort_values(by=['distance'], ascending=True)
                     .reset_index(drop=True)
                 )
-                img_df_parts.append(result_df)
-
-            resp_obj.append(pd.concat(img_df_parts, ignore_index=True) if img_df_parts else pd.DataFrame())
+                resp_obj.append(result_df)
+            per_image_resp_objs.append(resp_obj)
 
         press_stopwatch(self, 'other_processing_time')
 
-        return resp_obj
+        return per_image_resp_objs
 
     def identify_faces(
             self,
@@ -523,7 +522,7 @@ class FaceAnalysis:
             if not batch_imgs:
                 return []
 
-        face_dfs = self.find(
+        per_image_face_dfs = self.find(
             imgs=batch_imgs,
             id_cutoff=id_cutoff,
             expand_percentage=expand_percentage,
@@ -532,15 +531,18 @@ class FaceAnalysis:
         )
 
         all_face_dfs = []
-        for df, region in zip(face_dfs, kept_regions):
-            if not df.empty:
-                # apply offset so coords map back to full frame
-                df[['x', 'y']] = df.apply(
-                    lambda row: utils.apply_offset((row['x'], row['y']), region),
-                    axis=1, result_type="expand"
-                )
-            all_face_dfs.append(df)
-
+        for region_dfs, region in zip(per_image_face_dfs, kept_regions):
+            for df in region_dfs:
+                if not df.empty:
+                    # apply offset so coords map back to full frame
+                    df[['x', 'y']] = df.apply(
+                        lambda row: utils.apply_offset(
+                            (row['x'], row['y']), region
+                        ),
+                        axis=1,
+                        result_type="expand",
+                    )
+                all_face_dfs.append(df)
         all_face_dfs = _postprocess_output(all_face_dfs)
 
         press_stopwatch(self, 'identification_pipeline_time')

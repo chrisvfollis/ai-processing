@@ -28,6 +28,7 @@ ASSO_FUNCS = {
     "diou": association.diou_batch,
 }
 
+
 class OCSort:
     def __init__(
             self,
@@ -55,7 +56,6 @@ class OCSort:
         self.inertia = inertia
         self.use_byte = use_byte
         KalmanBoxTracker.count = 0
-
 
     def update(self, output_results, img_info, img_size, f_num=None):
         """
@@ -224,7 +224,7 @@ class OCSort:
     
     def _finalize_tracks(self):
         ret = []
-        to_delete = {}
+        to_delete = []
         for trk_id, trk in self.active_trks.items():
             if trk.last_observation.sum() < 0:
                 d = trk.get_state()[0]
@@ -241,9 +241,9 @@ class OCSort:
             # remove dead tracklet
             if(trk.time_since_update > self.max_age):
                 self.inactive_trks[trk_id] = trk
-                to_delete[trk_id] = trk
+                to_delete.append(trk_id)
 
-        for trk_id, trk in to_delete.items():
+        for trk_id in to_delete:
             del self.active_trks[trk_id]
 
         return ret

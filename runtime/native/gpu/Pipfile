@@ -46,6 +46,7 @@ h5py = "*"
 matplotlib = "*"
 scikit-learn = "*"
 statsmodels = "*"
+lap = "*"
 
 # =============================================================================
 #                  - CONNECTIONS (NETWORKING, APIS, ETC) -

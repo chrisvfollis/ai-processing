@@ -41,6 +41,7 @@ setup(
         'h5py',
         'statsmodels',
         'scikit-learn',
+        'lap',
 
         # Networking, APIs, Connections, etc:
         'requests',

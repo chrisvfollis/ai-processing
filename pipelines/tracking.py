@@ -119,16 +119,19 @@ class TrackingPipeline:
                 person_dets, self.img_hw, self.yolox_input_size, self.f_num
             )
 
-            online_boxes = []
-            online_ids = []
-            for t in online_targets:
-                trk_id, box = t[4], utils.xywh_xyxy(t[:4], out='xywh')
+            # keep track of all possible face matches + feature vectors,
+            # then use that info after run() is complete to associate
+            # tracks
 
-                valid_ratio = (box[2] / box[3]) <= self.aspect_ratio_thresh
-                valid_area = math.prod(box[2:4]) > self.min_box_area
+    def assign_faces(self):
+        face_data = self.face_data.get(self.f_num, [])
+        
+        for trk_id, trk in self.ocsort.active_trks.items():
+            f_idx = trk.frame_mapping[self.f_num]
 
-                if not (valid_ratio and valid_area):
-                    continue
-    
-                online_boxes.append(box)
-                online_ids.append(trk_id)
+            bbox = trk.observations[f_idx]
+        
+        # construct cost matrix
+
+    def reassociate(self):
+        pass
