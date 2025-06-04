@@ -29,8 +29,7 @@ class TrackingPipeline:
             self,
             video_file: str,
             time_prefix: str,
-            person_detections: dict,
-            face_data: pd.DataFrame,
+            detections: dict,
             credentials,
             device: torch.device = None,
             yolox_input_size: tuple[int] = (800, 1440),
@@ -46,10 +45,9 @@ class TrackingPipeline:
             use_byte=False,
         ):
         # PATHS:
-        common_dirs = io_utils.get_common_dirs()
-        self.project_root = common_dirs['project_root']
-        self.input_dir = common_dirs['input_dir']
-        self.output_dir = common_dirs['output_dir']
+        self.project_root = io_utils.get_project_root()
+        self.input_dir = os.path.join(self.project_root, 'files/input/')
+        self.output_dir = os.path.join(self.project_root, 'files/output/')
 
         # GENERAL ATTRIBUTES:
         self.device = device or utils.get_default_device()
@@ -101,16 +99,12 @@ class TrackingPipeline:
         self.min_box_area = min_box_area
 
         # INFERENCE DATA:
-        self.person_detections = person_detections
-        self.face_data = face_data
-        self.embedding_path = os.path.join(
-            self.output_dir,
-            f"{self.video_file.split('.')[0]}_embeddings.hdf5"
-        )
+        self.detections = detections
+
 
     def run(self):
         while self.f_num < self.total_frames:
-            person_dets = self.person_detections.get(self.f_num, [])
+            person_dets = self.detections.get(self.f_num, [])
             if not person_dets:
                 self.f_num += 1
                 continue
@@ -118,27 +112,3 @@ class TrackingPipeline:
             online_targets = self.ocsort.update(
                 person_dets, self.img_hw, self.yolox_input_size, self.f_num
             )
-
-            # keep track of all possible face matches + feature vectors,
-            # then use that info after run() is complete to associate
-            # tracks
-
-    def assign_faces(self):
-        face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
-
-        face_boxes = (
-            face_df[['x', 'y', 'w', 'h']].drop_duplicates()
-            .values().tolist()
-        )
-        person_boxes = []
-
-        for trk_id, trk in self.ocsort.active_trks.items():
-            f_idx = trk.frame_mapping[self.f_num]
-            bbox = trk.observations[f_idx]
-            bbox = utils.xywh_xyxy(bbox, out='xywh')
-            person_boxes.append(bbox)
-        
-        # construct cost matrix
-
-    def reassociate(self):
-        pass

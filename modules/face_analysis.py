@@ -1,8 +1,7 @@
 # standard dependencies
 import os
-from typing import Union, Optional, Sequence, Tuple
+from typing import Union, Optional, Sequence
 import pickle
-import gc
 import math
 
 # 3rd-party dependencies

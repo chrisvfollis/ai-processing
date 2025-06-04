@@ -142,23 +142,6 @@ def get_common_dirs(project_root: Optional[str] = None) -> dict:
     }
 
 
-def set_common_dirs(
-        obj, project_root: Optional[str] = None,
-        exclude: Optional[Union[str, list]] = None
-    ) -> None:
-    common_dirs = get_common_dirs(project_root=project_root)
-
-    if exclude is None:
-        exclude = []
-    elif isinstance(exclude, str):
-        exclude = [exclude]
-
-    for dir in common_dirs.keys():
-        if dir in exclude:
-            continue
-        setattr(obj, dir, common_dirs[dir])
-
-
 def get_unique_filename(dir_path, base_name):
     '''Append a number to the filename if it already exists.'''
 
