@@ -1,6 +1,5 @@
 # standard dependencies
 import os
-import time
 import pickle
 import gc
 
@@ -11,13 +10,11 @@ import torch
 
 # internal dependencies
 from models import YoloX, OSNet
-from modules import FaceAnalysis
+from modules.face_analysis import FaceAnalysis
 from utilities import general_utils as utils
-from utilities import io_utils
-from utilities.log_utils import get_logger, press_stopwatch
+from utilities import io_utils, log_utils
 
-
-logger = get_logger(__name__)
+logger = log_utils.get_logger(__name__)
 
 
 class InferencePipeline:
@@ -31,7 +28,7 @@ class InferencePipeline:
             track_stride: int = 1,
             id_freq: str = '1/s',
         ):
-        press_stopwatch(self, 'init_time')
+        log_utils.press_stopwatch(self, 'init_time')
 
         # MODEL SETUP:
         self.device = device or utils.get_default_device()
@@ -89,11 +86,11 @@ class InferencePipeline:
         self.garbage_collection_time = 0
         self.skim_time = 0
 
-        press_stopwatch(self, 'init_time')
+        log_utils.press_stopwatch(self, 'init_time')
 
     def skim(self):
         logger.info(f'Skimming...')
-        press_stopwatch(self, 'skim_time')
+        log_utils.press_stopwatch(self, 'skim_time')
 
         cap = cv2.VideoCapture(self.video_path)
         stride = self.fps * 3
@@ -128,18 +125,18 @@ class InferencePipeline:
             
         cap.release()
 
-        press_stopwatch(self, 'skim_time')
+        log_utils.press_stopwatch(self, 'skim_time')
         return result
 
     def run(self, batch_size: int = 16):
         self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
-        press_stopwatch(self, 'primary_run_time')
+        log_utils.press_stopwatch(self, 'primary_run_time')
 
         self.cap = cv2.VideoCapture(self.video_path)
 
         while self.f_num < self.f_total:
-            frame_batch, log_progress = self.collect_frames(batch_size)
+            frame_batch, log_progress = self._collect_frames(batch_size)
             results = self.process_batch(frame_batch)
 
             self.person_detections = self.person_detections | results[0]
@@ -149,55 +146,15 @@ class InferencePipeline:
 
             if log_progress == True:
                 logger.info(f'{self.progress}%')
+        
+        log_utils.press_stopwatch(self, 'primary_run_time')
 
-        logger.info(f'Exiting inference run on frame {self.f_num}')
-        self.cap.release()
+        self._cleanup()
 
-        return self.finalize_run()
+        self._save_run_info()
+        self.face_data = self.face_analysis.consolidate_face_data(self.face_data)
 
-    def collect_frames(self, batch_size: int = 16):
-        log_progress_update = False
-
-        batch_start = self.f_num
-        batch_end = min(self.f_total, (
-            batch_start + (batch_size * self.track_stride)
-        ))
-        frames = []
-        id_frames = {}
-
-        press_stopwatch(self, 'read_time')
-        while self.f_num < batch_end:
-            ret, frame = self.cap.read()
-            if not ret:
-                break
-            
-            if self.f_num % self.track_stride == 0:
-                frames.append(frame)
-                idx = len(frames) - 1
-                if self.f_num % self.id_stride == 0:
-                    id_frames[idx] = {
-                        'frame': frame,
-                        'f_num': self.f_num,
-                    }
-
-            self.f_num += 1
-            
-            if self.f_num % self.progress_interval == 0:
-                log_progress_update = True
-
-                percent_complete = self.f_num / self.f_total * 100
-                self.progress = int(round(percent_complete, 0))
-
-        press_stopwatch(self, 'read_time')
-
-        frame_batch = {
-            'start': batch_start,    # included in the batch
-            'end': batch_end,   # not included: only marks the end
-            'frames': frames,
-            'id_frames': id_frames,
-        }
-
-        return frame_batch, log_progress_update
+        return self.person_detections, self.face_data
 
     def process_batch(self, frame_data):
         frames = frame_data['frames']
@@ -237,20 +194,55 @@ class InferencePipeline:
 
         return person_detections, face_data
 
-    def finalize_run(self):
-        if len(self.osnet.embedding_buffer) > 0:
-            self.osnet.flush_buffers(structure='video_data', release=True)
-        else:
-            self.osnet.release_buffers()
+    def _collect_frames(self, batch_size: int = 16):
+        log_progress_update = False
 
+        batch_start = self.f_num
+        batch_end = min(self.f_total, (
+            batch_start + (batch_size * self.track_stride)
+        ))
+        frames = []
+        id_frames = {}
+
+        log_utils.press_stopwatch(self, 'read_time')
+        while self.f_num < batch_end:
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+            
+            if self.f_num % self.track_stride == 0:
+                frames.append(frame)
+                idx = len(frames) - 1
+                if self.f_num % self.id_stride == 0:
+                    id_frames[idx] = {
+                        'frame': frame,
+                        'f_num': self.f_num,
+                    }
+
+            self.f_num += 1
+            
+            if self.f_num % self.progress_interval == 0:
+                log_progress_update = True
+                self.progress = utils.calculate_progress(self.f_num, self.f_total)
+
+        log_utils.press_stopwatch(self, 'read_time')
+
+        frame_batch = {
+            'start': batch_start,    # included in the batch
+            'end': batch_end,   # not included: only marks the end
+            'frames': frames,
+            'id_frames': id_frames,
+        }
+
+        return frame_batch, log_progress_update
+
+    def _cleanup(self):
+        self.cap.release()
+
+        self.osnet.flush_buffers(structure='video_data', release=True)
         io_utils.clear_memory()
-        self.save_runtime_data()
 
-        press_stopwatch(self, 'primary_run_time')
-
-        return self.person_detections, self.face_data
-
-    def save_runtime_data(self):
+    def _save_run_info(self):
         runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
         commit_hash, commit_datetime = utils.get_git_commit_info()
 
@@ -372,7 +364,7 @@ class InferencePipeline:
         except Exception as e:
             logger.info(f'Failed to save Excel file: {e}')
 
-    def save_pipeline_state(self):
+    def save_state(self):
         logger.info('Saving inference pipeline state...')
 
         file_prefix = self.video_file.split('.')[0]
@@ -381,7 +373,7 @@ class InferencePipeline:
         )
         save_path = os.path.join(self.output_dir, filename)
 
-        # make shallow copy and remove unpickleable objects
+        # make shallow copy and remove unpickleable objects:
         state = self.__dict__.copy()
         state['yolox'] = None
         state['osnet'] = None
@@ -401,9 +393,9 @@ class InferencePipeline:
                         converted.append(d)
                 state['person_detections'][f] = converted
 
-        press_stopwatch(self, 'pkl_io')
+        log_utils.press_stopwatch(self, 'pkl_io')
         with open(save_path, "wb") as f:
             pickle.dump(state, f)
-        press_stopwatch(self, 'pkl_io')
+        log_utils.press_stopwatch(self, 'pkl_io')
 
         logger.info(f'Inference pipeline state saved to {save_path}')

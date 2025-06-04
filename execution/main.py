@@ -109,8 +109,8 @@ def run_master_process(
             retain_footage = {retain_footage}
         '''))
 
-        time_prefix = utils.parse_clip_filename(
-            queue_block[0][0].split('/')[-1], data='time'
+        time_prefix, _ = utils.parse_clip_filename(
+            queue_block[0][0].split('/')[-1]
         )
         timestamp = utils.frame_timestamp(time_prefix)
 

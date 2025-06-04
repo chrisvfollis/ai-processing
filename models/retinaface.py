@@ -10,10 +10,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models._utils as _utils
 import torchvision.models as models
-from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
 from utilities import io_utils
+from modules.data_structures import FacialAreaRegion
 
 
 class RetinaFace:
@@ -271,7 +271,6 @@ class RetinaFace:
             results.append(facial_area)
 
         return results
-
 
 
 # =============================================================================

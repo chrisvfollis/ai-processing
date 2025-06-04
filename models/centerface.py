@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 import cv2
 import torch
-from deepface.models.Detector import FacialAreaRegion
 
 # internal dependencies
+from modules.data_structures import FacialAreaRegion
 from utilities import general_utils as utils
 from utilities import io_utils
 
@@ -26,6 +26,7 @@ class CenterFace:
             ignore_landmarks: bool = False,
             save_data: bool = False,
         ):
+        
         self.device = device or utils.get_default_device()
 
         self.project_root = io_utils.get_project_root()

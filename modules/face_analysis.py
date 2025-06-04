@@ -2,7 +2,6 @@
 import os
 from typing import Union, Optional, Sequence
 import pickle
-import gc
 import math
 
 # 3rd-party dependencies
@@ -11,12 +10,10 @@ import pandas as pd
 import cv2
 import torch
 import torch.nn.functional as F
-from deepface.commons import image_utils
-from deepface.models.Detector import DetectedFace, FacialAreaRegion
 
 # internal dependencies
-from models import RetinaFace, CenterFace, ClearFace, FaceNet512
-from utilities import io_utils, face_utils
+from modules.data_structures import DetectedFace, FacialAreaRegion
+from utilities import io_utils, face_utils, image_utils
 from utilities.log_utils import press_stopwatch
 from utilities import general_utils as utils
 
@@ -41,13 +38,16 @@ class FaceAnalysis:
         self.db_path = os.path.join(self.project_root, 'files/', 'data.db')
 
         # MODELS:
+        from models import CenterFace, FaceNet512
         self.centerface = CenterFace(device=self.device, **centerface_cfg)
         self.facenet512 = FaceNet512(device=self.device, **facenet_cfg)
 
         if clearface_cfg is None:
             self.enhance_faces = False
         else:
+            from models import ClearFace
             self.enhance_faces = True
+            
             self.clearface = ClearFace(device=self.device, **clearface_cfg)
 
         self.id_cutoff = id_cutoff
@@ -212,6 +212,7 @@ class FaceAnalysis:
         # find representations for new images:
         if len(new_images) > 0:
             if not hasattr(self, 'retinaface'):
+                from models import RetinaFace
                 self.retinaface = RetinaFace(device=self.device)
             representations += __find_bulk_embeddings(
                 employees=new_images,
@@ -307,11 +308,11 @@ class FaceAnalysis:
         return per_image_resp_objs
 
     def enhance(
-        self,
-        img: np.ndarray,
-        is_rgb=True,
-        output_path=None
-    ):
+            self,
+            img: np.ndarray,
+            is_rgb=True,
+            output_path=None
+        ):
         # Start timing
         enhanced_face = self.clearface.forward(img, is_rgb=is_rgb)
         # End timing
@@ -372,11 +373,10 @@ class FaceAnalysis:
             expand_percentage: int = 0,
             enhance: bool = True,
             refresh_database: bool = True,
-        ) -> Union[list[pd.DataFrame], list[list[dict]]]:
+        ) -> list[list[pd.DataFrame]]:
+        per_image_resp_objs = []
 
         id_cutoff = id_cutoff or self.id_cutoff
-
-        resp_obj = []
 
         representations = self._prepare_data(
             db_path,
@@ -394,8 +394,10 @@ class FaceAnalysis:
             expand_percentage=expand_percentage
         )
         for source_objs in per_image_objs:
+            resp_obj = []
             if not source_objs:
                 resp_obj.append(pd.DataFrame())
+                per_image_resp_objs.append(resp_obj)
                 continue
             face_imgs = [obj['face_img'] for obj in source_objs]
             facial_areas = [obj['facial_area'] for obj in source_objs]
@@ -423,7 +425,6 @@ class FaceAnalysis:
             similarity = torch.mm(target_tensor, source_tensor.T)
             distance_matrix = 1 - similarity
 
-            img_df_parts = []
             for i, embedding_obj in enumerate(target_embedding_objs):
                 face_region = embedding_obj['facial_area']
 
@@ -443,13 +444,12 @@ class FaceAnalysis:
                     result_df.sort_values(by=['distance'], ascending=True)
                     .reset_index(drop=True)
                 )
-                img_df_parts.append(result_df)
-
-            resp_obj.append(pd.concat(img_df_parts, ignore_index=True) if img_df_parts else pd.DataFrame())
+                resp_obj.append(result_df)
+            per_image_resp_objs.append(resp_obj)
 
         press_stopwatch(self, 'other_processing_time')
 
-        return resp_obj
+        return per_image_resp_objs
 
     def identify_faces(
             self,
@@ -476,6 +476,8 @@ class FaceAnalysis:
             filtered_face_dfs = []
 
             for df in all_face_dfs:
+                print(type(df))
+                print(df.head())
                 validated_drop_cols = [c for c in drop_cols if c in df.columns]
                 df = df.drop(validated_drop_cols, axis=1)
                 
@@ -523,7 +525,7 @@ class FaceAnalysis:
             if not batch_imgs:
                 return []
 
-        face_dfs = self.find(
+        per_image_face_dfs = self.find(
             imgs=batch_imgs,
             id_cutoff=id_cutoff,
             expand_percentage=expand_percentage,
@@ -532,20 +534,39 @@ class FaceAnalysis:
         )
 
         all_face_dfs = []
-        for df, region in zip(face_dfs, kept_regions):
-            if not df.empty:
-                # apply offset so coords map back to full frame
-                df[['x', 'y']] = df.apply(
-                    lambda row: utils.apply_offset((row['x'], row['y']), region),
-                    axis=1, result_type="expand"
-                )
-            all_face_dfs.append(df)
+        for region_dfs, region in zip(per_image_face_dfs, kept_regions):
+            for df in region_dfs:
+                if not df.empty:
+                    df[['x', 'y']] = df.apply(
+                        lambda row: utils.apply_offset(
+                            (row['x'], row['y']), region
+                        ),
+                        axis=1,
+                        result_type='expand',
+                    )
+                all_face_dfs.append(df)
 
         all_face_dfs = _postprocess_output(all_face_dfs)
 
         press_stopwatch(self, 'identification_pipeline_time')
         
         return all_face_dfs
+
+    def consolidate_face_data(
+            self, face_data: dict[list[pd.DataFrame]]
+        ) -> pd.DataFrame:
+        merged_dfs = []
+        for frame, dfs in face_data.items():
+            valid_dfs = [df for df in dfs if not df.empty]
+            if valid_dfs:
+                merged_df = pd.concat(valid_dfs, ignore_index=True)
+                merged_df['f'] = frame
+                merged_dfs.append(merged_df)
+
+        if not merged_dfs:
+            return None
+
+        return pd.concat(merged_dfs, ignore_index=True)
 
     def save_runtime_data(self):
         filename = os.path.join(self.output_dir, 'faceiq_data.xlsx')
