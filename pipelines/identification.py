@@ -16,10 +16,9 @@ import torch.nn.functional as F
 # internal dependencies
 from utilities import io_utils, log_utils
 from utilities import general_utils as utils
-from utilities.log_utils import get_logger, press_stopwatch
 
 
-logger = get_logger(__name__)
+logger = log_utils.get_logger(__name__)
 
 
 class IdentificationPipeline:
