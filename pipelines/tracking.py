@@ -200,3 +200,23 @@ class TrackingPipeline:
         state_df = pd.DataFrame(state_records)
 
         return obs_df, state_df
+
+    def save_state(self):
+        logger.info('Saving pipeline state...')
+
+        file_prefix = self.video_file.split('.')[0]
+        save_path = os.path.join(self.output_dir, f'{file_prefix}.pkl')
+
+        log_utils.press_stopwatch(self, 'pkl_io')
+        with open(save_path, "wb") as f:
+            pickle.dump(self, f)
+        
+        if self.prior_pkl:
+            if (
+                os.path.exists(self.prior_pkl_path) and
+                os.path.isfile(self.prior_pkl_path)
+            ):
+                os.remove(self.prior_pkl_path)
+        log_utils.press_stopwatch(self, 'pkl_io')
+
+        logger.info(f'{len(self.active_trks.keys())} tracks saved to be continued')
