@@ -340,7 +340,7 @@ class OSNet:
 
     def write_embeddings(
             self,
-            structure: str = 'standard',
+            structure: Optional[str] = None,
             hdf5_file: Optional[h5py.File] = None,
             embeddings: Optional[np.ndarray] = None,
             indices: Optional[np.ndarray] = None, 
@@ -362,6 +362,7 @@ class OSNet:
                 the embeddings. If left unspecified, the self.index_buffer will
                 be used instead.
         """
+        structure = structure or self.buffer_type
 
         hdf5_file = hdf5_file or getattr(self, 'hdf5_file')
         if not hdf5_file:
