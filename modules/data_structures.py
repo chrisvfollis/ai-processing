@@ -1,6 +1,6 @@
 # standard dependencies
 import os
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Tuple
 from dataclasses import dataclass
 
 # 3rd-party dependencies

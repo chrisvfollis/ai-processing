@@ -266,19 +266,18 @@ class YoloX:
 
             detections = torch.cat((image_pred[:, :5], class_conf, class_pred.float()), 1)
             detections = detections[conf_mask]
+            
             if not detections.size(0):
                 continue
             if detections.shape[1] == 1:
                 detections = detections.squeeze(0)
-            try:
-                nms_out_index = torchvision.ops.batched_nms(
-                    detections[:, :4],
-                    detections[:, 4] * detections[:, 5],
-                    detections[:, 6],
-                    nms_thresh,
-                )
-            except:
-                import pdb; pdb.set_trace()
+
+            nms_out_index = torchvision.ops.batched_nms(
+                detections[:, :4],
+                detections[:, 4] * detections[:, 5],
+                detections[:, 6],
+                nms_thresh,
+            )
 
             detections = detections[nms_out_index]
 

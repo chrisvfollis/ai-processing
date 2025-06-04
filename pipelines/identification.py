@@ -23,14 +23,14 @@ logger = log_utils.get_logger(__name__)
 class IdentificationPipeline:
     def __init__(
             self,
-            track_detections: pd.DataFrame,
-            face_data: pd.DataFrame,
             video_file: str,
-            embeddings_file: str = None
+            face_data: pd.DataFrame,
+            track_detections: pd.DataFrame,
+            embeddings_file: str = None,
         ):
         # DATA:
-        self.trk_detections = track_detections
         self.face_data = face_data
+        self.trk_detections = track_detections
 
         # PATHS/FILENAMES/ETC:
         self.project_root = io_utils.get_project_root()
@@ -45,21 +45,27 @@ class IdentificationPipeline:
         )
         self.embeddings_path = os.path.join(self.output_dir, self.embeddings_file)
 
-    def embedding_dists(self, chunk_size: int = 100) -> pd.DataFrame:
+    def embedding_cos_dists(
+            self,
+            hdf5_file: str = None,
+            detections: pd.DataFrame = None,
+            chunk_size: int = 100,
+        ) -> pd.DataFrame:
         distance_data = []
         
-        hdf5_file = h5py.File(self.embeddings_path, 'r')
+        hdf5_file = hdf5_file or h5py.File(self.embeddings_path, 'r')
+        detections = detections or self.trk_detections
 
         num_embeddings = hdf5_file['embeddings'].shape[0]
         frames = hdf5_file['frames'][:]
         box_indices = hdf5_file['box_indices'][:]
 
         # create a mapping from (frame, box_idx) to metadata:
-        obs_df = self.trk_detections.copy()
+        obs_df = detections.copy()
         obs_df['key'] = list(zip(obs_df['f'], obs_df['box_idx']))
         metadata_map = obs_df.set_index('key').to_dict('index')
 
-        print('Calculating cosine distances...')
+        logger.info(f'Calculating cosine distances...')
         for start_idx in range(0, num_embeddings, chunk_size):
             end_idx = min(start_idx + chunk_size, num_embeddings)
 
@@ -123,21 +129,46 @@ class IdentificationPipeline:
 
         return pd.DataFrame(distance_data)
 
-    def assign_faces(self):
-        face_df = self.face_data.loc[self.face_data['f'] == self.f_num]
-        face_boxes = (
-            face_df[['x', 'y', 'w', 'h']].drop_duplicates()
-            .values().tolist()
-        )
-        person_boxes = []
+    def face_ious(self) -> pd.DataFrame:
+        def _compute_iou(row):
+            xA = max(row['x1_face'], row['x1_trk'])
+            yA = max(row['y1_face'], row['y1_trk'])
+            xB = min(row['x2_face'], row['x2_trk'])
+            yB = min(row['y2_face'], row['y2_trk'])
 
-        for trk_id, trk in self.ocsort.active_trks.items():
-            f_idx = trk.frame_mapping[self.f_num]
-            bbox = trk.observations[f_idx]
-            bbox = utils.xywh_xyxy(bbox, out='xywh')
-            person_boxes.append(bbox)
-        
-        # construct cost matrix
+            inter_area = max(0, xB - xA) * max(0, yB - yA)
+
+            box_area_face = (row['x2_face'] - row['x1_face']) * (row['y2_face'] - row['y1_face'])
+            box_area_trk = (row['x2_trk'] - row['x1_trk']) * (row['y2_trk'] - row['y1_trk'])
+
+            iou = inter_area / float(box_area_face + box_area_trk - inter_area + 1e-6)
+            return iou
+
+        face_df = self.face_data.copy()
+        # one row per face detection:
+        face_df = (
+            face_df.groupby(['f', 'face_idx'], as_index=False)
+            .first()
+        )
+        face_df['x1'] = face_df['x']
+        face_df['y1'] = face_df['y']
+        face_df['x2'] = face_df['x'] + face_df['w']
+        face_df['y2'] = face_df['y'] + face_df['h']
+
+        merged_df = face_df.merge(
+            self.trk_detections,
+            on='f',
+            suffixes=('_face', '_trk'),
+        )
+        merged_df['iou'] = merged_df.apply(_compute_iou, axis=1)
+
+        keep_cols = [
+            'f',
+            'face_idx'
+            'trk_id',
+            'iou',
+        ]
+        return merged_df[keep_cols]
 
     def reassociate(self):
         pass
