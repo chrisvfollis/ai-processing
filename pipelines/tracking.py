@@ -101,7 +101,6 @@ class TrackingPipeline:
         # INFERENCE DATA:
         self.detections = detections
 
-
     def run(self):
         while self.f_num < self.total_frames:
             person_dets = self.detections.get(self.f_num, [])
@@ -109,6 +108,6 @@ class TrackingPipeline:
                 self.f_num += 1
                 continue
             
-            online_targets = self.ocsort.update(
+            self.ocsort.update(
                 person_dets, self.img_hw, self.yolox_input_size, self.f_num
             )

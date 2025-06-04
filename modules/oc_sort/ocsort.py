@@ -1,5 +1,5 @@
 # standard dependencies
-pass
+import math
 
 # 3rd-party dependencies
 import numpy as np
@@ -7,11 +7,11 @@ import numpy as np
 # internal dependencies
 from modules.oc_sort import association
 from .kalmanfilter import KalmanFilterNew as KalmanFilter
-from utilities.general_utils import convert_bbox_to_z, convert_x_to_bbox
+import utilities.general_utils as utils
 
 
 # =============================================================================
-#                               - TRACKER -
+#                            - GLOBAL TRACKER -
 # -----------------------------------------------------------------------------
 
 
@@ -40,10 +40,9 @@ class OCSort:
             asso_func="iou",
             inertia=0.2,
             use_byte=False,
+            aspect_ratio_thresh=1.6,
+            min_box_area=100,
         ):
-        """
-        Sets key parameters for SORT
-        """
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
@@ -55,6 +54,10 @@ class OCSort:
         self.asso_func = ASSO_FUNCS[asso_func]
         self.inertia = inertia
         self.use_byte = use_byte
+        self.val_cfg = {
+            'aspect_ratio_thresh': aspect_ratio_thresh,
+            'min_box_area': min_box_area,
+        }
         KalmanBoxTracker.count = 0
 
     def update(self, output_results, img_info, img_size, f_num=None):
@@ -63,7 +66,6 @@ class OCSort:
           dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
         Requires: this method must be called once for each frame even with empty detections (use np.empty((0, 5)) for frames without detections).
         Returns the a similar array, where the last column is the object ID.
-        NOTE: The number of objects returned may differ from the number of detections provided.
         """
         if output_results is None:
             return np.empty((0, 5))
@@ -113,11 +115,11 @@ class OCSort:
         # create and initialise new trackers for unmatched detections
         self._init_new_tracks(unmatched_dets, dets)
 
-        ret = self._finalize_tracks()
-        if(len(ret) <= 0):
+        bboxes = self._finalize_tracks(return_bboxes=True)
+        if(len(bboxes) <= 0):
             return np.empty((0, 5))
         
-        return np.concatenate(ret)
+        return bboxes
 
     def _organize_raw_detections(self, output_results, img_info, img_size):
         if output_results.shape[1] == 5:
@@ -217,38 +219,7 @@ class OCSort:
 
         return unmatched_dets, unmatched_trks
 
-    def _init_new_tracks(self, unmatched_dets, dets):
-        for i in unmatched_dets:
-            trk = KalmanBoxTracker(dets[i, :], delta_t=self.delta_t)
-            self.active_trks[trk.id] = trk
-    
-    def _finalize_tracks(self):
-        ret = []
-        to_delete = []
-        for trk_id, trk in self.active_trks.items():
-            if trk.last_observation.sum() < 0:
-                d = trk.get_state()[0]
-            else:
-                """
-                    this is optional to use the recent observation or the kalman filter prediction,
-                    we didn't notice significant difference here
-                """
-                d = trk.last_observation[:4]
-            if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
-                # +1 as MOT benchmark requires positive
-                ret.append(np.concatenate((d, [trk.id+1])).reshape(1, -1))
-
-            # remove dead tracklet
-            if(trk.time_since_update > self.max_age):
-                self.inactive_trks[trk_id] = trk
-                to_delete.append(trk_id)
-
-        for trk_id in to_delete:
-            del self.active_trks[trk_id]
-
-        return ret
-
-    def k_previous_obs(self, observations, cur_age, k):
+    def _k_previous_obs(self, observations, cur_age, k):
         if len(observations) == 0:
             return [-1, -1, -1, -1, -1]
         for i in range(k):
@@ -258,6 +229,36 @@ class OCSort:
         max_age = max(observations.keys())
         return observations[max_age]
 
+    def _init_new_tracks(self, unmatched_dets, dets):
+        for i in unmatched_dets:
+            trk = KalmanBoxTracker(dets[i, :], delta_t=self.delta_t, **self.val_cfg)
+            self.active_trks[trk.id] = trk
+    
+    def _finalize_tracks(self, return_bboxes=False):
+        bboxes = []
+        inactive = []
+        for trk_id, trk in self.active_trks.items():
+            # remove dead tracklet:
+            if (trk.time_since_update > self.max_age):
+                self.inactive_trks[trk_id] = trk
+                inactive.append(trk_id)
+            
+            if return_bboxes:
+                if trk.time_since_update < 1 and (
+                    (trk.hit_streak >= self.min_hits) or (self.frame_count <= self.min_hits)
+                ):
+                    if trk.last_observation is not None:
+                        bbox = trk.last_observation[:4]
+                    else:
+                        bbox = trk.get_state()[0]
+                    bboxes.append(np.concatenate((bbox, [trk.id])).reshape(1, -1))
+
+        for trk_id in inactive:
+            del self.active_trks[trk_id]
+
+        if return_bboxes:
+            return np.concatenate(bboxes)
+
 
 # =============================================================================
 #                           - INDIVIDUAL TRACKS -
@@ -265,11 +266,8 @@ class OCSort:
 
 
 class KalmanBoxTracker:
-    """
-    This class represents the internal state of individual tracked objects observed as bbox.
-    """
     count = 0
-    def __init__(self, bbox, delta_t=3):
+    def __init__(self, bbox, delta_t=3, aspect_ratio_thresh=1.6, min_box_area=100):
         """
         Initialises a tracker using initial bounding box.
         """
@@ -298,7 +296,7 @@ class KalmanBoxTracker:
         self.kf.Q[-1, -1] *= 0.01
         self.kf.Q[4:, 4:] *= 0.01
 
-        self.kf.x[:4] = convert_bbox_to_z(bbox)
+        self.kf.x[:4] = utils.convert_bbox_to_z(bbox)
         self.time_since_update = 0
         self.id = KalmanBoxTracker.count
         KalmanBoxTracker.count += 1
@@ -306,55 +304,51 @@ class KalmanBoxTracker:
         self.hits = 0
         self.hit_streak = 0
         self.age = 0
-        """
-        NOTE: [-1,-1,-1,-1,-1] is a compromising placeholder for non-observation status, the same for the return of 
-        function k_previous_obs. It is ugly and I do not like it. But to support generate observation array in a 
-        fast and unified way, which you would see below k_observations = np.array([k_previous_obs(...]]), let's bear it for now.
-        """
-        self.last_observation = np.array([-1, -1, -1, -1, -1])  # placeholder
+
+        self.last_observation = None    # np.ndarray
         self.observations = dict()
-        self.history_observations = []
         self.frame_mapping = {}
+        self.valid_observations = {}
         self.velocity = None
         self.delta_t = delta_t
+
+        self.aspect_ratio_thresh = aspect_ratio_thresh
+        self.min_box_area = min_box_area
 
     def update(self, bbox, f_num=None):
         """
         Updates the state vector with observed bbox.
         """
-        if bbox is not None:
-            if self.last_observation.sum() >= 0:  # no previous observation
-                previous_box = None
-                for i in range(self.delta_t):
-                    dt = self.delta_t - i
-                    if self.age - dt in self.observations:
-                        previous_box = self.observations[self.age-dt]
-                        break
-                if previous_box is None:
-                    previous_box = self.last_observation
-                """
-                  Estimate the track speed direction with observations \Delta t steps away
-                """
-                self.velocity = self.speed_direction(previous_box, bbox)
-            
-            """
-              Insert new observations. This is a ugly way to maintain both self.observations
-              and self.history_observations. Bear it for the moment.
-            """
-            self.last_observation = bbox
-            self.observations[self.age] = bbox
-            self.history_observations.append(bbox)
-            
-            if f_num is not None:
-                self.frame_mapping[f_num] = self.age
-
-            self.time_since_update = 0
-            self.history = []
-            self.hits += 1
-            self.hit_streak += 1
-            self.kf.update(convert_bbox_to_z(bbox))
-        else:
+        if bbox is None:
             self.kf.update(bbox)
+            return
+
+        if self.last_observation is not None:
+            previous_box = None
+            for i in range(self.delta_t):
+                dt = self.delta_t - i
+                if self.age - dt in self.observations:
+                    previous_box = self.observations[self.age - dt]
+                    break
+            if previous_box is None:
+                previous_box = self.last_observation
+
+            self.velocity = self._speed_direction(previous_box, bbox)
+        
+        self.last_observation = bbox
+        self.observations[self.age] = bbox
+
+        if self.validate(bbox) == True:
+            self.valid_observations[self.age] = bbox
+        
+        if f_num is not None:
+            self.frame_mapping[f_num] = self.age
+
+        self.time_since_update = 0
+        self.history = []
+        self.hits += 1
+        self.hit_streak += 1
+        self.kf.update(utils.convert_bbox_to_z(bbox))            
 
     def predict(self):
         """
@@ -368,18 +362,26 @@ class KalmanBoxTracker:
         if(self.time_since_update > 0):
             self.hit_streak = 0
         self.time_since_update += 1
-        self.history.append(convert_x_to_bbox(self.kf.x))
+        self.history.append(utils.convert_x_to_bbox(self.kf.x))
         return self.history[-1]
 
-    def get_state(self):
-        """
-        Returns the current bounding box estimate.
-        """
-        return convert_x_to_bbox(self.kf.x)
-
-    def speed_direction(self, bbox1, bbox2):
+    def _speed_direction(self, bbox1, bbox2):
         cx1, cy1 = (bbox1[0]+bbox1[2]) / 2.0, (bbox1[1]+bbox1[3])/2.0
         cx2, cy2 = (bbox2[0]+bbox2[2]) / 2.0, (bbox2[1]+bbox2[3])/2.0
         speed = np.array([cy2-cy1, cx2-cx1])
         norm = np.sqrt((cy2-cy1)**2 + (cx2-cx1)**2) + 1e-6
         return speed / norm
+
+    def get_state(self):
+        """
+        Returns the current bounding box estimate.
+        """
+        return utils.convert_x_to_bbox(self.kf.x)
+
+    def validate(self, bbox) -> bool:
+        _, _, w, h = utils.xywh_xyxy(bbox[:4], out='xywh')
+
+        valid_ratio = (w / h) <= self.aspect_ratio_thresh
+        valid_area = math.prod([w, h]) > self.min_box_area
+        
+        return valid_ratio and valid_area
