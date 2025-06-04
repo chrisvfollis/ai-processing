@@ -212,7 +212,12 @@ class OSNet:
         press_stopwatch(self, 'embedding_time')
 
         embeddings = self.postprocess_output(batch_output, batched=True)
-        self.update_buffers(embeddings, f_num, structure='video_data')
+        self.update_buffers(
+            embeddings,
+            index=f_num,
+            box_indices=kept,
+            structure='video_data'
+        )
 
     @property
     def active_buffers(self):
@@ -280,8 +285,9 @@ class OSNet:
 
     def update_buffers(
             self, embedding_data: Union[np.ndarray, list[np.ndarray]],
-            index: int, structure: str = 'standard'
+            index: int, box_indices: list[int] = None, structure: str = None
         ) -> None:
+        structure = structure or self.buffer_type
 
         if isinstance(embedding_data, np.ndarray):
             num_embeddings = 1
@@ -290,6 +296,9 @@ class OSNet:
 
         if (len(self.embedding_buffer) + num_embeddings) >= self.buffer_limit:
             self.flush_buffers(structure=structure)
+        
+        if isinstance(index_data, int):
+            index_data = [index_data]
 
         if structure == 'standard':
             self.embedding_buffer.append(embedding_data)
@@ -297,9 +306,11 @@ class OSNet:
         elif structure == 'video_data':
             self.embedding_buffer.extend(embedding_data)
             self.frame_buffer.extend([index] * num_embeddings)
-            self.box_index_buffer.extend(list(range(num_embeddings)))
+            self.box_index_buffer.extend(box_indices)
 
-    def flush_buffers(self, structure='standard', release=False):
+    def flush_buffers(self, structure=None, release=False):
+        structure = structure or self.buffer_type
+
         press_stopwatch(self, 'flush_time')
 
         if len(self.embedding_buffer) > 0:
