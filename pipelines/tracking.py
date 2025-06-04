@@ -2,7 +2,7 @@
 import os
 
 # 3rd-party dependencies
-pass
+import pandas as pd
 
 # internal dependencies
 from utilities import io_utils, log_utils
@@ -85,3 +85,41 @@ class TrackingPipeline:
             self.f_num += 1
 
         log_utils.press_stopwatch(self, 'primary_run_time')
+
+    def format_results(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        obs_records = []
+        state_records = []
+
+        for trk_dict in (self.ocsort.active_trks, self.ocsort.inactive_trks):
+            for trk_id, trk in trk_dict.items():
+                # observations (detections):
+                for age, bbox in trk.observations.items():
+                    f_num = trk.map_offset(offset=age)
+                    valid = age in trk.valid_observations
+
+                    obs_records.append({
+                        "f_num": f_num,
+                        "track_id": trk_id,
+                        "age": age,
+                        "x1": bbox[0],
+                        "y1": bbox[1],
+                        "x2": bbox[2],
+                        "y2": bbox[3],
+                        "is_valid": 1 if valid else 0,
+                    })
+
+                # kalman filter states:
+                for t, bbox in enumerate(trk.history):
+                    state_records.append({
+                        "track_id": trk_id,
+                        "t": t,
+                        "x1": bbox[0],
+                        "y1": bbox[1],
+                        "x2": bbox[2],
+                        "y2": bbox[3],
+                    })
+
+        obs_df = pd.DataFrame(obs_records)
+        state_df = pd.DataFrame(state_records)
+
+        return obs_df, state_df

@@ -1,5 +1,6 @@
 # standard dependencies
 import math
+from typing import Optional
 
 # 3rd-party dependencies
 import numpy as np
@@ -101,25 +102,25 @@ class OCSort:
 
         for m in matched:
             trk_id = trk_id_list[m[1]]
-            self.active_trks[trk_id].update(dets[m[0], :], f_num)
+            self.active_trks[trk_id].update(dets[m[0], :])
 
         """
             Second round of associaton
         """
         if self.use_byte and (len(dets_second) > 0) and (unmatched_trks.shape[0] > 0):
-            unmatched_trks = self._byte_association(dets_second, trk_preds, unmatched_trks, f_num)
+            unmatched_trks = self._byte_association(dets_second, trk_preds, unmatched_trks)
 
         if unmatched_dets.shape[0] > 0 and unmatched_trks.shape[0] > 0:
             unmatched_dets, unmatched_trks = self._second_association_rematch(
-                dets, unmatched_dets, unmatched_trks, last_boxes, f_num
+                dets, unmatched_dets, unmatched_trks, last_boxes
             )
 
         for m in unmatched_trks:
             trk_id = trk_id_list[m]
-            self.active_trks[trk_id].update(None, f_num)
+            self.active_trks[trk_id].update(None)
 
         # create and initialise new trackers for unmatched detections
-        self._init_new_tracks(unmatched_dets, dets)
+        self._init_new_tracks(unmatched_dets, dets, f_num=f_num)
 
         bboxes = self._finalize_update(return_bboxes=True)
         if(len(bboxes) <= 0):
@@ -174,7 +175,7 @@ class OCSort:
 
         return new_dets, trk_data
 
-    def _byte_association(self, dets_second, trk_preds, unmatched_trks, f_num=None):
+    def _byte_association(self, dets_second, trk_preds, unmatched_trks):
         trk_id_list = list(self.active_trks.keys())
 
         u_trks = trk_preds[unmatched_trks]
@@ -193,13 +194,13 @@ class OCSort:
                 if iou_left[m[0], m[1]] < self.iou_threshold:
                     continue
                 trk_id = trk_id_list[trk_ind]
-                self.active_trks[trk_id].update(dets_second[det_ind, :], f_num)
+                self.active_trks[trk_id].update(dets_second[det_ind, :])
                 to_remove_trk_indices.append(trk_ind)
             unmatched_trks = np.setdiff1d(unmatched_trks, np.array(to_remove_trk_indices))
 
         return unmatched_trks
 
-    def _second_association_rematch(self, dets, unmatched_dets, unmatched_trks, last_boxes, f_num=None):
+    def _second_association_rematch(self, dets, unmatched_dets, unmatched_trks, last_boxes):
         trk_id_list = list(self.active_trks.keys())
 
         left_dets = dets[unmatched_dets]
@@ -220,7 +221,7 @@ class OCSort:
                 if iou_left[m[0], m[1]] < self.iou_threshold:
                     continue
                 trk_id = trk_id_list[trk_ind]
-                self.active_trks[trk_id].update(dets[det_ind, :], f_num)
+                self.active_trks[trk_id].update(dets[det_ind, :])
                 to_remove_det_indices.append(det_ind)
                 to_remove_trk_indices.append(trk_ind)
             unmatched_dets = np.setdiff1d(unmatched_dets, np.array(to_remove_det_indices))
@@ -238,9 +239,14 @@ class OCSort:
         max_age = max(observations.keys())
         return observations[max_age]
 
-    def _init_new_tracks(self, unmatched_dets, dets):
+    def _init_new_tracks(self, unmatched_dets, dets, f_num=None):
         for i in unmatched_dets:
-            trk = KalmanBoxTracker(dets[i, :], delta_t=self.delta_t, **self.val_cfg)
+            trk = KalmanBoxTracker(
+                dets[i, :],
+                delta_t=self.delta_t,
+                start=f_num,
+                **self.val_cfg
+            )
             self.active_trks[trk.id] = trk
     
     def _finalize_update(self, return_bboxes=False):
@@ -276,7 +282,7 @@ class OCSort:
 
 class KalmanBoxTracker:
     count = 0
-    def __init__(self, bbox, delta_t=3, aspect_ratio_thresh=1.6, min_box_area=100):
+    def __init__(self, bbox, delta_t=3, start=0, aspect_ratio_thresh=1.6, min_box_area=100):
         """
         Initialises a tracker using initial bounding box.
         """
@@ -312,19 +318,19 @@ class KalmanBoxTracker:
         self.history = []
         self.hits = 0
         self.hit_streak = 0
+        self.start = start
         self.age = 0
-
+        
         self.last_observation = None    # np.ndarray
         self.observations = dict()
-        self.frame_mapping = {}
         self.valid_observations = []
         self.velocity = None
         self.delta_t = delta_t
 
         self.aspect_ratio_thresh = aspect_ratio_thresh
         self.min_box_area = min_box_area
-
-    def update(self, bbox, f_num=None):
+    
+    def update(self, bbox):
         """
         Updates the state vector with observed bbox.
         """
@@ -349,9 +355,6 @@ class KalmanBoxTracker:
 
         if self.validate(bbox) == True:
             self.valid_observations.append(self.age)
-        
-        if f_num is not None:
-            self.frame_mapping[f_num] = self.age
 
         self.time_since_update = 0
         self.history = []
@@ -394,3 +397,13 @@ class KalmanBoxTracker:
         valid_area = math.prod([w, h]) > self.min_box_area
         
         return valid_ratio and valid_area
+
+    def map_offset(
+            self,
+            start: Optional[int] = None,
+            offset: Optional[int] = None,
+        ) -> int:
+        start = start if (start is not None) else self.start
+        offset = offset if (offset is not None) else self.age
+
+        return start + offset
