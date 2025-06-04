@@ -4,6 +4,7 @@ from collections import deque
 import gc
 import warnings
 from typing import Union, Optional
+import math
 
 # 3rd-party dependencies
 import numpy as np
@@ -198,6 +199,8 @@ class OSNet:
     def extraction_batch(self, img, detections, f_num):                
         batch_images, kept = [], []
         for i, box in enumerate(detections):
+            if math.prod(box[2:4]) < 80**2:
+                continue
             crop = self._safe_crop(img, box[:4])
             if crop is None:
                 continue

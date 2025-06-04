@@ -42,16 +42,16 @@ class InferencePipeline:
             structure='video_data'
         )
 
-        # PATHS:
+        # PATHS/FILENAMES/ETC:
         self.project_root = io_utils.get_project_root()
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
 
-        # VIDEO ATTRIBUTES:
         self.video_file = video_file
         self.video_path = os.path.join(self.input_dir, video_file)
 
-        video_info = utils.get_video_info(self.video_path)
+        # VIDEO ATTRIBUTES:
+        video_info = utils.get_video_info(self.video_path, release=True)
 
         self.resolution = video_info[0]
         self.frame_diag = video_info[1]

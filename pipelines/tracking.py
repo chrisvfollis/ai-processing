@@ -173,11 +173,13 @@ class TrackingPipeline:
                 for age, bbox in trk.observations.items():
                     f_num = trk.map_offset(offset=age)
                     valid = age in trk.valid_observations
+                    box_idx = trk.bbox_indices[age]
 
                     obs_records.append({
-                        'f_num': f_num,
-                        'track_id': trk_id,
+                        'f': f_num,
+                        'trk_id': trk_id,
                         'age': age,
+                        'box_idx': box_idx,
                         'x1': bbox[0],
                         'y1': bbox[1],
                         'x2': bbox[2],
@@ -188,7 +190,7 @@ class TrackingPipeline:
                 # kalman filter states:
                 for t, bbox in enumerate(trk.history):
                     state_records.append({
-                        'track_id': trk_id,
+                        'trk_id': trk_id,
                         't': t,
                         'x1': bbox[0],
                         'y1': bbox[1],
