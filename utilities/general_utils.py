@@ -224,20 +224,16 @@ def frame_timestamp(clip_timestamp, f_num=0, fps=15):
     return clip_timestamp + timedelta(seconds=seconds)
 
 
-def parse_clip_filename(video_file, data='all'):
+def parse_clip_filename(video_file):
     if not video_file.endswith('.mp4'):
         return video_file
-
+    
     sections = video_file.rsplit('_', 1)
-    time_prefix = sections[0]
-    camera = sections[1].split('.')[0]
 
-    if data == 'all':
-        return time_prefix, camera
-    elif data == 'time':
-        return time_prefix
-    elif data == 'camera':
-        return camera
+    time_prefix = sections[0]
+    cam_id = sections[1].split('.')[0]
+
+    return time_prefix, cam_id
 
 
 def flag_entryway_events(all_trks, entryways, threshold=.4):

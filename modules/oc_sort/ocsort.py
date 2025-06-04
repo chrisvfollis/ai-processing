@@ -66,7 +66,7 @@ class OCSort:
             'aspect_ratio_thresh': aspect_ratio_thresh,
             'min_box_area': min_box_area,
         }
-        KalmanBoxTracker.count = 0
+        KalmanBoxTracker.next_id = 0
 
     def update(self, output_results, f_num=None):
         """
@@ -281,7 +281,7 @@ class OCSort:
 
 
 class KalmanBoxTracker:
-    count = 0
+    next_id = 0
     def __init__(self, bbox, delta_t=3, start=0, aspect_ratio_thresh=1.6, min_box_area=100):
         """
         Initialises a tracker using initial bounding box.
@@ -313,8 +313,8 @@ class KalmanBoxTracker:
 
         self.kf.x[:4] = utils.convert_bbox_to_z(bbox)
         self.time_since_update = 0
-        self.id = KalmanBoxTracker.count
-        KalmanBoxTracker.count += 1
+        self.id = KalmanBoxTracker.next_id
+        KalmanBoxTracker.next_id += 1
         self.history = []
         self.hits = 0
         self.hit_streak = 0

@@ -1,5 +1,6 @@
 # standard dependencies
 import os
+import pickle
 
 # 3rd-party dependencies
 import pandas as pd
@@ -7,7 +8,7 @@ import pandas as pd
 # internal dependencies
 from utilities import io_utils, log_utils
 from utilities import general_utils as utils
-from modules import OCSort
+from modules import OCSort, KalmanBoxTracker
 
 
 logger = log_utils.get_logger(__name__)
@@ -26,24 +27,43 @@ class TrackingPipeline:
             min_hits=3, 
             iou_threshold=0.3,
             delta_t=3,
-            asso_func="iou",
+            asso_func='iou',
             inertia=0.2,
             use_byte=False,
+            f_start=0,
+            f_end=None,
+            prior_pkl=False,
         ):
-        # PATHS:
+        # INFERENCE DATA:
+        self.detections = detections
+
+        # PATHS/FILENAMES/ETC:
         self.project_root = io_utils.get_project_root()
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
 
+        self.video_file = video_file
         self.video_path = os.path.join(self.input_dir, video_file)
 
+        self.prior_pkl = prior_pkl or ''
+
         # VIDEO ATTRIBUTES:
-        res, _, fps, f_tot = utils.get_video_info(self.video_path)
+        time_prefix, cam_id = utils.parse_clip_filename(video_file)
+        res, _, fps, f_total = utils.get_video_info(self.video_path, release=True)
 
         self.resolution = res
         self.fps = fps
-        self.f_total = f_tot
-        self.progress_interval = f_tot // 4
+
+        self.f_start = f_start
+        self.f_end = f_end or f_total
+
+        self.start_time = utils.frame_timestamp(time_prefix, self.f_start, fps)
+        self.end_time = utils.frame_timestamp(time_prefix, self.f_end, fps)
+        
+        self.progress_interval = self.f_total // 4
+
+        self.time_prefix = time_prefix
+        self.cam_id = cam_id
 
         # TRACKER:
         self.ocsort = OCSort(
@@ -61,19 +81,76 @@ class TrackingPipeline:
             min_box_area=min_box_area,
         )
         
-        # TIMING ATTRIBUTES:
+        # SPEED/PERFORMANCE:
         self.primary_run_time = 0
         self.persist_time = 0
 
-        # INFERENCE DATA:
-        self.detections = detections
+    @property
+    def f_total(self):
+        return self.f_end - self.f_start
+
+    def continue_prior(self, prior_pkl_path=None):
+        def _reset_trk_ids(prior_pipeline):
+            reset = {}
+            for new_id, (trk_id, trk) in enumerate(
+                prior_pipeline.ocsort.active_trks.items()
+            ):
+                trk.id = new_id
+                reset[new_id] = trk
+
+            KalmanBoxTracker.next_id = len(reset)
+            return reset
+
+        log_utils.press_stopwatch(self, 'persist_time')
+
+        if not prior_pkl_path:
+            cam_id = self.video_file.split('.')[0].split('_')[-1]
+            files = [
+                f for f in os.listdir(self.output_dir)
+                if f.endswith(cam_id + '.pkl')
+            ]
+            if not files:
+                return
+            self.prior_pkl = sorted(files)[-1]
+            self.prior_pkl_path = os.path.join(self.output_dir, self.prior_pkl)
+
+            prior_pkl_path = self.prior_pkl_path
+
+        log_utils.press_stopwatch(self, 'pkl_io')
+        with open(prior_pkl_path, 'rb') as f:
+            prior_pipeline = pickle.load(f)
+        log_utils.press_stopwatch(self, 'pkl_io')
+
+        frame_gap = int(round(
+            (self.start_time - prior_pipeline.end_time)
+            .total_seconds() * self.fps
+        ))
+        prior_pipeline.f_end += frame_gap
+
+        prior_pipeline.ocsort.active_trks = _reset_trk_ids(prior_pipeline)
+        prior_pipeline.ocsort.inactive_trks = {}
+
+        self.num_persisted = len(prior_pipeline.ocsort.active_trks)
+        logger.info(f'Continuing {self.num_persisted} prior tracks...')
+
+        prior_pipeline.run()
+
+        for trk_id, trk in prior_pipeline.ocsort.active_trks.items():
+            trk.start -= prior_pipeline.f_end
+            self.ocsort.active_trks[trk_id] = trk
+
+        for trk_id, trk in prior_pipeline.ocsort.inactive_trks.items():
+            trk.start -= prior_pipeline.f_end
+            self.ocsort.inactive_trks[trk_id] = trk
+
+        log_utils.press_stopwatch(self, 'persist_time')
 
     def run(self):
         log_utils.press_stopwatch(self, 'primary_run_time')
 
-        self.f_num = 0
+        self.f_num = self.f_start
         
-        while self.f_num < self.f_total:
+        while self.f_num < self.f_end:
             detections = self.detections.get(self.f_num, None)
 
             self.ocsort.update(detections, self.f_num)
@@ -98,25 +175,25 @@ class TrackingPipeline:
                     valid = age in trk.valid_observations
 
                     obs_records.append({
-                        "f_num": f_num,
-                        "track_id": trk_id,
-                        "age": age,
-                        "x1": bbox[0],
-                        "y1": bbox[1],
-                        "x2": bbox[2],
-                        "y2": bbox[3],
-                        "is_valid": 1 if valid else 0,
+                        'f_num': f_num,
+                        'track_id': trk_id,
+                        'age': age,
+                        'x1': bbox[0],
+                        'y1': bbox[1],
+                        'x2': bbox[2],
+                        'y2': bbox[3],
+                        'is_valid': 1 if valid else 0,
                     })
 
                 # kalman filter states:
                 for t, bbox in enumerate(trk.history):
                     state_records.append({
-                        "track_id": trk_id,
-                        "t": t,
-                        "x1": bbox[0],
-                        "y1": bbox[1],
-                        "x2": bbox[2],
-                        "y2": bbox[3],
+                        'track_id': trk_id,
+                        't': t,
+                        'x1': bbox[0],
+                        'y1': bbox[1],
+                        'x2': bbox[2],
+                        'y2': bbox[3],
                     })
 
         obs_df = pd.DataFrame(obs_records)
