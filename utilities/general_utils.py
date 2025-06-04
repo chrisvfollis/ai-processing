@@ -703,3 +703,8 @@ def convert_x_to_bbox(x, score=None):
     else:
       return np.array([x[0]-w/2., x[1]-h/2., x[0]+w/2., x[1]+h/2., score]).reshape((1, 5))
 
+
+def calculate_progress(completed, total):
+    percent_complete = completed / total * 100
+
+    return int(round(percent_complete, 0))

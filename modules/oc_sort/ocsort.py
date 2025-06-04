@@ -40,9 +40,16 @@ class OCSort:
             asso_func="iou",
             inertia=0.2,
             use_byte=False,
+            img_dims=(2160, 3840),
+            input_dims=(800, 1440),
             aspect_ratio_thresh=1.6,
             min_box_area=100,
         ):
+        # PIXEL SPACE TRANSLATION:
+        img_h, img_w = img_dims
+        input_h, input_w = input_dims
+        self.scale = min(input_h / img_h, input_w / img_w)
+
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
@@ -60,7 +67,7 @@ class OCSort:
         }
         KalmanBoxTracker.count = 0
 
-    def update(self, output_results, img_info, img_size, f_num=None):
+    def update(self, output_results, f_num=None):
         """
         Params:
           dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
@@ -72,12 +79,11 @@ class OCSort:
 
         self.frame_count += 1
 
-        organized = self._organize_raw_detections(output_results, img_info, img_size)
+        new_dets, trk_data = self._organize_data(output_results)
 
-        dets, dets_second = organized[:2]
-        trk_preds = organized[2]
-        velocities = organized[3]
-        last_boxes, k_observations = organized[4:]
+        dets, dets_second = new_dets
+        trk_preds, velocities = trk_data[:2]
+        last_boxes, k_observations = trk_data[2:]
 
         trk_id_list = list(self.active_trks.keys())
         """
@@ -115,13 +121,13 @@ class OCSort:
         # create and initialise new trackers for unmatched detections
         self._init_new_tracks(unmatched_dets, dets)
 
-        bboxes = self._finalize_tracks(return_bboxes=True)
+        bboxes = self._finalize_update(return_bboxes=True)
         if(len(bboxes) <= 0):
             return np.empty((0, 5))
         
         return bboxes
 
-    def _organize_raw_detections(self, output_results, img_info, img_size):
+    def _organize_data(self, output_results):
         if output_results.shape[1] == 5:
             scores = output_results[:, 4]
             bboxes = output_results[:, :4]
@@ -129,9 +135,8 @@ class OCSort:
             output_results = output_results.cpu().numpy()
             scores = output_results[:, 4] * output_results[:, 5]
             bboxes = output_results[:, :4]  # x1y1x2y2
-        img_h, img_w = img_info[0], img_info[1]
-        scale = min(img_size[0] / float(img_h), img_size[1] / float(img_w))
-        bboxes /= scale
+
+        bboxes /= self.scale
         dets = np.concatenate((bboxes, np.expand_dims(scores, axis=-1)), axis=1)
         inds_low = scores > 0.1
         inds_high = scores < self.det_thresh
@@ -140,9 +145,12 @@ class OCSort:
         remain_inds = scores > self.det_thresh
         dets = dets[remain_inds]
 
+        new_dets = [dets, dets_second]
+
         # get predicted locations from existing trackers:
         trk_preds = []
         to_keep = {}
+
         for trk_id, trk in self.active_trks.items():
             pos = trk.predict()[0]
             if np.any(np.isnan(pos)):
@@ -153,17 +161,18 @@ class OCSort:
         self.active_trks = to_keep
         trk_preds = np.array(trk_preds)
 
-        velocities = np.array([
+        trk_velocities = np.array([
             trk.velocity if (trk.velocity is not None) else np.array((0, 0))
             for trk in self.active_trks.values()
-        ])
+        ]) 
         last_boxes = np.array([trk.last_observation for trk in self.active_trks.values()])
         k_observations = np.array([
-            self.k_previous_obs(trk.observations, trk.age, self.delta_t)
+            self._k_previous_obs(trk.observations, trk.age, self.delta_t)
             for trk in self.active_trks.values()
         ])
+        trk_data = [trk_preds, trk_velocities, last_boxes, k_observations]
 
-        return dets, dets_second, trk_preds, velocities, last_boxes, k_observations
+        return new_dets, trk_data
 
     def _byte_association(self, dets_second, trk_preds, unmatched_trks, f_num=None):
         trk_id_list = list(self.active_trks.keys())
@@ -234,7 +243,7 @@ class OCSort:
             trk = KalmanBoxTracker(dets[i, :], delta_t=self.delta_t, **self.val_cfg)
             self.active_trks[trk.id] = trk
     
-    def _finalize_tracks(self, return_bboxes=False):
+    def _finalize_update(self, return_bboxes=False):
         bboxes = []
         inactive = []
         for trk_id, trk in self.active_trks.items():
@@ -308,7 +317,7 @@ class KalmanBoxTracker:
         self.last_observation = None    # np.ndarray
         self.observations = dict()
         self.frame_mapping = {}
-        self.valid_observations = {}
+        self.valid_observations = []
         self.velocity = None
         self.delta_t = delta_t
 
@@ -339,7 +348,7 @@ class KalmanBoxTracker:
         self.observations[self.age] = bbox
 
         if self.validate(bbox) == True:
-            self.valid_observations[self.age] = bbox
+            self.valid_observations.append(self.age)
         
         if f_num is not None:
             self.frame_mapping[f_num] = self.age
