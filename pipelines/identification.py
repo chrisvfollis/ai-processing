@@ -11,6 +11,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 import h5py
+from sklearn.neighbors import NearestNeighbors
 
 # internal dependencies
 from utilities import io_utils, log_utils
@@ -28,7 +29,7 @@ class IdentificationPipeline:
             track_detections: pd.DataFrame,
             embeddings_file: str = None,
         ):
-        # DATA:
+        # INPUT DATA:
         self.face_data = face_data
         self.trk_detections = track_detections
 
@@ -44,6 +45,11 @@ class IdentificationPipeline:
             f'{video_file.split(".")[0]}_embeddings.hdf5'
         )
         self.embeddings_path = os.path.join(self.output_dir, self.embeddings_file)
+
+        # STATS/OUTPUT DATA:
+        self.embedding_distances = None
+        self.face_ious = None
+
 
     def embedding_cos_dists(
             self,
@@ -169,6 +175,81 @@ class IdentificationPipeline:
             'iou',
         ]
         return merged_df[keep_cols]
+
+    def face_cos_dists(self) -> pd.DataFrame:
+        face_ious_df = self.face_ious()
+
+        merged = self.face_data.merge(
+            face_ious_df,
+            on=['f', 'face_idx'],
+            how='inner',
+        )
+
+        merged = merged.dropna(subset=['identity'])
+        keep_cols = [
+            'f',
+            'trk_id',
+            'identity',
+            'distance',
+            'iou',
+        ]
+        return merged[keep_cols]
+
+    def track_identity_scores(self, face_identity_df: pd.DataFrame) -> pd.DataFrame:
+        df = face_identity_df.copy()
+        df['similarity'] = 1 - df['distance']
+        df['weighted_sim'] = df['similarity'] * df['iou']
+
+        grouped = (
+            df.groupby(['trk_id', 'identity'])
+            .agg(
+                weighted_score=('weighted_sim', 'sum'),
+                total_iou=('iou', 'sum'),
+                count=('identity', 'count'),
+            )
+            .reset_index()
+        )
+        
+        grouped['iou_weighted_avg_sim'] = grouped['weighted_score'] / (grouped['total_iou'] + 1e-6)
+        return grouped.sort_values(by=['trk_id', 'iou_weighted_avg_sim'], ascending=[True, False])
+
+
+    def knn_track_embeddings(self, dists = None, k: int = 5) -> pd.DataFrame:
+        dists_df = dists or self.embedding_distances
+
+        dists_df = dists_df.dropna(subset=['trk_id1', 'trk_id2'])
+        dists_df = dists_df[dists_df['trk_id1'] != dists_df['trk_id2']]
+
+        avg_dists = (
+            dists_df.groupby(['trk_id1', 'trk_id2'])['distance']
+            .mean()
+            .reset_index()
+        )
+        pivot = avg_dists.pivot(
+            index='trk_id1', columns='trk_id2', values='distance'
+        ).fillna(1.0)
+
+        trk_ids = pivot.index.to_numpy()
+        dist_matrix = pivot.to_numpy()
+
+        # fit kNN using precomputed distances:
+        nn = NearestNeighbors(n_neighbors=k, metric='precomputed')
+        nn.fit(dist_matrix)
+        distances, indices = nn.kneighbors(dist_matrix)
+
+        rows = []
+        for i, trk_id in enumerate(trk_ids):
+            for j in range(k):
+                neighbor_trk_id = trk_ids[indices[i][j]]
+                distance = distances[i][j]
+                rows.append({
+                    'trk_id': trk_id,
+                    'neighbor_rank': j + 1,
+                    'neighbor_trk_id': neighbor_trk_id,
+                    'distance': distance,
+                })
+
+        return pd.DataFrame(rows)
 
     def reassociate(self):
         pass
