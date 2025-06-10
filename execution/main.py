@@ -169,7 +169,7 @@ def main(
         queue_block_records = io_utils.get_queue_block(
             shop_id, starting_point, priority_cam,
         )
-        if queue_block_records:
+        if not queue_block_records:
             time.sleep(60)
             continue
         else:
