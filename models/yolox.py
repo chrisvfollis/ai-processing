@@ -4,7 +4,7 @@
 # standard dependencies
 import math
 import os
-from typing import Union, Optional
+from typing import Optional
 
 # 3rd-party dependencies
 import numpy as np
@@ -161,11 +161,11 @@ class YoloX:
         
     def inference(
             self,
-            img_data: Union[list[np.ndarray], np.ndarray],
+            img_data: list[np.ndarray] | np.ndarray,
             conf_thresh: Optional[float] = None,
             nms_thresh: Optional[float] = None,
             num_classes: Optional[int] = None,
-        ) -> list[Union[torch.tensor, None]]:
+        ) -> list[torch.tensor | None]:
         '''
         Returns (list[torch.tensor or None]): List of tensors, one for each
             image (or None if there were no detections in that image). Each

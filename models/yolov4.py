@@ -49,7 +49,7 @@ class YOLOv4:
                input_dims=None):
         '''
         Returns:
-            list[list[Union[int, float]]]: A list of lists — where each inner
+            list[list[int | float]]: A list of lists — where each inner
                 list corresponds to the [x, y, w, h, confidence] of a detection.
         '''
         def _preprocess_img(img, input_dims):

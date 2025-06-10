@@ -3,7 +3,7 @@ import os
 from collections import deque
 import gc
 import warnings
-from typing import Union, Optional
+from typing import Optional
 import math
 
 # 3rd-party dependencies
@@ -114,7 +114,7 @@ class OSNet:
         #             param.requires_grad = False
 
     def preprocess_input(
-            self, input_data: Union[np.array, list[np.array]]
+            self, input_data: np.ndarray | list[np.ndarray]
         ) -> torch.Tensor:
         '''
         Args:
@@ -156,7 +156,7 @@ class OSNet:
 
     def postprocess_output(
             self, output_data, batched=False
-        ) -> Union[np.ndarray, list[np.ndarray]]:
+        ) -> np.ndarray | list[np.ndarray]:
         if not batched:
             postprocessed = output_data.cpu().detach().numpy().flatten() 
         else:
@@ -287,7 +287,7 @@ class OSNet:
             self.hdf5_file.create_dataset(index_dataset, **index_dataset_kwargs)
 
     def update_buffers(
-            self, embedding_data: Union[np.ndarray, list[np.ndarray]],
+            self, embedding_data: np.ndarray | list[np.ndarray],
             index: int, box_indices: list[int] = None, structure: str = None
         ) -> None:
         structure = structure or self.buffer_type

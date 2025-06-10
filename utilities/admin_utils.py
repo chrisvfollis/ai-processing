@@ -1,7 +1,7 @@
 # standard dependencies
 import os
 import subprocess
-from typing import Union
+from typing import Optional
 import re
 from datetime import datetime, timezone
 from io import BytesIO
@@ -172,8 +172,8 @@ def auto_scp(
 # -----------------------------------------------------------------------------
 
 
-def list_download(object_keys: Union[list, str], output_dir='resources/downloads',
-                  config: Union[dict, str] = None, s3_client=None):
+def list_download(object_keys: list | str, output_dir='resources/downloads',
+                  config: Optional[dict | str] = None, s3_client=None):
     
     s3_client = s3_client or conn_utils.s3_connect(region=config['region'])
     bucket = config['bucket']
@@ -198,7 +198,7 @@ def list_download(object_keys: Union[list, str], output_dir='resources/downloads
 
 
 def list_delete(
-        object_keys: Union[list, str], region: str = 'us-west-1',
+        object_keys: list | str, region: str = 'us-west-1',
         bucket: str = None, s3_client=None,
     ):
 
@@ -228,7 +228,7 @@ def list_delete(
 
 
 def time_delete(
-        start: Union[datetime, list] = None, end: Union[datetime, list] = None,
+        start: datetime | list = None, end: datetime | list = None,
         shop_id: str = None, region: str = 'us-west-1', bucket: str = None,
         s3_client: list = None
     ):

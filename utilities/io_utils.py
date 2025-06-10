@@ -8,7 +8,7 @@ import uuid
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Union, Optional
+from typing import Optional
 import errno
 
 # 3rd-party dependencies
@@ -602,7 +602,7 @@ def lookup_name(identity_uuid, db_name='data.db') -> tuple:
     return result
 
 
-def get_designation(identity_uuid, db_name='data.db') -> Union[str, None]:
+def get_designation(identity_uuid, db_name='data.db') -> str | None:
     db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
@@ -824,7 +824,7 @@ def save_person_data(
 # -----------------------------------------------------------------------------
 
 
-def get_api_tokens(credentials: dict = None) -> Union[tuple[str], tuple[None]]:
+def get_api_tokens(credentials: dict = None) -> tuple[str | None, ...]:
     if not credentials:
         credentials = {
             'email': input('Enter account email: '),
@@ -879,9 +879,9 @@ def fetch_person_data(
 
 def get_queue_block(
         shop_id: str,
-        start_from: Union[list, datetime] = None,
+        start_from: list | datetime = None,
         priority_camera: str = None,
-    ) -> Union[list[tuple], None]:
+    ) -> list[tuple] | None:
     '''
     Returns:
         queue_block (list[tuple] or None): A list of rows corresponding to each

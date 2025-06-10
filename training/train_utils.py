@@ -1,5 +1,5 @@
 # standard dependencies
-from typing import Optional, Union
+from typing import Optional
 
 # 3rd-party dependencies
 import pandas as pd
@@ -13,7 +13,7 @@ from utilities.conn_utils import APIClient
 def clean_dataset(
         dataset: pd.DataFrame,
         class_col: str = 'person_id',
-        split: Union[str, int] = 'test',
+        split: str | int = 'test',
     ) -> pd.DataFrame:
     '''
     Removes classes from the dataset with fewer samples than the minimum

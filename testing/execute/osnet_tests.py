@@ -1,6 +1,6 @@
 # standard dependencies
 import os
-from typing import Union, Optional
+from typing import Optional
 import re
 
 # 3rd-party dependencies
@@ -220,7 +220,7 @@ def event_img_extraction(
 
 def event_img_embedding_distances(
         embeddings_filepath: str,
-        img_data_df: Union[pd.DataFrame, str],
+        img_data_df: pd.DataFrame | str,
         chunk_size: int = 100
     ) -> pd.DataFrame:
     def _structure_entry(img_1, img_2, distance):

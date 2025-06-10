@@ -2,7 +2,6 @@
 import os
 import subprocess
 from datetime import datetime, timedelta
-from typing import Union
 from collections.abc import Sequence, Iterable
 import math
 
@@ -497,7 +496,7 @@ def filter_sparse_rows(cost_matrix):
 
 
 def apply_offset(
-        coordinates: Union[Iterable[int], Iterable[Iterable]],
+        coordinates: Iterable[int] | Iterable[Iterable[int]],
         offset: Sequence[int]
     ):
     '''
@@ -601,7 +600,7 @@ def logceil_round(x):
     return 10 * magnitude
 
 
-def query_param_placeholders(items: Union[list, tuple]) -> str:
+def query_param_placeholders(items: list | tuple) -> str:
     '''
     Args:
         items (list or tuple): A collection of items such as column names.
@@ -618,7 +617,7 @@ def query_param_placeholders(items: Union[list, tuple]) -> str:
     return f"({', '.join(question_marks)})"
 
 
-def query_columns_string(columns: Union[list, tuple]) -> str:
+def query_columns_string(columns: list | tuple) -> str:
     '''
     Converts a collection of table columns into a comma-separated string
     enclosed in parentheses, for use in query strings.

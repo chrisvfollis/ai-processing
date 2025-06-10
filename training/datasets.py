@@ -1,7 +1,7 @@
 # standard dependencies
 import random
 from collections import defaultdict
-from typing import Optional, Union
+from typing import Optional
 import math
 
 # 3rd-party dependencies
@@ -38,7 +38,7 @@ class EventImgs(Dataset):
 class PKSampler(Sampler):
     def __init__(
         self,
-        labels: Union[list, np.ndarray, pd.Series],
+        labels: list | np.ndarray | pd.Series,
         P: int,
         K: int,
         num_batches: Optional[int] = None

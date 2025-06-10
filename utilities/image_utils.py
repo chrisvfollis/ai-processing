@@ -1,7 +1,7 @@
 # built-in dependencies
 import os
 import io
-from typing import Generator, IO, List, Union, Tuple
+from typing import Generator, IO
 import hashlib
 import base64
 from pathlib import Path
@@ -21,7 +21,7 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 PIL_EXTS = {"jpeg", "png"}
 
 
-def list_images(path: str) -> List[str]:
+def list_images(path: str) -> list[str]:
     """
     List images in a given path
     Args:
@@ -80,7 +80,7 @@ def find_image_hash(file_path: str) -> str:
     return hasher.hexdigest()
 
 
-def load_image(img: Union[str, np.ndarray, IO[bytes]]) -> Tuple[np.ndarray, str]:
+def load_image(img: str | np.ndarray | IO[bytes]) -> tuple[np.ndarray, str]:
     """
     Load image from path, url, file object, base64 or numpy array.
     Args:

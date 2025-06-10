@@ -1,6 +1,6 @@
 # standard dependencies
 import os
-from typing import Union, Optional, Sequence
+from typing import Optional, Sequence
 import pickle
 import math
 
@@ -229,7 +229,7 @@ class FaceAnalysis:
 
     def detect(
             self,
-            imgs: Union[np.ndarray, list[np.ndarray]],
+            imgs: np.ndarray | list[np.ndarray],
             detector: str = 'centerface',
             expand_percentage: int = 0,
             enhance: bool = True,

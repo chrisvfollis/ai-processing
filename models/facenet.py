@@ -1,6 +1,5 @@
 # standard dependencies
 import os
-from typing import Union
 
 # 3rd-party dependencies
 import numpy as np
@@ -76,7 +75,7 @@ class FaceNet512:
         return embeddings
 
     @torch.no_grad()
-    def represent(self, imgs, postprocess=False) -> Union[torch.Tensor, np.ndarray]:
+    def represent(self, imgs, postprocess=False) -> torch.Tensor | np.ndarray:
         imgs = self.preprocess(imgs)
         
         embeddings = self.model(imgs)

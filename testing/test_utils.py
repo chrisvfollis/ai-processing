@@ -1,7 +1,7 @@
 # standard dependencies
 import os
 import re
-from typing import Union
+from typing import Optional
 import pickle
 from datetime import datetime
 
@@ -93,7 +93,7 @@ def download_event_imgs(
         bucket_name='timemanager-event-imgs',
         local_dir='../files/output/event_imgs',
         max_imgs=1000,
-        start_from: Union[datetime, list] = None,
+        start_from: Optional[datetime | list] = None,
         min_bytes: int = 0
     ):
 
@@ -144,7 +144,7 @@ def download_event_imgs(
 
 def prepare_tracking_data(
         pkl_dir='../files/output/',
-        min_duration_sec: Union[float, int] = 1.0,
+        min_duration_sec: float | int = 1.0,
         var_percentile: int = 5
     ):
     '''
