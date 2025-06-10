@@ -239,11 +239,19 @@ def get_latest_file(dir_path, base_name):
     return latest_file
 
 
-def delete_local_files(
-        target_dirs: list[str],
-        target_prefix: Optional[str] = None,
-        target_extensions: Optional[list] = None,
+def clear_local_files(
+        target_file_prefix: Optional[str] = None,
+        target_file_extensions: Optional[list] = None,
+        target_dirs: Optional[list[str]] = None,
     ) -> int:
+    if not target_dirs:
+        dir_paths = get_common_dirs()
+        target_dir_names = [
+            'input_dir',
+            'output_dir',
+            'event_imgs_dir'
+        ]
+        target_dirs = [dir_paths[name] for name in target_dir_names]
 
     target_paths = []
     for dir_path in target_dirs:
@@ -259,17 +267,18 @@ def delete_local_files(
             else:
                 continue
 
-            if target_prefix:
-                if not filename.startswith(target_prefix):
+            if target_file_prefix:
+                if not filename.startswith(target_file_prefix):
                     continue
-            if target_extensions:
+            if target_file_extensions:
                 file_extension = utils.parse_filename(filename)[-1]
-                if file_extension not in target_extensions:
+                if file_extension not in target_file_extensions:
                     continue
-            target_file_paths.append(file_path)
+
+            target_paths.append(file_path)
 
     total_removed = remove_files(target_paths, missing_ok=True)
-    print(f'Deleted {total_removed} files')
+    print(f'Successfully deleted {total_removed} files')
 
     return total_removed
 
@@ -293,8 +302,13 @@ def read_embeddings(hdf5_file, target_frame, device):
 
 
 def save_event_image(
-        img, credentials, bucket_name='timemanager-event-imgs', project_root=None
+        img: np.ndarray,
+        credentials: tuple[str],
+        region='us-west-1',
+        bucket_name='timemanager-event-imgs',
+        project_root=None,
     ) -> str | None:
+
     if img is None:
         return None
     
@@ -306,7 +320,7 @@ def save_event_image(
 
     cv2.imwrite(file_path, img)
     try:
-        s3_client = conn_utils.s3_connect()
+        s3_client = conn_utils.s3_connect(region, credentials)
         s3_client.upload_file(file_path, bucket_name, object_key)
 
         remove_files(file_path, missing_ok=True)
@@ -361,29 +375,46 @@ def upload_data(credentials, max_workers=8):
 # -----------------------------------------------------------------------------
 
 
+class S3UploadError(Exception):
+    """Generic error raised when an S3 upload fails."""
+    pass
+
+
+class S3DownloadError(Exception):
+    """Generic error raised when an S3 upload fails."""
+    pass
+
+
 def download_s3_footage(
         object_keys: list[str] | str,
         credentials: Optional[tuple[str, ...]] = None,
         region: str = 'us-west-1',
         bucket_name: str = 'ivakt-footage',
     ) -> bool:
+    s3_client = conn_utils.s3_connect(region, credentials)
     project_root = get_project_root()
 
     object_keys = [object_keys] if isinstance(object_keys, str) else object_keys
-    final_idx = len(object_keys) - 1
-    s3_client = conn_utils.s3_connect(region, credentials)
+    successfully_downloaded = []
 
-    all_successful = False
     for object_key in object_keys:
-        _, filename = utils.parse_obj_key(object_key)
+        download_status = False
+
+        filename = utils.parse_obj_key(object_key)[-1]
         local_path = os.path.join(project_root, 'files/input', filename)
+
         try:
             s3_client.download_file(bucket_name, object_key, local_path)
-            print(f'Downloaded {object_key}')
+            download_status = True
+            print(f'Downloaded {filename}')
+
         except Exception as e:
             print(f'Failed to download {filename}: {e}')
             remove_files(local_path, missing_ok=True)
-            all_downloaded = False
+
+        successfully_downloaded.append(download_status)
+
+    return all(successfully_downloaded)
 
 
 def delete_s3_footage(
@@ -906,18 +937,15 @@ def clear_queue_block(shop_id, timestamp) -> None:
         print(response.status_code) 
 
 
-def post_events_to_webapp(
-        time_prefix, db_name='data.db'
-    ) -> Union[bool, None]:
-    
+def post_event_data(shop_id, time_prefix, delete_data: bool = True) -> bool:
+    successful_post = False
+
     webapp_api = APIClient(var_prefix='WEBAPP_API')
 
-    shop_uuid = get_shop(db_name)[0]
+    track_data_df = utils.create_track_df(time_prefix)
+    track_data_df = utils.merge_track_records(track_data_df)
 
-    df = utils.create_track_df(time_prefix)
-    df = utils.merge_track_records(df)
-
-    data = {
+    event_data = {
         'shop_id': [],
         'employee_id': [],
         'event': [],
@@ -925,32 +953,42 @@ def post_events_to_webapp(
         'duration': [],
         'image': []
     }
+    entry_event, exit_event = 'workspace_entry', 'workspace_exit'
 
-    for _, row in df.iterrows():
+    num_tracks = 0
+    for _, row in track_data_df.iterrows():
+        identity = row['identity']
 
-        # Entry event
-        data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(row['identity'])
-        data['event'].append('workspace_entry')
-        data['start_time'].append(str(row['start_time']))
-        data['duration'].append(0)
-        data['image'].append(row['start_img'])
+        start_time, end_time = [str(row[t]) for t in ('start_time', 'end_time')]
+        start_image, end_image = row['start_img'], row['end_img']
 
-        # Exit event
-        data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(row['identity'])
-        data['event'].append('workspace_exit')
-        data['start_time'].append(str(row['end_time']))
-        data['duration'].append(0)
-        data['image'].append(row['end_img'])
+        num_tracks += 1
 
-    response = webapp_api.post('save_employee_event_logs/', json=data)
-    
+        # Start event data:
+        event_data['shop_id'].append(shop_id)
+        event_data['employee_id'].append(identity)
+        event_data['event'].append(entry_event)
+        event_data['start_time'].append(start_time)
+        event_data['duration'].append(0)
+        event_data['image'].append(start_image)
+
+        # End event data:
+        event_data['shop_id'].append(shop_id)
+        event_data['employee_id'].append(identity)
+        event_data['event'].append(exit_event)
+        event_data['start_time'].append(end_time)
+        event_data['duration'].append(0)
+        event_data['image'].append(end_image)
+
+    response = webapp_api.post('save_employee_event_logs/', json=event_data)
     if response.status_code == 200:
-        print(f"Success: posted {len(data['event']) / 2} tracks")
-        clear_track_info(time_prefix)
-        return True
+        print(f'Success: posted {num_tracks} tracks')
+        if delete_data:
+            clear_track_info(time_prefix)
+
+        successful_post = True
     else:
-        print(f"Failed posting to webapp: {response.text}")
+        print(f'Failed posting to webapp: {response.text}')
         print(response.status_code)
-        return False
+
+    return successful_post
