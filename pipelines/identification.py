@@ -48,7 +48,7 @@ class IdentificationPipeline:
 
         # STATS/OUTPUT DATA:
         self.embedding_distances = None
-        self.face_ious = None
+        self.face_iou_df = None
 
 
     def embedding_cos_dists(
@@ -212,7 +212,6 @@ class IdentificationPipeline:
         
         grouped['iou_weighted_avg_sim'] = grouped['weighted_score'] / (grouped['total_iou'] + 1e-6)
         return grouped.sort_values(by=['trk_id', 'iou_weighted_avg_sim'], ascending=[True, False])
-
 
     def knn_track_embeddings(self, dists = None, k: int = 5) -> pd.DataFrame:
         dists_df = dists or self.embedding_distances

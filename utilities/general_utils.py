@@ -224,7 +224,7 @@ def frame_timestamp(clip_timestamp, f_num=0, fps=15):
     return clip_timestamp + timedelta(seconds=seconds)
 
 
-def parse_clip_filename(video_file):
+def decode_vid_filename(video_file):
     if not video_file.endswith('.mp4'):
         return video_file
     
@@ -236,22 +236,28 @@ def parse_clip_filename(video_file):
     return time_prefix, cam_id
 
 
-def flag_entryway_events(all_trks, entryways, threshold=.4):
-    for id, trk in all_trks.items():
-        cam = id.split('_')[0]
-        start, end = trk['trk_span']
-        detections = [trk['detections'][start][:4],
-                    trk['detections'][end][:4]]
-        keys = ['entry', 'exit']
-        for i in range(2):
-            trk[keys[i]] = None
-            for points in entryways[cam].values():
-                pcnt_in_entryway = percent_in_entryway(detections[i], points)
-                if pcnt_in_entryway > threshold:
-                    trk[keys[i]] = trk['trk_span'][i]
-                    break
+def parse_filename(filename):
+    file_parts = filename.rsplit('.', 1)
 
-    return all_trks
+    if len(file_parts) == 2:
+        filename_stem, extension = file_parts
+    else:
+        filename_stem = file_parts.pop(0)
+        extension = ''
+
+    return filename_stem, extension
+
+
+def parse_obj_key(s3_obj_key) -> tuple[str, ...]:
+    obj_key_parts = s3_obj_key.rsplit('/', 1)
+
+    if len(obj_key_parts) == 2:
+        folder, filename = obj_key_parts
+    else:
+        folder = ''
+        filename = obj_key_parts.pop(-1)
+
+    return folder, filename
 
 
 def format_cv2D_kf(measurement, m_noise, p_noise, initial_uncertainty,

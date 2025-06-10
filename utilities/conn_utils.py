@@ -1,5 +1,6 @@
 # standard dependencies
 import os
+from typing import Optional
 
 # 3rd-party dependencies
 import boto3
@@ -111,7 +112,7 @@ def close_sqlite_db(conn, cursor, commit: bool = False):
 # -----------------------------------------------------------------------------
 
 
-def get_aws_credentials():
+def get_aws_credentials() -> tuple[str | None, ...]:
     load_dotenv()
     access_key = os.environ.get('AWS_ACCESS_KEY')
     secret_key = os.environ.get('AWS_SECRET_KEY')
@@ -119,7 +120,7 @@ def get_aws_credentials():
     return access_key, secret_key
 
 
-def s3_connect(region='us-west-1', credentials=None):
+def s3_connect(region: str = 'us-west-1', credentials: Optional[str] = None):
     access_key, secret_key = credentials or get_aws_credentials()
 
     s3_client = boto3.client(
@@ -131,13 +132,13 @@ def s3_connect(region='us-west-1', credentials=None):
     return s3_client
 
 
-def ec2_connect(region='us-west-1', credentials=None):
+def ec2_connect(region: str = 'us-west-1', credentials: Optional[str] = None):
     access_key, secret_key = credentials or get_aws_credentials()
 
-    s3_client = boto3.client(
+    ec2_client = boto3.client(
         'ec2',
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         region_name=region
     )
-    return s3_client
+    return ec2_client

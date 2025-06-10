@@ -48,7 +48,7 @@ class TrackingPipeline:
         self.prior_pkl = prior_pkl or ''
 
         # VIDEO ATTRIBUTES:
-        time_prefix, cam_id = utils.parse_clip_filename(video_file)
+        time_prefix, cam_id = utils.decode_vid_filename(video_file)
         res, _, fps, f_total = utils.get_video_info(self.video_path, release=True)
 
         self.resolution = res
@@ -207,7 +207,9 @@ class TrackingPipeline:
         logger.info('Saving pipeline state...')
 
         file_prefix = self.video_file.split('.')[0]
-        save_path = os.path.join(self.output_dir, f'{file_prefix}.pkl')
+        save_path = os.path.join(
+            self.output_dir, f'{file_prefix}_tracking_pipeline.pkl'
+        )
 
         log_utils.press_stopwatch(self, 'pkl_io')
         with open(save_path, "wb") as f:
