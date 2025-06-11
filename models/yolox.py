@@ -4,7 +4,7 @@
 # standard dependencies
 import math
 import os
-from typing import Union, Optional
+from typing import Optional
 
 # 3rd-party dependencies
 import numpy as np
@@ -161,11 +161,11 @@ class YoloX:
         
     def inference(
             self,
-            img_data: Union[list[np.ndarray], np.ndarray],
+            img_data: list[np.ndarray] | np.ndarray,
             conf_thresh: Optional[float] = None,
             nms_thresh: Optional[float] = None,
             num_classes: Optional[int] = None,
-        ) -> list[Union[torch.tensor, None]]:
+        ) -> list[torch.tensor | None]:
         '''
         Returns (list[torch.tensor or None]): List of tensors, one for each
             image (or None if there were no detections in that image). Each
@@ -266,19 +266,18 @@ class YoloX:
 
             detections = torch.cat((image_pred[:, :5], class_conf, class_pred.float()), 1)
             detections = detections[conf_mask]
+            
             if not detections.size(0):
                 continue
             if detections.shape[1] == 1:
                 detections = detections.squeeze(0)
-            try:
-                nms_out_index = torchvision.ops.batched_nms(
-                    detections[:, :4],
-                    detections[:, 4] * detections[:, 5],
-                    detections[:, 6],
-                    nms_thresh,
-                )
-            except:
-                import pdb; pdb.set_trace()
+
+            nms_out_index = torchvision.ops.batched_nms(
+                detections[:, :4],
+                detections[:, 4] * detections[:, 5],
+                detections[:, 6],
+                nms_thresh,
+            )
 
             detections = detections[nms_out_index]
 

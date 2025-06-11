@@ -3,7 +3,8 @@ import os
 from collections import deque
 import gc
 import warnings
-from typing import Union, Optional
+from typing import Optional
+import math
 
 # 3rd-party dependencies
 import numpy as np
@@ -113,7 +114,7 @@ class OSNet:
         #             param.requires_grad = False
 
     def preprocess_input(
-            self, input_data: Union[np.array, list[np.array]]
+            self, input_data: np.ndarray | list[np.ndarray]
         ) -> torch.Tensor:
         '''
         Args:
@@ -155,7 +156,7 @@ class OSNet:
 
     def postprocess_output(
             self, output_data, batched=False
-        ) -> Union[np.ndarray, list[np.ndarray]]:
+        ) -> np.ndarray | list[np.ndarray]:
         if not batched:
             postprocessed = output_data.cpu().detach().numpy().flatten() 
         else:
@@ -198,6 +199,8 @@ class OSNet:
     def extraction_batch(self, img, detections, f_num):                
         batch_images, kept = [], []
         for i, box in enumerate(detections):
+            if math.prod(box[2:4]) < 80**2:
+                continue
             crop = self._safe_crop(img, box[:4])
             if crop is None:
                 continue
@@ -284,7 +287,7 @@ class OSNet:
             self.hdf5_file.create_dataset(index_dataset, **index_dataset_kwargs)
 
     def update_buffers(
-            self, embedding_data: Union[np.ndarray, list[np.ndarray]],
+            self, embedding_data: np.ndarray | list[np.ndarray],
             index: int, box_indices: list[int] = None, structure: str = None
         ) -> None:
         structure = structure or self.buffer_type
@@ -337,7 +340,7 @@ class OSNet:
 
     def write_embeddings(
             self,
-            structure: str = 'standard',
+            structure: Optional[str] = None,
             hdf5_file: Optional[h5py.File] = None,
             embeddings: Optional[np.ndarray] = None,
             indices: Optional[np.ndarray] = None, 
@@ -359,6 +362,7 @@ class OSNet:
                 the embeddings. If left unspecified, the self.index_buffer will
                 be used instead.
         """
+        structure = structure or self.buffer_type
 
         hdf5_file = hdf5_file or getattr(self, 'hdf5_file')
         if not hdf5_file:

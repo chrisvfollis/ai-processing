@@ -1,5 +1,5 @@
 # standard dependencies
-from typing import List, Union, Sequence
+from typing import Sequence
 from collections.abc import Iterable
 import math
 import os
@@ -22,7 +22,7 @@ class CenterFace:
             device: torch.device = None,
             checkpoint: str = 'centerface.pth',
             conf_thresh: float = 0.65,
-            min_area: Union[Iterable[int], int] = (40, 40),
+            min_area: tuple[int] | int = (40, 40),
             ignore_landmarks: bool = False,
             save_data: bool = False,
         ):
@@ -210,11 +210,11 @@ class CenterFace:
 
     def detect_faces(
             self,
-            imgs: Union[np.ndarray, List[np.ndarray]],
-            regions: List[Sequence] = None,
+            imgs: np.ndarray | list[np.ndarray],
+            regions: list[Sequence] = None,
             conf_thresh: float = None,
-            min_area: Union[Iterable[int], int] = None,
-        ) -> List[List[FacialAreaRegion]]:
+            min_area: tuple[int] | int = None,
+        ) -> list[list[FacialAreaRegion]]:
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]
 
@@ -302,7 +302,7 @@ class CenterFace:
         return all_results
 
     def visualize_detections(
-            self, image: np.ndarray, face_detections: List[FacialAreaRegion],
+            self, image: np.ndarray, face_detections: list[FacialAreaRegion],
             output_path: str = None
         ):
         '''
@@ -310,7 +310,7 @@ class CenterFace:
 
         Args:
             img (np.ndarray): The original input image.
-            detected_faces (List[FacialAreaRegion]): The detected face regions with landmarks.
+            detected_faces (list[FacialAreaRegion]): The detected face regions with landmarks.
         '''
         def _bgr_color_tuples():
             blue, green, red = (255, 0, 0), (0, 255, 0), (0, 0, 255)

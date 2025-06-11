@@ -1,10 +1,7 @@
 # standard dependencies
-import subprocess
-import os
-
+pass
 # 3rd-party dependencies
 from setuptools import setup, find_packages
-
 
 # internal dependencies
 pass

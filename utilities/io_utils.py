@@ -8,7 +8,8 @@ import uuid
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Union, Optional
+from typing import Optional
+import errno
 
 # 3rd-party dependencies
 import numpy as np
@@ -95,6 +96,33 @@ def cleanup_semaphores(logger):
 # =============================================================================
 #                           - LOCAL FILES -
 # -----------------------------------------------------------------------------
+
+
+def remove_files(
+        file_paths: list[str] | str,
+        missing_ok: bool = True,
+        verbose: bool = True
+    ) -> int:
+    file_paths = [file_paths] if isinstance(file_paths, str) else file_paths
+    total_removed = 0
+
+    for file_path in file_paths:
+        try:
+            os.remove(file_path)
+            total_removed += 1
+        except FileNotFoundError as missing:
+            if missing_ok == False:
+                raise FileNotFoundError(
+                    errno.ENOENT, missing.strerror, missing.filename
+                )
+            else:
+                if verbose == True:
+                    print(f'{missing.strerror}: {missing.filename}')
+        except Exception as e:
+            if verbose == True:
+                print(f'Error removing file: {e}')
+
+    return total_removed
 
 
 def get_project_root() -> str:
@@ -211,55 +239,48 @@ def get_latest_file(dir_path, base_name):
     return latest_file
 
 
-def delete_local_files(identifier, file_types: str = 'any',
-                       project_root: Optional[str] = None) -> bool:
-    def _parse_name_and_extension(file):
-        file_parts = [x for x in file.rsplit('.', 1)]
+def clear_local_files(
+        target_file_prefix: Optional[str] = None,
+        target_file_extensions: Optional[list] = None,
+        target_dirs: Optional[list[str]] = None,
+    ) -> int:
+    if not target_dirs:
+        dir_paths = get_common_dirs()
+        target_dir_names = [
+            'input_dir',
+            'output_dir',
+            'event_imgs_dir'
+        ]
+        target_dirs = [dir_paths[name] for name in target_dir_names]
 
-        name = file_parts[0]
-        extension = (
-            file_parts[-1] if len(file_parts) == 2 else ''
-        )
-    
-        return name, extension
-
-    dirs = get_common_dirs(project_root=project_root)
-
-    paths = [dirs[d] for d in [
-        'input_dir',
-        'output_dir',
-        'event_imgs_dir',
-    ]]
-
-    n_deleted = 0
-    for path in paths:
-
-        if not os.path.exists(path):
-            print(f'Skipping non-existent path: {path}')
+    target_paths = []
+    for dir_path in target_dirs:
+        if not os.path.exists(dir_path):
+            print(f'Skipping {dir_path}, no such directory')
             continue
-        for result in os.listdir(path):
-            full_path = os.path.join(path, result)
-            if not os.path.isfile(full_path):
-                continue
-            elif (
-                    (full_path.endswith('.pkl')) and
-                    (not full_path.endswith('inference_pipeline.pkl'))
-                ):
-                continue
-            
-            file_name, file_extension = _parse_name_and_extension(result)
-            if (
-                ((identifier == 'all') or (file_name.startswith(identifier))) and
-                ((file_types == 'any') or (file_extension in file_types))
-            ):
-                try:
-                    os.remove(full_path)
-                    n_deleted += 1
-                except Exception as e:
-                    print(f'Error deleting {full_path}: {e}')
 
-    print(f'Deleted {n_deleted} files')
-    return True
+        for filename in os.listdir(dir_path):
+            file_path = os.path.join(dir_path, filename)
+            if os.path.isfile(file_path):
+                if file_path.endswith('_tracking_pipeline.pkl'):
+                    continue
+            else:
+                continue
+
+            if target_file_prefix:
+                if not filename.startswith(target_file_prefix):
+                    continue
+            if target_file_extensions:
+                file_extension = utils.parse_filename(filename)[-1]
+                if file_extension not in target_file_extensions:
+                    continue
+
+            target_paths.append(file_path)
+
+    total_removed = remove_files(target_paths, missing_ok=True)
+    print(f'Successfully deleted {total_removed} files')
+
+    return total_removed
 
 
 def read_embeddings(hdf5_file, target_frame, device):
@@ -280,7 +301,14 @@ def read_embeddings(hdf5_file, target_frame, device):
         return target_embeddings
 
 
-def save_event_image(img, credentials, project_root=None):
+def save_event_image(
+        img: np.ndarray,
+        credentials: tuple[str],
+        region='us-west-1',
+        bucket_name='timemanager-event-imgs',
+        project_root=None,
+    ) -> str | None:
+
     if img is None:
         return None
     
@@ -292,18 +320,12 @@ def save_event_image(img, credentials, project_root=None):
 
     cv2.imwrite(file_path, img)
     try:
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=credentials[0],
-            aws_secret_access_key=credentials[1],
-            region_name='us-west-1'
-        )
-        bucket_name = 'timemanager-event-imgs'
+        s3_client = conn_utils.s3_connect(region, credentials)
         s3_client.upload_file(file_path, bucket_name, object_key)
-        if os.path.exists(file_path):
-            os.remove(file_path)
+
+        remove_files(file_path, missing_ok=True)
     except (EndpointConnectionError, NoCredentialsError) as e:
-        pass
+        print(f'Unable to connect: {e}')
 
     return object_key
 
@@ -353,42 +375,83 @@ def upload_data(credentials, max_workers=8):
 # -----------------------------------------------------------------------------
 
 
-def download_s3_footage(
-        object_key,
-        credentials=None,
-        bucket_name='ivakt-footage'
-    ) -> bool:
-    s3_client = conn_utils.s3_connect(region='us-west-1', credentials=credentials)
-    video_file = object_key.split('/')[-1]
-    local_path = os.path.join(get_project_root(), 'files/input', video_file)
+class S3UploadError(Exception):
+    """Generic error raised when an S3 upload fails."""
+    pass
 
-    try:
-        s3_client.download_file(bucket_name, object_key, local_path)
-        print(f'Downloaded {object_key}')
-        return True
-    except Exception as e:
-        print(f"Failed to download {object_key}: {e}")
-        if os.path.exists(local_path):
-            os.remove(local_path)
-        return False
+
+class S3DownloadError(Exception):
+    """Generic error raised when an S3 upload fails."""
+    pass
+
+
+def download_s3_footage(
+        object_keys: list[str] | str,
+        credentials: Optional[tuple[str, ...]] = None,
+        region: str = 'us-west-1',
+        bucket_name: str = 'ivakt-footage',
+    ) -> bool:
+    s3_client = conn_utils.s3_connect(region, credentials)
+    project_root = get_project_root()
+
+    object_keys = [object_keys] if isinstance(object_keys, str) else object_keys
+    successfully_downloaded = []
+
+    for object_key in object_keys:
+        download_status = False
+
+        filename = utils.parse_obj_key(object_key)[-1]
+        local_path = os.path.join(project_root, 'files/input', filename)
+
+        try:
+            s3_client.download_file(bucket_name, object_key, local_path)
+            download_status = True
+            print(f'Downloaded {filename}')
+
+        except Exception as e:
+            print(f'Failed to download {filename}: {e}')
+            remove_files(local_path, missing_ok=True)
+
+        successfully_downloaded.append(download_status)
+
+    return all(successfully_downloaded)
 
 
 def delete_s3_footage(
-        object_key,
-        credentials=None,
-        bucket_name='ivakt-footage'
+        object_keys: list[str] | str,
+        credentials: Optional[tuple[str, ...]] = None,
+        region: str = 'us-west-1',
+        bucket_name: str = 'ivakt-footage',
     ) -> bool:
-    s3_client = conn_utils.s3_connect(
-        region='us-west-1', credentials=credentials
-    )
-
+    object_keys = [object_keys] if isinstance(object_keys, str) else object_keys
+    s3_client = conn_utils.s3_connect(region, credentials)
+    
+    all_successful = False
     try:
-        s3_client.delete_object(Bucket=bucket_name, Key=object_key)
-        print(f'Deleted {object_key} from S3')
-        return True
+        object_keys = [{'Key': k} for k in object_keys]
+
+        response = s3_client.delete_objects(
+            Bucket=bucket_name,
+            Delete={'Objects': object_keys}
+        )
+        deleted = response.get('Deleted', [])
+        errors = response.get('Errors', [])
+
+        for obj in deleted:
+            _, filename = utils.parse_obj_key(obj['Key'])
+            print(f'Deleted {filename} from S3')
+    
+        if errors:
+            for err in errors:
+                _, filename = utils.parse_obj_key(err['Key'])
+                print(f'Failed to delete {filename}: {err['Message']}')
+        else:
+            all_successful = True
+
     except Exception as e:
-        print(f"Failed to delete {object_key} from S3: {e}")
-        return False
+        print(f'Failed to delete from S3: {e}')
+    
+    return all_successful
 
 
 def download_s3_image(
@@ -414,8 +477,7 @@ def download_s3_image(
         return True
     except Exception as e:
         print(f"Failed to download {object_key}: {e}")
-        if os.path.exists(output_path):
-            os.remove(output_path)
+        remove_files(output_path, missing_ok=True)
         return False
 
 
@@ -540,7 +602,7 @@ def lookup_name(identity_uuid, db_name='data.db') -> tuple:
     return result
 
 
-def get_designation(identity_uuid, db_name='data.db') -> Union[str, None]:
+def get_designation(identity_uuid, db_name='data.db') -> str | None:
     db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
 
@@ -762,7 +824,7 @@ def save_person_data(
 # -----------------------------------------------------------------------------
 
 
-def get_api_tokens(credentials: dict = None) -> Union[tuple[str], tuple[None]]:
+def get_api_tokens(credentials: dict = None) -> tuple[str | None, ...]:
     if not credentials:
         credentials = {
             'email': input('Enter account email: '),
@@ -815,20 +877,20 @@ def fetch_person_data(
     return person_data
 
 
-def get_queue_block(shop_id: str, start_from: Union[list, datetime] = None,
-                    priority_camera: str = None) -> Union[list[list], None, bool]:
+def get_queue_block(
+        shop_id: str,
+        start_from: list | datetime = None,
+        priority_camera: str = None,
+    ) -> list[tuple] | None:
     '''
     Returns:
-        queue_block (List[List]):
-            A list of lists, where each sublist contains the information for
-            one of the multiple video files recorded concurrently by the shop's
-            cameras over a given period of time. The order is as follows:
-            - vid_object_key
-            - timestamp
-            - camera
+        queue_block (list[tuple] or None): A list of rows corresponding to each
+            video file in the queue block. Each queue block row is ordered as
+            follows: (id, shop_id, filename, timestamp, cam_id, uploaded) 
     '''
-    internal_api = APIClient(var_prefix='INTERNAL_API')
+    queue_block = None
 
+    internal_api = APIClient(var_prefix='INTERNAL_API')
     params = {'shop_id': shop_id, 'priority_camera': priority_camera}
     if start_from:
         try:
@@ -837,28 +899,25 @@ def get_queue_block(shop_id: str, start_from: Union[list, datetime] = None,
 
             params['start_from'] = start_from.isoformat(timespec='seconds')
 
-        except Exception as e:
-            print(f'Invalid start time input: {start_from} — {e}')
-            return False
+        except Exception:
+            print(f'Invalid start time input: {start_from}. Using default instead.')
 
     try:
         response = internal_api.get('get_queue_block/', params=params)
         response.raise_for_status()
         try:
             data = response.json()
+            queue_block = data.get('results', None)
+
         except ValueError:
-            print(f"Invalid JSON response: {response.text}")
-            return False
-
-        queue_block = data.get('results')
-        if not queue_block:
-            print('No clips in the queue')
-            return None
-        return queue_block
-
+            print(f'Invalid JSON response: {response.text}')
     except requests.exceptions.RequestException as e:
         print(f'Error making request: {e}')
-        return False
+    
+    if not queue_block:
+        print('No clips in the queue')
+    
+    return queue_block
 
 
 def clear_queue_block(shop_id, timestamp) -> None:
@@ -878,18 +937,15 @@ def clear_queue_block(shop_id, timestamp) -> None:
         print(response.status_code) 
 
 
-def post_events_to_webapp(
-        time_prefix, db_name='data.db'
-    ) -> Union[bool, None]:
-    
+def post_event_data(shop_id, time_prefix, delete_data: bool = True) -> bool:
+    successful_post = False
+
     webapp_api = APIClient(var_prefix='WEBAPP_API')
 
-    shop_uuid = get_shop(db_name)[0]
+    track_data_df = utils.create_track_df(time_prefix)
+    track_data_df = utils.merge_track_records(track_data_df)
 
-    df = utils.create_track_df(time_prefix)
-    df = utils.merge_track_records(df)
-
-    data = {
+    event_data = {
         'shop_id': [],
         'employee_id': [],
         'event': [],
@@ -897,32 +953,42 @@ def post_events_to_webapp(
         'duration': [],
         'image': []
     }
+    entry_event, exit_event = 'workspace_entry', 'workspace_exit'
 
-    for _, row in df.iterrows():
+    num_tracks = 0
+    for _, row in track_data_df.iterrows():
+        identity = row['identity']
 
-        # Entry event
-        data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(row['identity'])
-        data['event'].append('workspace_entry')
-        data['start_time'].append(str(row['start_time']))
-        data['duration'].append(0)
-        data['image'].append(row['start_img'])
+        start_time, end_time = [str(row[t]) for t in ('start_time', 'end_time')]
+        start_image, end_image = row['start_img'], row['end_img']
 
-        # Exit event
-        data['shop_id'].append(shop_uuid)
-        data['employee_id'].append(row['identity'])
-        data['event'].append('workspace_exit')
-        data['start_time'].append(str(row['end_time']))
-        data['duration'].append(0)
-        data['image'].append(row['end_img'])
+        num_tracks += 1
 
-    response = webapp_api.post('save_employee_event_logs/', json=data)
-    
+        # Start event data:
+        event_data['shop_id'].append(shop_id)
+        event_data['employee_id'].append(identity)
+        event_data['event'].append(entry_event)
+        event_data['start_time'].append(start_time)
+        event_data['duration'].append(0)
+        event_data['image'].append(start_image)
+
+        # End event data:
+        event_data['shop_id'].append(shop_id)
+        event_data['employee_id'].append(identity)
+        event_data['event'].append(exit_event)
+        event_data['start_time'].append(end_time)
+        event_data['duration'].append(0)
+        event_data['image'].append(end_image)
+
+    response = webapp_api.post('save_employee_event_logs/', json=event_data)
     if response.status_code == 200:
-        print(f"Success: posted {len(data['event']) / 2} tracks")
-        clear_track_info(time_prefix)
-        return True
+        print(f'Success: posted {num_tracks} tracks')
+        if delete_data:
+            clear_track_info(time_prefix)
+
+        successful_post = True
     else:
-        print(f"Failed posting to webapp: {response.text}")
+        print(f'Failed posting to webapp: {response.text}')
         print(response.status_code)
-        return False
+
+    return successful_post

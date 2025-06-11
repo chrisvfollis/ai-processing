@@ -82,7 +82,7 @@ class OCSort:
 
         new_dets, trk_data = self._organize_data(output_results)
 
-        dets, dets_second = new_dets
+        dets, dets_indices, dets_second, dets_second_indices = new_dets
         trk_preds, velocities = trk_data[:2]
         last_boxes, k_observations = trk_data[2:]
 
@@ -102,17 +102,20 @@ class OCSort:
 
         for m in matched:
             trk_id = trk_id_list[m[1]]
-            self.active_trks[trk_id].update(dets[m[0], :])
+            det_idx = dets_indices[m[0]]
+            self.active_trks[trk_id].update(dets[m[0], :], det_idx)
 
         """
             Second round of associaton
         """
         if self.use_byte and (len(dets_second) > 0) and (unmatched_trks.shape[0] > 0):
-            unmatched_trks = self._byte_association(dets_second, trk_preds, unmatched_trks)
+            unmatched_trks = self._byte_association(
+                dets_second, dets_second_indices, trk_preds, unmatched_trks
+            )
 
         if unmatched_dets.shape[0] > 0 and unmatched_trks.shape[0] > 0:
             unmatched_dets, unmatched_trks = self._second_association_rematch(
-                dets, unmatched_dets, unmatched_trks, last_boxes
+                dets, dets_indices, unmatched_dets, unmatched_trks, last_boxes
             )
 
         for m in unmatched_trks:
@@ -129,6 +132,8 @@ class OCSort:
         return bboxes
 
     def _organize_data(self, output_results):
+        output_indices = np.arange(output_results.shape[0])
+
         if output_results.shape[1] == 5:
             scores = output_results[:, 4]
             bboxes = output_results[:, :4]
@@ -139,14 +144,18 @@ class OCSort:
 
         bboxes /= self.scale
         dets = np.concatenate((bboxes, np.expand_dims(scores, axis=-1)), axis=1)
+
         inds_low = scores > 0.1
         inds_high = scores < self.det_thresh
         inds_second = np.logical_and(inds_low, inds_high)  # self.det_thresh > score > 0.1, for second matching
+        dets_second_indices = output_indices[inds_second]
         dets_second = dets[inds_second]  # detections for second matching
+        
         remain_inds = scores > self.det_thresh
+        dets_indices = output_indices[remain_inds]
         dets = dets[remain_inds]
-
-        new_dets = [dets, dets_second]
+        
+        new_dets = [dets, dets_indices, dets_second, dets_second_indices]
 
         # get predicted locations from existing trackers:
         trk_preds = []
@@ -175,7 +184,7 @@ class OCSort:
 
         return new_dets, trk_data
 
-    def _byte_association(self, dets_second, trk_preds, unmatched_trks):
+    def _byte_association(self, dets_second, dets_second_indices, trk_preds, unmatched_trks):
         trk_id_list = list(self.active_trks.keys())
 
         u_trks = trk_preds[unmatched_trks]
@@ -194,13 +203,14 @@ class OCSort:
                 if iou_left[m[0], m[1]] < self.iou_threshold:
                     continue
                 trk_id = trk_id_list[trk_ind]
-                self.active_trks[trk_id].update(dets_second[det_ind, :])
+                det_global_idx = dets_second_indices[det_ind]
+                self.active_trks[trk_id].update(dets_second[det_ind, :], det_global_idx)
                 to_remove_trk_indices.append(trk_ind)
             unmatched_trks = np.setdiff1d(unmatched_trks, np.array(to_remove_trk_indices))
 
         return unmatched_trks
 
-    def _second_association_rematch(self, dets, unmatched_dets, unmatched_trks, last_boxes):
+    def _second_association_rematch(self, dets, dets_indices, unmatched_dets, unmatched_trks, last_boxes):
         trk_id_list = list(self.active_trks.keys())
 
         left_dets = dets[unmatched_dets]
@@ -221,7 +231,8 @@ class OCSort:
                 if iou_left[m[0], m[1]] < self.iou_threshold:
                     continue
                 trk_id = trk_id_list[trk_ind]
-                self.active_trks[trk_id].update(dets[det_ind, :])
+                det_global_idx = dets_indices[det_ind]
+                self.active_trks[trk_id].update(dets[det_ind, :], det_global_idx)
                 to_remove_det_indices.append(det_ind)
                 to_remove_trk_indices.append(trk_ind)
             unmatched_dets = np.setdiff1d(unmatched_dets, np.array(to_remove_det_indices))
@@ -322,7 +333,8 @@ class KalmanBoxTracker:
         self.age = 0
         
         self.last_observation = None    # np.ndarray
-        self.observations = dict()
+        self.observations = {}
+        self.bbox_indices = {}
         self.valid_observations = []
         self.velocity = None
         self.delta_t = delta_t
@@ -330,7 +342,7 @@ class KalmanBoxTracker:
         self.aspect_ratio_thresh = aspect_ratio_thresh
         self.min_box_area = min_box_area
     
-    def update(self, bbox):
+    def update(self, bbox, idx=None):
         """
         Updates the state vector with observed bbox.
         """
@@ -352,6 +364,8 @@ class KalmanBoxTracker:
         
         self.last_observation = bbox
         self.observations[self.age] = bbox
+        if idx is not None:
+            self.bbox_indices[self.age] = idx
 
         if self.validate(bbox) == True:
             self.valid_observations.append(self.age)

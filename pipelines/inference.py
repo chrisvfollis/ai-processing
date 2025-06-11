@@ -21,10 +21,8 @@ class InferencePipeline:
     def __init__(
             self,
             video_file: str,
+            model_cfg: dict = {},
             device: torch.device = None,
-            yolo_cfg: dict = {},
-            osnet_cfg: dict = {},
-            faces_cfg: dict = {},
             track_stride: int = 1,
             id_freq: str = '1/s',
         ):
@@ -33,25 +31,29 @@ class InferencePipeline:
         # MODEL SETUP:
         self.device = device or utils.get_default_device()
 
-        self.yolox = YoloX(device=self.device, **yolo_cfg)
-        self.osnet = OSNet(device=self.device, **osnet_cfg)
-        self.face_analysis = FaceAnalysis(device=self.device, **faces_cfg)
+        yolox_cfg = model_cfg['yolox'] | {'device': self.device}
+        faces_cfg = model_cfg['faces'] | {'device': self.device}
+        osnet_cfg = model_cfg['osnet'] | {'device': self.device}
+        
+        self.yolox = YoloX(**yolox_cfg)
+        self.face_analysis = FaceAnalysis(**faces_cfg)
+        self.osnet = OSNet(**osnet_cfg)
 
         self.osnet.activate_buffers(
             file_prefix=video_file.split('.')[0],
             structure='video_data'
         )
 
-        # PATHS:
+        # PATHS/FILENAMES/ETC:
         self.project_root = io_utils.get_project_root()
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
 
-        # VIDEO ATTRIBUTES:
         self.video_file = video_file
         self.video_path = os.path.join(self.input_dir, video_file)
 
-        video_info = utils.get_video_info(self.video_path)
+        # VIDEO ATTRIBUTES:
+        video_info = utils.get_video_info(self.video_path, release=True)
 
         self.resolution = video_info[0]
         self.frame_diag = video_info[1]

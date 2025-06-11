@@ -1,6 +1,6 @@
 # standard dependencies
 import os
-from typing import Union, Optional, Sequence
+from typing import Optional, Sequence
 import pickle
 import math
 
@@ -229,7 +229,7 @@ class FaceAnalysis:
 
     def detect(
             self,
-            imgs: Union[np.ndarray, list[np.ndarray]],
+            imgs: np.ndarray | list[np.ndarray],
             detector: str = 'centerface',
             expand_percentage: int = 0,
             enhance: bool = True,
@@ -502,6 +502,7 @@ class FaceAnalysis:
         if enhance is None:
             enhance = self.enhance_faces
         elif enhance == True and (not hasattr(self, 'clearface')):
+            from models import ClearFace
             self.clearface = ClearFace(device=self.device)
 
         db_path = db_path or self.face_dir
@@ -557,11 +558,13 @@ class FaceAnalysis:
         ) -> pd.DataFrame:
         merged_dfs = []
         for frame, dfs in face_data.items():
-            valid_dfs = [df for df in dfs if not df.empty]
-            if valid_dfs:
-                merged_df = pd.concat(valid_dfs, ignore_index=True)
-                merged_df['f'] = frame
-                merged_dfs.append(merged_df)
+            for i, df in enumerate(dfs):
+                if df.empty:
+                    continue
+                df = df.copy()
+                df['f'] = frame
+                df['face_idx'] = i
+                merged_dfs.append(df)
 
         if not merged_dfs:
             return None

@@ -1,6 +1,5 @@
 # standard dependencies
-import os
-from typing import Optional, Sequence, Tuple
+from typing import Optional
 from dataclasses import dataclass
 
 # 3rd-party dependencies
@@ -31,12 +30,12 @@ class FacialAreaRegion:
     y: int
     w: int
     h: int
-    left_eye: Optional[Tuple[int, int]] = None
-    right_eye: Optional[Tuple[int, int]] = None
+    left_eye: Optional[tuple[int, int]] = None
+    right_eye: Optional[tuple[int, int]] = None
     confidence: Optional[float] = None
-    nose: Optional[Tuple[int, int]] = None
-    mouth_right: Optional[Tuple[int, int]] = None
-    mouth_left: Optional[Tuple[int, int]] = None
+    nose: Optional[tuple[int, int]] = None
+    mouth_right: Optional[tuple[int, int]] = None
+    mouth_left: Optional[tuple[int, int]] = None
 
 
 @dataclass

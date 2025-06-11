@@ -48,7 +48,7 @@ class TrackingPipeline:
         self.prior_pkl = prior_pkl or ''
 
         # VIDEO ATTRIBUTES:
-        time_prefix, cam_id = utils.parse_clip_filename(video_file)
+        time_prefix, cam_id = utils.decode_vid_filename(video_file)
         res, _, fps, f_total = utils.get_video_info(self.video_path, release=True)
 
         self.resolution = res
@@ -163,6 +163,8 @@ class TrackingPipeline:
 
         log_utils.press_stopwatch(self, 'primary_run_time')
 
+        return self.ocsort.inactive_trks
+
     def format_results(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         obs_records = []
         state_records = []
@@ -173,11 +175,13 @@ class TrackingPipeline:
                 for age, bbox in trk.observations.items():
                     f_num = trk.map_offset(offset=age)
                     valid = age in trk.valid_observations
+                    box_idx = trk.bbox_indices[age]
 
                     obs_records.append({
-                        'f_num': f_num,
-                        'track_id': trk_id,
+                        'f': f_num,
+                        'trk_id': trk_id,
                         'age': age,
+                        'box_idx': box_idx,
                         'x1': bbox[0],
                         'y1': bbox[1],
                         'x2': bbox[2],
@@ -188,7 +192,7 @@ class TrackingPipeline:
                 # kalman filter states:
                 for t, bbox in enumerate(trk.history):
                     state_records.append({
-                        'track_id': trk_id,
+                        'trk_id': trk_id,
                         't': t,
                         'x1': bbox[0],
                         'y1': bbox[1],
@@ -205,7 +209,9 @@ class TrackingPipeline:
         logger.info('Saving pipeline state...')
 
         file_prefix = self.video_file.split('.')[0]
-        save_path = os.path.join(self.output_dir, f'{file_prefix}.pkl')
+        save_path = os.path.join(
+            self.output_dir, f'{file_prefix}_tracking_pipeline.pkl'
+        )
 
         log_utils.press_stopwatch(self, 'pkl_io')
         with open(save_path, "wb") as f:

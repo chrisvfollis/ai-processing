@@ -1,7 +1,6 @@
 # standard dependencies
 import os
 import sys
-from typing import Union, Optional
 import uuid
 
 # 3rd-party dependencies
@@ -29,7 +28,7 @@ def detect_people_in_image():
     pass
 
 
-def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None):
+def detect_faces_in_image(image: str | np.ndarray, image_name: str = None):
     detector = CenterFace()
 
     if isinstance(image, str):
@@ -47,7 +46,7 @@ def detect_faces_in_image(image: Union[str, np.ndarray], image_name: str = None)
 
 # SUPER-RESOLUTION:
 
-def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
+def enhance_face(image: str | np.ndarray, image_name: str = None):
     clearface = ClearFace(weights_path='../models/weights/clearface/90000_G.pth')
 
     if isinstance(image, str):
@@ -66,7 +65,7 @@ def enhance_face(image: Union[str, np.ndarray], image_name: str = None):
 # RECOGNITION:
 
 def recognize_faces_in_image(
-        image: Union[str, np.ndarray],
+        image: str | np.ndarray,
         image_name: str = None,
         focus='global',
         face_iq=None
