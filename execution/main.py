@@ -15,7 +15,7 @@ import torch
 from utilities import io_utils, log_utils, conn_utils
 from utilities.io_utils import S3DownloadError
 from utilities import general_utils as utils
-from pipelines import InferencePipeline, TrackingPipeline
+from pipelines import InferencePipeline, TrackingPipeline, IdentificationPipeline
 
 
 logger = log_utils.get_logger(__name__)
@@ -103,25 +103,24 @@ def run_pipelines(
         if not io_utils.download_s3_footage(object_key, credentials):
             raise S3DownloadError(f'Failed to download footage: {object_key}')
         
-        inference_pipeline = InferencePipeline(filename, **inference_cfg)
-        if inference_pipeline.skim() == False:
+        inference = InferencePipeline(filename, **inference_cfg)
+        if inference.skim() == False:
             io_utils.delete_s3_footage(object_key, credentials)
             return process_result
         
-        inference_output = inference_pipeline.run()
+        person_detections, face_data = inference.run()
         if save_all_data:
-            inference_pipeline.save_state()
+            inference.save_state()
 
-        tracking_pipeline = TrackingPipeline(
-            filename, time_prefix, *inference_output, **tracking_cfg,
-        )
+        tracking = TrackingPipeline(filename, person_detections, **tracking_cfg)
+        inactive_trks = tracking.run()
 
-        del inference_pipeline, inference_output
-        tracking_pipeline.run()
+        identification = IdentificationPipeline(filename, face_data, inactive_trks)
+        identification.run()
 
         io_utils.save_track_info(
-            time_prefix, cam_id, tracking_pipeline.inactive_trks,
-            fps=tracking_pipeline.fps
+            time_prefix, cam_id, tracking.inactive_trks,
+            fps=tracking.fps
         )
 
         process_result = True

@@ -163,6 +163,8 @@ class TrackingPipeline:
 
         log_utils.press_stopwatch(self, 'primary_run_time')
 
+        return self.ocsort.inactive_trks
+
     def format_results(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         obs_records = []
         state_records = []
