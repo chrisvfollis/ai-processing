@@ -76,7 +76,19 @@ class IdentificationPipeline:
             .first()
             .reset_index()
         )
-        return top_scores[['trk_id', 'identity']]
+
+        top_scores['assignment_type'] = 'direct'
+        top_scores['assignment_cost'] = 1 - top_scores['iou_weighted_avg_sim']
+
+        keep_cols = [
+            'trk_id',
+            'identity',
+            'assignment_type',
+            'assignment_cost',
+        ]
+        identities_df = top_scores[keep_cols]
+
+        return identities_df
 
     def reassociate(self, initial_identities: pd.DataFrame, k=5) -> pd.DataFrame:
         '''
@@ -95,12 +107,22 @@ class IdentificationPipeline:
             neighbor_ids = neighbors['neighbor_trk_id'].tolist()
             neighbor_identities = [identity_map.get(nid) for nid in neighbor_ids]
 
-            # Majority vote (ignoring None)
+            # majority vote (ignoring None):
             votes = pd.Series(neighbor_identities).dropna()
             if not votes.empty:
                 identity = votes.mode().iloc[0]
-                reassigned.append({'trk_id': trk_id, 'identity': identity})
 
+                # use distance to first (nearest) supporting neighbor with that
+                # identity:
+                for _, row in neighbors.iterrows():
+                    if identity_map.get(row['neighbor_trk_id']) == identity:
+                        reassigned.append({
+                            'trk_id': trk_id,
+                            'identity': identity,
+                            'assignment_type': 'indirect',
+                            'assignment_cost': row['distance'],
+                        })
+                        break
         return pd.DataFrame(reassigned)
 
     def embedding_cos_dists(
