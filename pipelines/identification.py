@@ -47,13 +47,13 @@ class IdentificationPipeline:
         self.embedding_distances = None
         self.face_iou_df = None
 
-    def run(self):
+    def run(self) -> pd.DataFrame:
         if self.embedding_distances is None:
             logger.info("Generating embedding distance matrix...")
             self.embedding_distances = self.embedding_cos_dists()
 
         face_ious_df = self.face_ious()
-        face_match_candidates = self.collect_face_match_candidates(face_ious_df)
+        face_match_candidates = self._collect_face_match_candidates(face_ious_df)
 
         direct_identifications = self.assign_identities(face_match_candidates)
         indirect_identifications = self.reassociate(direct_identifications)
@@ -287,7 +287,7 @@ class IdentificationPipeline:
         ]
         return merged_df[keep_cols]
 
-    def collect_face_match_candidates(
+    def _collect_face_match_candidates(
             self, face_ious_df: pd.DataFrame = None
         ) -> pd.DataFrame:
         '''

@@ -1,6 +1,7 @@
 # standard dependencies
 import os
 import pickle
+from typing import Optional
 
 # 3rd-party dependencies
 import pandas as pd
@@ -145,7 +146,7 @@ class TrackingPipeline:
 
         log_utils.press_stopwatch(self, 'persist_time')
 
-    def run(self):
+    def run(self) -> tuple[pd.DataFrame, ...]:
         log_utils.press_stopwatch(self, 'primary_run_time')
 
         self.f_num = self.f_start
@@ -163,13 +164,23 @@ class TrackingPipeline:
 
         log_utils.press_stopwatch(self, 'primary_run_time')
 
-        return self.ocsort.inactive_trks
+        return self.format_results(
+            self.ocsort.active_trks, self.ocsort.inactive_trks
+        )
 
-    def format_results(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def format_results(
+            self,
+            active_trks: Optional[dict] = None,
+            inactive_trks: Optional[dict] = None,
+        ) -> tuple[pd.DataFrame, ...]:
+
+        active_trks = active_trks or self.ocsort.active_trks
+        inactive_trks = inactive_trks or self.ocsort.inactive_trks
+
         obs_records = []
         state_records = []
 
-        for trk_dict in (self.ocsort.active_trks, self.ocsort.inactive_trks):
+        for trk_dict in (active_trks, inactive_trks):
             for trk_id, trk in trk_dict.items():
                 # observations (detections):
                 for age, bbox in trk.observations.items():

@@ -113,9 +113,9 @@ def run_pipelines(
             inference.save_state()
 
         tracking = TrackingPipeline(filename, person_detections, **tracking_cfg)
-        inactive_trks = tracking.run()
+        track_detections, _ = tracking.run()
 
-        identification = IdentificationPipeline(filename, face_data, inactive_trks)
+        identification = IdentificationPipeline(filename, face_data, track_detections)
         identification.run()
 
         io_utils.save_track_info(
