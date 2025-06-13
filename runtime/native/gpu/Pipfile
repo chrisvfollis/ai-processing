@@ -61,7 +61,6 @@ psycopg2-binary = "*"
 shapely = "*"
 tqdm = "4.43.0"
 psutil = "*"
-jupyter = "*"
 pympler = "*"
 filterpy = "*"
 
