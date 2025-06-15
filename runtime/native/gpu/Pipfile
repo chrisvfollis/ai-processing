@@ -28,7 +28,6 @@ opencv-contrib-python = "*"
 pillow = "*"
 torchvision = {version = "*", index = "pytorch-cu121"}
 torchreid = "*"
-facenet-pytorch = "*"
 
 # =============================================================================
 #                           - DATA MANIPULATION -

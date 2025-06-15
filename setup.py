@@ -21,10 +21,9 @@ setup(
         'torchreid',
         'onnx2torch',
 
-        # Image/Video Processing and Computer Vision:
+        # Image/Video Processing:
         'opencv-contrib-python',
         'pillow',
-        'facenet-pytorch',
 
         # Data Manipulation:
         'numpy',
@@ -47,7 +46,6 @@ setup(
         'shapely',
         'tqdm==4.43.0',
         'psutil',
-        'jupyter',
         'matplotlib',
         'pympler',
         'filterpy',
