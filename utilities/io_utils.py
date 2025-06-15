@@ -625,7 +625,7 @@ def get_designation(identity_uuid, db_name='data.db') -> str | None:
     return designation
 
 
-def save_track_info(time_prefix: str, camera: str, target_trks: dict,
+def save_track_info(time_prefix: str, cam_id: str, target_trks: dict,
                     fps: int = 30, db_name='data.db') -> None:
     db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
@@ -652,22 +652,25 @@ def save_track_info(time_prefix: str, camera: str, target_trks: dict,
     for trk_id, trk in target_trks.items():
         identity = trk.identity or str(uuid.uuid4())
 
-        start_img = trk.start_img or ''
-        end_img = trk.end_img or ''
-
-        if not start_img and not end_img:
-            continue    # skip tracks with no images
+        start_img = trk.id_event_images[0]
+        end_img = trk.id_event_images[-1]
         
-        start_frame, end_frame = trk.span[0], trk.span[-1]
+        start_frame = trk.start
+        end_frame = trk.map_offset(trk.start, trk.age)
 
         start_time = utils.frame_timestamp(time_prefix, start_frame, fps)
         end_time = utils.frame_timestamp(time_prefix, end_frame, fps)
 
         values = (
-            time_prefix, camera, trk_id, identity, start_img, end_img,
-            start_time, end_time,
+            time_prefix,
+            cam_id,
+            trk_id,
+            identity,
+            start_img,
+            end_img,
+            start_time,
+            end_time,
         )
-
         cursor.execute(query, values)
 
     conn_utils.close_sqlite_db(conn, cursor, commit=True)
