@@ -198,20 +198,15 @@ if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--retain-footage', action='store_true')
-    parser.add_argument('--save-all-data', action='store_true')
+    parser.add_argument('--retain-footage', action='store_true', default=False)
+    parser.add_argument('--save-all-data', action='store_true', default=False)
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
     parser.add_argument('--priority-cam', type=str)
-    parser.add_argument('--debug-level', type=int)
-
+    parser.add_argument('--log-level', type=int, default=0)
+    
     args = parser.parse_args()
 
-    retain_footage = args.retain_footage
-    save_all_data = args.save_all_data
-    priority_cam = args.priority_cam
-
-    log_level = args.log_level or 0
-    log_utils.configure_logging(log_level=log_level)
+    log_utils.configure_logging(log_level=args.log_level)
 
     starting_point = None
     if args.start_from:
@@ -244,12 +239,12 @@ if __name__ == '__main__':
         'shop_id': shop_id,
         'model_configs': model_cfgs,
         'device': device,
-        'log_level': log_level,
+        'log_level': args.log_level,
         'credentials': aws_credentials,
-        'retain_footage': retain_footage,
-        'save_all_data': save_all_data,
+        'retain_footage': args.retain_footage,
+        'save_all_data': args.save_all_data,
         'starting_point': starting_point,
-        'priority_cam': priority_cam,
+        'priority_cam': args.priority_cam,
     }
 
     main(**run_config)
