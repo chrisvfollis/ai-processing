@@ -168,7 +168,7 @@ def main(
     io_utils.clear_track_info('all')
 
     while True:
-        io_utils.cleanup_semaphores()
+        io_utils.cleanup_semaphores(logger)
         queue_block_records = io_utils.get_queue_block(
             shop_id, starting_point, priority_cam,
         )
