@@ -90,7 +90,7 @@ def run_pipelines(
     shop_id, filename = footage_record[1:3]
     time_prefix, cam_id = utils.decode_vid_filename(filename)
 
-    inference_cfg = model_cfg | {'device': device}
+    inference_cfg = {'model_cfg': model_cfg, 'device': device}
     tracking_cfg = {
         'credentials': credentials,
         'device': device,
