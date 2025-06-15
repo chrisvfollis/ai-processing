@@ -2,6 +2,12 @@
 import os
 import pickle
 import gc
+import warnings
+
+warnings.filterwarnings(
+    'ignore', message='You are using `torch.load` with `weights_only=False`',
+    category=FutureWarning
+)
 
 # 3rd-party dependencies
 import pandas as pd
@@ -13,6 +19,7 @@ from models import YoloX, OSNet
 from modules.face_analysis import FaceAnalysis
 from utilities import general_utils as utils
 from utilities import io_utils, log_utils
+
 
 logger = log_utils.get_logger(__name__)
 
@@ -108,9 +115,6 @@ class InferencePipeline:
             if (not ret) or (current_frame == prev_frame):
                 logger.info(f'Nothing to process in {self.video_file}')
                 break
-            elif utils.is_grayscale(frame, threshold=10):
-                logger.info(f'Footage too dark in {self.video_file}')
-                break
 
             if f_num % stride == 0:
                 detections = self.yolox.inference(frame, conf_thresh=0.78)
@@ -178,7 +182,11 @@ class InferencePipeline:
                 detections = [
                     utils.xywh_xyxy(d, out='xywh') for d in detections
                 ]
-            self.osnet.extraction_batch(img, detections, f_num)
+            try:
+                self.osnet.extraction_batch(img, detections, f_num)
+            except ValueError as e:
+                print(e)
+                continue
 
             img_h, img_w = img.shape[:2]
             regions = utils.cluster_bboxes_into_regions(
@@ -220,12 +228,12 @@ class InferencePipeline:
                         'frame': frame,
                         'f_num': self.f_num,
                     }
-
-            self.f_num += 1
             
             if self.f_num % self.progress_interval == 0:
                 log_progress_update = True
                 self.progress = utils.calculate_progress(self.f_num, self.f_total)
+            
+            self.f_num += 1
 
         log_utils.press_stopwatch(self, 'read_time')
 

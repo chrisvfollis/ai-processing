@@ -34,13 +34,17 @@ class FaceNet512:
         if use_trt:
             from torch2trt import TRTModule
             self.model = TRTModule()
-            state_dict = torch.load(self.checkpoint_path, map_location=self.device)
+            state_dict = torch.load(
+                self.checkpoint_path, map_location=self.device, weights_only=False
+            )
             self.model.load_state_dict(state_dict)
             self.model.eval().to(self.device)
         else:
             self.model = InceptionResnetV1()
 
-            state_dict = torch.load(self.checkpoint_path, map_location=self.device)
+            state_dict = torch.load(
+                self.checkpoint_path, map_location=self.device, weights_only=False
+            )
             # drop the classifier head
             state_dict.pop("logits.weight", None)
             state_dict.pop("logits.bias",  None)

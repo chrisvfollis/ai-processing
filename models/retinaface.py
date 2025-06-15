@@ -41,7 +41,9 @@ class RetinaFace:
         )
 
         self.model = RetinaFaceModel()
-        state_dict = torch.load(self.checkpoint_path, map_location=self.device)
+        state_dict = torch.load(
+            self.checkpoint_path, map_location=self.device, weights_only=False
+        )
         new_state_dict = {}
         for key in state_dict:
             new_key = key.replace('module.', '')

@@ -49,7 +49,9 @@ class ClearFace:
         ])
 
     def load(self):        
-        load_net = torch.load(self.weights_path, map_location=self.device)
+        load_net = torch.load(
+            self.weights_path, map_location=self.device, weights_only=False
+        )
         load_net_clean = OrderedDict()  # remove unnecessary 'module.'
         for k, v in load_net.items():
             if k.startswith('module.'):

@@ -476,8 +476,6 @@ class FaceAnalysis:
             filtered_face_dfs = []
 
             for df in all_face_dfs:
-                print(type(df))
-                print(df.head())
                 validated_drop_cols = [c for c in drop_cols if c in df.columns]
                 df = df.drop(validated_drop_cols, axis=1)
                 

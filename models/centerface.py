@@ -35,7 +35,9 @@ class CenterFace:
         weights_path = os.path.join(
             self.project_root, 'models/weights/', checkpoint
         )
-        self.model = torch.load(weights_path, map_location=self.device)
+        self.model = torch.load(
+            weights_path, map_location=self.device, weights_only=False
+        )
 
         self.model.eval()
         self.model.to(self.device)

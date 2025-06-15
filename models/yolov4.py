@@ -31,7 +31,9 @@ class YOLOv4:
         weights_path = os.path.join(
             io_utils.get_project_root(), 'models/weights/', weights_file
         )
-        weights = torch.load(weights_path, map_location=device)
+        weights = torch.load(
+            weights_path, map_location=self.device, weights_only=False
+        )
         self.model.load_state_dict(weights)
 
         self.model.to(self.device)

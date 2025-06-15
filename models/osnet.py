@@ -44,7 +44,7 @@ class OSNet:
         )
         self.device = device or utils.get_default_device()
 
-        checkpoint = torch.load(self.weights_path, map_location=device)
+        checkpoint = torch.load(self.weights_path, map_location=device, weights_only=False)
         state_dict = checkpoint['state_dict']
 
         if not num_classes:
@@ -113,7 +113,7 @@ class OSNet:
         #         if 'layer3' not in name and 'layer4' not in name:
         #             param.requires_grad = False
 
-    def preprocess_input(
+    def preprocess(
             self, input_data: np.ndarray | list[np.ndarray]
         ) -> torch.Tensor:
         '''
@@ -124,7 +124,7 @@ class OSNet:
             A 4D tensor of shape (B, C, H, W), where B is the batch size (which
             will be 1 if a single image is passed).
         '''
-        def preprocess_image(image: np.array) -> torch.Tensor:
+        def _preprocess_image(image: np.array) -> torch.Tensor:
             image = cv2.resize(image, self.input_dims)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             image = image.astype(np.float32)
@@ -142,19 +142,22 @@ class OSNet:
             )
             return image_tensor
 
+        if not input_data:
+            raise ValueError('No images to process in batch')
+
         press_stopwatch(self, 'preprocess_time')
 
         if isinstance(input_data, list):
-            preprocessed_imgs = [preprocess_image(img) for img in input_data]
+            preprocessed_imgs = [_preprocess_image(img) for img in input_data]
             image_tensor = torch.stack(preprocessed_imgs)
         else:
-            image_tensor = preprocess_image(input_data).unsqueeze(0)
+            image_tensor = _preprocess_image(input_data).unsqueeze(0)
         
         press_stopwatch(self, 'preprocess_time')
 
         return image_tensor.to(self.device)
 
-    def postprocess_output(
+    def postprocess(
             self, output_data, batched=False
         ) -> np.ndarray | list[np.ndarray]:
         if not batched:
@@ -166,15 +169,15 @@ class OSNet:
             ]
         return postprocessed
         
-    def extract_features(self, image):                
-        image_tensor = self.preprocess_input(image)
+    def extract_features(self, image):
+        image_tensor = self.preprocess(image)
 
         press_stopwatch(self, 'embedding_time')
         with torch.no_grad():
             output = self.model(image_tensor)
         press_stopwatch(self, 'embedding_time')
 
-        embedding = self.postprocess_output(output)
+        embedding = self.postprocess(output)
 
         if self.buffer_type:
             self.update_buffers(
@@ -206,15 +209,19 @@ class OSNet:
                 continue
             batch_images.append(crop)
             kept.append(i)
+        
+        if not batch_images:
+            print('No detections in batch with valid area for embedding')
+            return
 
-        batch_tensor = self.preprocess_input(batch_images)
+        batch_tensor = self.preprocess(batch_images)
 
         press_stopwatch(self, 'embedding_time')
         with torch.no_grad():
             batch_output = self.model(batch_tensor)
         press_stopwatch(self, 'embedding_time')
 
-        embeddings = self.postprocess_output(batch_output, batched=True)
+        embeddings = self.postprocess(batch_output, batched=True)
         self.update_buffers(
             embeddings,
             index=f_num,
@@ -299,9 +306,6 @@ class OSNet:
 
         if (len(self.embedding_buffer) + num_embeddings) >= self.buffer_limit:
             self.flush_buffers(structure=structure)
-        
-        if isinstance(index_data, int):
-            index_data = [index_data]
 
         if structure == 'standard':
             self.embedding_buffer.append(embedding_data)

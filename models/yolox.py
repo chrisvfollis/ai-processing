@@ -24,19 +24,19 @@ logger = log_utils.get_logger(__name__)
 
 class YoloX:
     def __init__(
-        self,
-        checkpoint: str = 'yolox_mot17.pth.tar',
-        num_classes: int = 1,
-        depth: float = 1.33,
-        width: float = 1.25,
-        input_size: tuple[int] = (800, 1440),
-        conf_thresh: float = 0.1,
-        nms_thresh: float = 0.7,
-        device: torch.device = None,
-        fp16: bool = True,
-        use_trt: bool = False,
-        decode: bool = True,
-    ):
+            self,
+            checkpoint: str = 'yolox_mot17.pth.tar',
+            num_classes: int = 1,
+            depth: float = 1.33,
+            width: float = 1.25,
+            input_size: tuple[int] = (800, 1440),
+            conf_thresh: float = 0.1,
+            nms_thresh: float = 0.7,
+            device: torch.device = None,
+            fp16: bool = True,
+            use_trt: bool = False,
+            decode: bool = True,
+        ):
         def _configure_batchnorm(model):
             '''
             Adjust BatchNorm2d layers to use YOLOX-specific epsilon and
@@ -145,7 +145,9 @@ class YoloX:
             checkpoint_path = os.path.join(
                 io_utils.get_project_root(), 'models/weights/yolox/', checkpoint
             )
-            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            checkpoint = torch.load(
+                checkpoint_path, map_location=self.device, weights_only=False
+            )
             self.model.load_state_dict(checkpoint['model'])
 
             self.model.eval()

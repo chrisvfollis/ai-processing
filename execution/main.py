@@ -91,11 +91,6 @@ def run_pipelines(
     time_prefix, cam_id = utils.decode_vid_filename(filename)
 
     inference_cfg = {'model_cfg': model_cfg, 'device': device}
-    tracking_cfg = {
-        'credentials': credentials,
-        'device': device,
-        'log_level': log_level
-    }
     
     process_result = False
     try:
@@ -115,7 +110,7 @@ def run_pipelines(
         if save_all_data:
             inference.save_state()
 
-        tracking = TrackingPipeline(filename, person_detections, **tracking_cfg)
+        tracking = TrackingPipeline(filename, person_detections)
         active_trks, inactive_trks = tracking.run()
         tracking.save_state()
 
@@ -123,7 +118,7 @@ def run_pipelines(
             filename, face_data, active_trks, inactive_trks
         )
         identification.run()
-        identification.save_id_event_images(overlap_threshold=0.5)
+        identification.save_id_event_images(overlap_threshold=0.5, credentials=credentials)
 
         io_utils.save_track_info(
             time_prefix, cam_id, inactive_trks, tracking.fps
