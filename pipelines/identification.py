@@ -27,7 +27,9 @@ class IdentificationPipeline:
             embeddings_file: Optional[str] = None,
         ):
         # INPUT DATA:
-        self.face_data = face_data
+        if face_data is None:
+            raise ValueError('No face data')
+        self.face_data = face_data 
 
         self.active_trks = active_trks
         self.inactive_trks = inactive_trks
@@ -53,6 +55,7 @@ class IdentificationPipeline:
         # STATS/OUTPUT DATA:
         self.embedding_dists = None
         self.face_overlaps = None
+        self.track_identities = None
 
     def run(self) -> pd.DataFrame:
         if self.embedding_dists is None:
@@ -65,14 +68,14 @@ class IdentificationPipeline:
         direct_identifications = self.assign_identities(face_match_candidates)
         indirect_identifications = self.reassociate(direct_identifications)
 
-        all_identities = pd.concat(
+        track_identities = pd.concat(
             [direct_identifications, indirect_identifications],
             ignore_index=True
         )
-        all_identities = all_identities.drop_duplicates('trk_id')
+        track_identities = track_identities.drop_duplicates('trk_id')
 
-        self.final_track_identities = all_identities
-        return all_identities
+        self.track_identities = track_identities
+        return track_identities
 
     def save_id_event_images(
             self,
@@ -445,6 +448,10 @@ class IdentificationPipeline:
                     valid = age in trk.valid_observations
                     box_idx = trk.bbox_indices[age]
 
+                    if len(bbox) != 5:
+                        logger.info(f'Detection: {bbox}')
+                        continue
+
                     obs_records.append({
                         'f': f_num,
                         'trk_id': trk_id,
@@ -459,6 +466,7 @@ class IdentificationPipeline:
 
                 # kalman filter states:
                 for t, bbox in enumerate(trk.history):
+                    bbox = bbox.flatten()
                     state_records.append({
                         'trk_id': trk_id,
                         't': t,

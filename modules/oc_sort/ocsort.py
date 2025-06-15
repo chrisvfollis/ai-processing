@@ -63,6 +63,8 @@ class OCSort:
         self.asso_func = ASSO_FUNCS[asso_func]
         self.inertia = inertia
         self.use_byte = use_byte
+        self.aspect_ratio_thresh = aspect_ratio_thresh
+        self.min_box_area = min_box_area
         self.val_cfg = {
             'aspect_ratio_thresh': aspect_ratio_thresh,
             'min_box_area': min_box_area,
@@ -176,7 +178,10 @@ class OCSort:
             trk.velocity if (trk.velocity is not None) else np.array((0, 0))
             for trk in self.active_trks.values()
         ]) 
-        last_boxes = np.array([trk.last_observation for trk in self.active_trks.values()])
+        last_boxes = np.array([
+            trk.last_observation for trk in self.active_trks.values()
+            if trk.last_observation is not None
+        ])
         k_observations = np.array([
             self._k_previous_obs(trk.observations, trk.age, self.delta_t)
             for trk in self.active_trks.values()
@@ -284,6 +289,8 @@ class OCSort:
             del self.active_trks[trk_id]
 
         if return_bboxes:
+            if not bboxes:
+                return np.empty((0, 5))
             return np.concatenate(bboxes)
 
 
@@ -327,6 +334,7 @@ class KalmanBoxTracker:
         self.time_since_update = 0
         self.id = KalmanBoxTracker.next_id
         KalmanBoxTracker.next_id += 1
+        self.identity = None
         self.history = []
         self.hits = 0
         self.hit_streak = 0
@@ -343,7 +351,7 @@ class KalmanBoxTracker:
         self.aspect_ratio_thresh = aspect_ratio_thresh
         self.min_box_area = min_box_area
 
-        self.id_event_imgs = [f'{uuid.uuid4()}.jpg', f'{uuid.uuid4()}.jpg']
+        self.id_event_images = [f'{uuid.uuid4()}.jpg', f'{uuid.uuid4()}.jpg']
     
     def update(self, bbox, idx=None):
         """

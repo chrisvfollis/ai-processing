@@ -13,9 +13,12 @@ import torch.nn.functional as F
 
 # internal dependencies
 from modules.data_structures import DetectedFace, FacialAreaRegion
-from utilities import io_utils, face_utils, image_utils
+from utilities import io_utils, face_utils, image_utils, log_utils
 from utilities.log_utils import press_stopwatch
 from utilities import general_utils as utils
+
+
+logger = log_utils.get_logger(__name__)
 
 
 class FaceAnalysis:
@@ -269,6 +272,7 @@ class FaceAnalysis:
             elif detector == 'retinaface':
                 all_facial_areas = [self.retinaface.detect_faces(imgs[0])]
             press_stopwatch(self, 'face_detection_time')
+
         
             press_stopwatch(self, 'other_processing_time')
             for img_idx, (img, facial_areas) in enumerate(zip(imgs, all_facial_areas)):
@@ -385,6 +389,7 @@ class FaceAnalysis:
             enhance=enhance,
         )
         if len(representations) == 0:
+            logger.warning('No employee representations')
             return []
         df = pd.DataFrame(representations)
         
@@ -521,8 +526,9 @@ class FaceAnalysis:
                     continue
                 batch_imgs.append(crop)
                 kept_regions.append(region)
-            if not batch_imgs:
-                return []
+        if not batch_imgs:
+            press_stopwatch(self, 'identification_pipeline_time')
+            return []
 
         per_image_face_dfs = self.find(
             imgs=batch_imgs,

@@ -84,6 +84,7 @@ class TrackingPipeline:
         
         self.trk_obs_df = None
         self.trk_states_df = None
+        self.trk_video_data = {}
 
         # SPEED/PERFORMANCE:
         self.primary_run_time = 0
@@ -156,7 +157,25 @@ class TrackingPipeline:
         while self.f_num < self.f_end:
             detections = self.detections.get(self.f_num, None)
 
-            self.ocsort.update(detections, self.f_num)
+            online_targets = self.ocsort.update(detections, self.f_num)
+
+            online_boxes = []
+            online_ids = []
+            for t in online_targets:
+                trk_id, box = t[4], utils.xywh_xyxy(t[:4], out='xywh')
+
+                valid_ratio = (box[2] / box[3]) <= self.ocsort.aspect_ratio_thresh
+                valid_area = math.prod(box[2:4]) > self.ocsort.min_box_area
+
+                if not (valid_ratio and valid_area):
+                    continue
+    
+                online_boxes.append(box)
+                online_ids.append(trk_id)
+                self.trk_video_data[self.f_num] = {
+                    'online_boxes': online_boxes,
+                    'online_ids': online_ids,
+                }
 
             if self.f_num % self.progress_interval == 0:
                 progress = utils.calculate_progress(self.f_num, self.f_total)
@@ -187,4 +206,9 @@ class TrackingPipeline:
                 os.remove(self.prior_pkl_path)
         log_utils.press_stopwatch(self, 'pkl_io')
 
-        logger.info(f'{len(self.active_trks.keys())} tracks saved to be continued')
+        logger.info(f'{len(self.ocsort.active_trks.keys())} tracks saved to be continued')
+
+    def generate_output_vid(self, trk_video_data):
+        cap = cv2.VideoCapture(self.video_path)
+
+        f_num = 0

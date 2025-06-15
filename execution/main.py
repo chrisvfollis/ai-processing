@@ -112,14 +112,27 @@ def run_pipelines(
 
         tracking = TrackingPipeline(filename, person_detections)
         active_trks, inactive_trks = tracking.run()
+
+        try:
+            identification = IdentificationPipeline(
+                filename, face_data, active_trks, inactive_trks
+            )
+            trk_identity_df = identification.run()
+            
+            for _, row in trk_identity_df.iterrows():
+                trk_id, identity = row[['trk_id', 'identity']]
+                if trk_id in active_trks:
+                    active_trks[trk_id].identity = identity
+                elif trk_id in inactive_trks:
+                    inactive_trks[trk_id].identity = identity
+
+            identification.save_id_event_images(
+                overlap_threshold=0.5, credentials=credentials
+            )
+        except ValueError as e:
+            logger.info(e)
+
         tracking.save_state()
-
-        identification = IdentificationPipeline(
-            filename, face_data, active_trks, inactive_trks
-        )
-        identification.run()
-        identification.save_id_event_images(overlap_threshold=0.5, credentials=credentials)
-
         io_utils.save_track_info(
             time_prefix, cam_id, inactive_trks, tracking.fps
         )
@@ -233,7 +246,7 @@ if __name__ == '__main__':
         },
         'centerface_cfg': {
             'conf_thresh': 0.65,
-            'min_area': (40, 40),
+            'min_area': (32, 32),
         },
     }
     osnet_cfg = {}
