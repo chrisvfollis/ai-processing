@@ -701,7 +701,7 @@ def get_track_info(time_prefix: str, designation: Optional[str] = None,
     return results
 
 
-def update_track_info(time_prefix, updates, db_name='.data.db') -> None:
+def update_track_info(time_prefix, updates, db_name='data.db') -> None:
     db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
     
@@ -737,8 +737,7 @@ def clear_track_info(identifier, db_name='data.db') -> None:
         conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
-def save_person_data(
-        person_data, db_name='data.db') -> None:
+def save_person_data(person_data, db_name='data.db') -> None:
     def _format_filename(img_url) -> str:
         filename = img_url.rsplit('/', 1)[1]    # remove bucket/folder info
         return '.'.join(filename.rsplit('_', 1)[:2])    # format file extension

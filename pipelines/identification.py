@@ -1,7 +1,6 @@
 # standard dependencies
 import os
 from typing import Optional
-import uuid
 
 # 3rd-party dependencies
 import pandas as pd
@@ -13,7 +12,6 @@ from sklearn.neighbors import NearestNeighbors
 
 # internal dependencies
 from utilities import io_utils, log_utils
-from utilities import general_utils as utils
 
 
 logger = log_utils.get_logger(__name__)
@@ -26,7 +24,7 @@ class IdentificationPipeline:
             face_data: pd.DataFrame,
             active_trks: dict,
             inactive_trks: dict,
-            embeddings_file: str = None,
+            embeddings_file: Optional[str] = None,
         ):
         # INPUT DATA:
         self.face_data = face_data
@@ -53,13 +51,13 @@ class IdentificationPipeline:
         self.embeddings_path = os.path.join(self.output_dir, self.embeddings_file)
 
         # STATS/OUTPUT DATA:
-        self.embedding_distances = None
-        self.face_overlap_df = None
+        self.embedding_dists = None
+        self.face_overlaps = None
 
     def run(self) -> pd.DataFrame:
-        if self.embedding_distances is None:
+        if self.embedding_dists is None:
             logger.info("Generating embedding distance matrix...")
-            self.embedding_distances = self.embedding_cos_dists()
+            self.embedding_dists = self.embedding_cos_dists()
 
         face_overlap_df = self.face_overlap_ratios()
         face_match_candidates = self._collect_face_match_candidates(face_overlap_df)
@@ -76,9 +74,77 @@ class IdentificationPipeline:
         self.final_track_identities = all_identities
         return all_identities
 
+    def save_id_event_images(
+            self,
+            face_overlap_df: pd.DataFrame = None,
+            overlap_threshold: float = 0.3,
+            credentials: tuple[str] = None,
+        ):
+
+        face_overlap_df = face_overlap_df or self.face_overlaps
+        high_overlaps = face_overlap_df[face_overlap_df['overlap_ratio'] >= overlap_threshold]
+        all_trks = self.active_trks | self.inactive_trks
+        trks_df = self.trk_detections.groupby('trk_id')
+        
+        frames = []
+        for trk_id, grp in trks_df:
+            trk_faces = high_overlaps[high_overlaps['trk_id'] == trk_id]
+
+            if not trk_faces.empty:
+                use_both = len(trk_faces) >= 2
+
+                f_first = trk_faces['f'].min() if use_both else grp['f'].min()
+                f_last = trk_faces['f'].max()
+            else:
+                f_first = grp['f'].min()
+                f_last = grp['f'].max()
+            
+            for i, frame in enumerate([f_first, f_last]):
+                row = grp[grp['f'] == frame].iloc[0]
+                frames.append({
+                    'trk_id': trk_id,
+                    'f': int(frame),
+                    'box': (int(row['x']), int(row['y']), int(row['w']), int(row['h'])),
+                    'image': all_trks[trk_id].id_event_images[i],
+                })
+
+        img_df = pd.DataFrame(frames).sort_values(by='f')
+
+        try:
+            cap = cv2.VideoCapture(self.video_path)
+            f_prev = None
+
+            for _, row in img_df.iterrows():
+                f_num, img_name = row[['f', 'image']]
+                if f_num != f_prev:
+                    try:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
+                        ret, frame = cap.read()
+
+                        if not ret:
+                            logger.warning(f'Frame {f_num} unreadable')
+                            continue
+                    finally:
+                        f_prev = f_num
+
+                if frame.size == 0:
+                    continue
+                
+                x, y, w, h = row['box']
+                crop = frame[y:y+h, x:x+w]
+
+                io_utils.save_event_image(
+                    img=crop,
+                    object_key=img_name,
+                    credentials=credentials,
+                    event_imgs_dir=self.event_imgs_dir
+                )
+        finally:
+            cap.release()
+
     def assign_identities(self, face_match_candidates: pd.DataFrame) -> pd.DataFrame:
         '''Direct identification via facial data'''
-        scores = self.track_identity_scores(face_match_candidates)
+        scores = self._track_identity_scores(face_match_candidates)
         top_scores = (
             scores.sort_values(['trk_id', 'overlap_weighted_avg_sim'], ascending=[True, False])
             .groupby('trk_id')
@@ -104,7 +170,7 @@ class IdentificationPipeline:
         Indirect identification by matching unidentified tracks to high-affinity
         tracks that have been identified.
         '''
-        knn_df = self.knn_track_embeddings(k=k)
+        knn_df = self.track_similarity_knn(k=k)
         identity_map = dict(initial_identities.values)
 
         reassigned = []
@@ -133,6 +199,48 @@ class IdentificationPipeline:
                         })
                         break
         return pd.DataFrame(reassigned)
+
+    def track_similarity_knn(
+            self,
+            k: int = 5,
+            embedding_dists: Optional[pd.DataFrame] = None,
+        ) -> pd.DataFrame:
+        dists_df = embedding_dists or self.embedding_dists
+
+        dists_df = dists_df.dropna(subset=['trk_id1', 'trk_id2'])
+        dists_df = dists_df[dists_df['trk_id1'] != dists_df['trk_id2']]
+
+        avg_dists = (
+            dists_df.groupby(['trk_id1', 'trk_id2'])['distance']
+            .mean()
+            .reset_index()
+        )
+        pivot = avg_dists.pivot(
+            index='trk_id1', columns='trk_id2', values='distance'
+        ).fillna(1.0)
+
+        trk_ids = pivot.index.to_numpy()
+        dist_matrix = pivot.to_numpy()
+
+        # fit kNN using precomputed distances:
+        nn = NearestNeighbors(n_neighbors=k, metric='precomputed')
+        nn.fit(dist_matrix)
+        distances, indices = nn.kneighbors(dist_matrix)
+
+        rows = []
+        for i, trk_id in enumerate(trk_ids):
+            for j in range(k):
+                neighbor_trk_id = trk_ids[indices[i][j]]
+                distance = distances[i][j]
+                rows.append({
+                    'trk_id': trk_id,
+                    'neighbor_rank': j + 1,
+                    'neighbor_trk_id': neighbor_trk_id,
+                    'distance': distance,
+                })
+        knn_df = pd.DataFrame(rows)
+
+        return knn_df
 
     def embedding_cos_dists(
             self,
@@ -218,43 +326,6 @@ class IdentificationPipeline:
 
         return pd.DataFrame(distance_data)
 
-    def knn_track_embeddings(self, dists = None, k: int = 5) -> pd.DataFrame:
-        dists_df = dists or self.embedding_distances
-
-        dists_df = dists_df.dropna(subset=['trk_id1', 'trk_id2'])
-        dists_df = dists_df[dists_df['trk_id1'] != dists_df['trk_id2']]
-
-        avg_dists = (
-            dists_df.groupby(['trk_id1', 'trk_id2'])['distance']
-            .mean()
-            .reset_index()
-        )
-        pivot = avg_dists.pivot(
-            index='trk_id1', columns='trk_id2', values='distance'
-        ).fillna(1.0)
-
-        trk_ids = pivot.index.to_numpy()
-        dist_matrix = pivot.to_numpy()
-
-        # fit kNN using precomputed distances:
-        nn = NearestNeighbors(n_neighbors=k, metric='precomputed')
-        nn.fit(dist_matrix)
-        distances, indices = nn.kneighbors(dist_matrix)
-
-        rows = []
-        for i, trk_id in enumerate(trk_ids):
-            for j in range(k):
-                neighbor_trk_id = trk_ids[indices[i][j]]
-                distance = distances[i][j]
-                rows.append({
-                    'trk_id': trk_id,
-                    'neighbor_rank': j + 1,
-                    'neighbor_trk_id': neighbor_trk_id,
-                    'distance': distance,
-                })
-
-        return pd.DataFrame(rows)
-
     def face_overlap_ratios(self) -> pd.DataFrame:
         def _overlap_ratio(row):
             xA = max(row['x1_face'], row['x1_trk'])
@@ -288,9 +359,9 @@ class IdentificationPipeline:
             'trk_id',
             'overlap_ratio',
         ]
-        self.face_overlap_df = merged[keep_cols]
+        self.face_overlaps = merged[keep_cols]
 
-        return self.face_overlap_df
+        return self.face_overlaps
 
     def _collect_face_match_candidates(
             self, face_overlap_df: pd.DataFrame = None
@@ -316,7 +387,7 @@ class IdentificationPipeline:
                 - distance: identity cosine distance
                 - overlap: spatial overlap between face detection and track box
         '''
-        face_overlap_df = face_overlap_df or self.face_overlap_ratios()
+        face_overlap_df = face_overlap_df or self.face_overlaps
 
         merged = self.face_data.merge(
             face_overlap_df,
@@ -334,7 +405,7 @@ class IdentificationPipeline:
         face_match_candidates = merged[keep_cols]
         return face_match_candidates
 
-    def track_identity_scores(
+    def _track_identity_scores(
             self, face_match_candidates: pd.DataFrame
         ) -> pd.DataFrame:
         df = face_match_candidates.copy()
@@ -353,73 +424,6 @@ class IdentificationPipeline:
         
         grouped['overlap_weighted_avg_sim'] = grouped['weighted_score'] / (grouped['total_overlap'] + 1e-6)
         return grouped.sort_values(by=['trk_id', 'overlap_weighted_avg_sim'], ascending=[True, False])
-
-    def save_id_event_images(
-            self,
-            face_overlap_df: pd.DataFrame = None,
-            overlap_threshold: float = 0.3,
-            credentials: tuple[str] = None,
-        ) -> dict:
-        trk_img_info = {}
-
-        face_overlap_df = face_overlap_df or self.face_overlap_df()
-        high_overlaps = face_overlap_df[face_overlap_df['overlap_ratio'] >= overlap_threshold]
-        all_trks = self.active_trks | self.inactive_trks
-        trks_df = self.trk_detections.groupby('trk_id')
-        
-        frames = []
-        for trk_id, grp in trks_df:
-            trk_faces = high_overlaps[high_overlaps['trk_id'] == trk_id]
-
-            if not trk_faces.empty:
-                use_both = len(trk_faces) >= 2
-
-                f_first = trk_faces['f'].min() if use_both else grp['f'].min()
-                f_last = trk_faces['f'].max()
-            else:
-                f_first = grp['f'].min()
-                f_last = grp['f'].max()
-
-            trk_id_frames = (f_first, f_last)
-            
-            for i, frame in enumerate(trk_id_frames):
-                row = grp[grp['f'] == frame].iloc[0]
-                frames.append({
-                    'trk_id': trk_id,
-                    'f': int(frame),
-                    'box': (int(row['x']), int(row['y']), int(row['w']), int(row['h'])),
-                    'image': all_trks[trk_id].id_event_images[i],
-                })
-
-        img_df = pd.DataFrame(frames).sort_values(by='f')
-
-        cap = cv2.VideoCapture(self.video_path)
-        f_prev = None
-        
-        for _, row in img_df.iterrows():
-            f_num, img_name = row[['f', 'image']]
-            trk_img_info.setdefault(row['trk_id'], []).append(img_name)
-
-            if f_num != f_prev:
-                try:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
-                    ret, frame = cap.read()
-                    if not ret:
-                        logger.warning(f'Frame {f_num} unreadable')
-                        continue
-                finally:
-                    f_prev = f_num
-
-            x, y, w, h = row['box']
-            crop = frame[y:y+h, x:x+w]
-
-            io_utils.save_event_image(
-                img=crop,
-                object_key=img_name,
-                credentials=credentials,
-                event_imgs_dir=self.event_imgs_dir
-            )
-        cap.release()
 
     def _format_track_data(
             self,

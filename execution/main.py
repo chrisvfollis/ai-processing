@@ -100,8 +100,11 @@ def run_pipelines(
     process_result = False
     try:
         object_key = f'{shop_id}/{filename}'
-        if not io_utils.download_s3_footage(object_key, credentials):
-            raise S3DownloadError(f'Failed to download footage: {object_key}')
+        if not os.path.exists(
+            os.path.join(io_utils.get_project_root(), 'files/input/', filename)
+        ):
+            if not io_utils.download_s3_footage(object_key, credentials):
+                raise S3DownloadError(f'Failed to download footage: {object_key}')
         
         inference = InferencePipeline(filename, **inference_cfg)
         if inference.skim() == False:
@@ -127,8 +130,8 @@ def run_pipelines(
         )
         process_result = True
         logger.info(f'Processed {filename}')
-    except Exception as e:
-        logger.exception(f'Error occurred while processing {filename}')   # logs the traceback automatically, so
+    except Exception:
+        logger.exception(f'Error occurred while processing {filename}')
     finally:
         io_utils.clear_memory()
 
