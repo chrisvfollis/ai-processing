@@ -113,18 +113,19 @@ def run_pipelines(
             inference.save_state()
 
         tracking = TrackingPipeline(filename, person_detections, **tracking_cfg)
-        track_detections, _ = tracking.run()
+        active_trks, inactive_trks = tracking.run()
+        tracking.save_state()
 
-        identification = IdentificationPipeline(filename, face_data, track_detections)
+        identification = IdentificationPipeline(
+            filename, face_data, active_trks, inactive_trks
+        )
         identification.run()
+        identification.save_id_event_images(overlap_threshold=0.5)
 
         io_utils.save_track_info(
-            time_prefix, cam_id, tracking.inactive_trks,
-            fps=tracking.fps
+            time_prefix, cam_id, inactive_trks, tracking.fps
         )
-
         process_result = True
-        
         logger.info(f'Processed {filename}')
     except Exception as e:
         logger.exception(f'Error occurred while processing {filename}')   # logs the traceback automatically, so

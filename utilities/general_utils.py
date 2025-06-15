@@ -43,6 +43,10 @@ def get_git_commit_info(cfg_dir_path='../config'):
 
 
 def get_video_info(source, release=True):
+    '''
+    Returns:
+        tuple[tuple[int, ...], float, int, int]: (resolution, frame_diag, fps, total_frames)
+    '''
     if isinstance(source, str):
         source = cv2.VideoCapture(source)
     

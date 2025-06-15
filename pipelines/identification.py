@@ -1,10 +1,11 @@
 # standard dependencies
 import os
 from typing import Optional
+import uuid
 
 # 3rd-party dependencies
-import numpy as np
 import pandas as pd
+import cv2
 import torch
 import torch.nn.functional as F
 import h5py
@@ -23,17 +24,25 @@ class IdentificationPipeline:
             self,
             video_file: str,
             face_data: pd.DataFrame,
-            track_detections: pd.DataFrame,
+            active_trks: dict,
+            inactive_trks: dict,
             embeddings_file: str = None,
         ):
         # INPUT DATA:
         self.face_data = face_data
-        self.trk_detections = track_detections
+
+        self.active_trks = active_trks
+        self.inactive_trks = inactive_trks
+
+        obs_df, _ = self._format_track_data(active_trks, inactive_trks)
+        self.trk_detections = obs_df
 
         # PATHS/FILENAMES/ETC:
         self.project_root = io_utils.get_project_root()
+
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
+        self.event_imgs_dir = os.path.join(self.output_dir, 'event_imgs/')
 
         self.video_file = video_file
         self.video_path = os.path.join(self.input_dir, video_file)
@@ -45,15 +54,15 @@ class IdentificationPipeline:
 
         # STATS/OUTPUT DATA:
         self.embedding_distances = None
-        self.face_iou_df = None
+        self.face_overlap_df = None
 
     def run(self) -> pd.DataFrame:
         if self.embedding_distances is None:
             logger.info("Generating embedding distance matrix...")
             self.embedding_distances = self.embedding_cos_dists()
 
-        face_ious_df = self.face_ious()
-        face_match_candidates = self._collect_face_match_candidates(face_ious_df)
+        face_overlap_df = self.face_overlap_ratios()
+        face_match_candidates = self._collect_face_match_candidates(face_overlap_df)
 
         direct_identifications = self.assign_identities(face_match_candidates)
         indirect_identifications = self.reassociate(direct_identifications)
@@ -71,14 +80,14 @@ class IdentificationPipeline:
         '''Direct identification via facial data'''
         scores = self.track_identity_scores(face_match_candidates)
         top_scores = (
-            scores.sort_values(['trk_id', 'iou_weighted_avg_sim'], ascending=[True, False])
+            scores.sort_values(['trk_id', 'overlap_weighted_avg_sim'], ascending=[True, False])
             .groupby('trk_id')
             .first()
             .reset_index()
         )
 
         top_scores['assignment_type'] = 'direct'
-        top_scores['assignment_cost'] = 1 - top_scores['iou_weighted_avg_sim']
+        top_scores['assignment_cost'] = 1 - top_scores['overlap_weighted_avg_sim']
 
         keep_cols = [
             'trk_id',
@@ -246,62 +255,58 @@ class IdentificationPipeline:
 
         return pd.DataFrame(rows)
 
-    def face_ious(self) -> pd.DataFrame:
-        def _compute_iou(row):
+    def face_overlap_ratios(self) -> pd.DataFrame:
+        def _overlap_ratio(row):
             xA = max(row['x1_face'], row['x1_trk'])
             yA = max(row['y1_face'], row['y1_trk'])
             xB = min(row['x2_face'], row['x2_trk'])
             yB = min(row['y2_face'], row['y2_trk'])
 
             inter_area = max(0, xB - xA) * max(0, yB - yA)
+            face_area = (row['x2_face'] - row['x1_face']) * (row['y2_face'] - row['y1_face'])
+            return inter_area / (face_area + 1e-6)
 
-            box_area_face = (row['x2_face'] - row['x1_face']) * (row['y2_face'] - row['y1_face'])
-            box_area_trk = (row['x2_trk'] - row['x1_trk']) * (row['y2_trk'] - row['y1_trk'])
-
-            iou = inter_area / float(box_area_face + box_area_trk - inter_area + 1e-6)
-            return iou
-
-        face_df = self.face_data.copy()
-        # one row per face detection:
         face_df = (
-            face_df.groupby(['f', 'face_idx'], as_index=False)
-            .first()
+            self.face_data.groupby(['f', 'face_idx'], as_index=False).first()
+            .assign(x1_face=lambda df: df['x'],
+                    y1_face=lambda df: df['y'],
+                    x2_face=lambda df: df['x'] + df['w'],
+                    y2_face=lambda df: df['y'] + df['h'])
         )
-        face_df['x1'] = face_df['x']
-        face_df['y1'] = face_df['y']
-        face_df['x2'] = face_df['x'] + face_df['w']
-        face_df['y2'] = face_df['y'] + face_df['h']
-
-        merged_df = face_df.merge(
-            self.trk_detections,
-            on='f',
-            suffixes=('_face', '_trk'),
+        trk = (
+            self.trk_detections.assign(
+                x1_trk=lambda df: df['x'],
+                y1_trk=lambda df: df['y'],
+                x2_trk=lambda df: df['x'] + df['w'],
+                y2_trk=lambda df: df['y'] + df['h'])
         )
-        merged_df['iou'] = merged_df.apply(_compute_iou, axis=1)
-
+        merged = face_df.merge(trk, on='f')
+        merged['overlap_ratio'] = merged.apply(_overlap_ratio, axis=1)
         keep_cols = [
             'f',
             'face_idx',
             'trk_id',
-            'iou',
+            'overlap_ratio',
         ]
-        return merged_df[keep_cols]
+        self.face_overlap_df = merged[keep_cols]
+
+        return self.face_overlap_df
 
     def _collect_face_match_candidates(
-            self, face_ious_df: pd.DataFrame = None
+            self, face_overlap_df: pd.DataFrame = None
         ) -> pd.DataFrame:
         '''
         Collects candidate face-to-track associations for recognized faces.
         
         For each detected face with one or more matching identities, this method
         identifies all track detections in the same frame and computes their
-        bounding box IoU. The result is a set of candidate associations, not
+        bounding box overlap. The result is a set of candidate associations, not
         hard assignments.
 
         Each row in the output represents:
         - One candidate identity for a recognized face
         - One overlapping track detection in the same frame
-        - Their associated IoU and face-identity cosine distance
+        - Their associated overlap and face-identity cosine distance
 
         Returns:
             pd.DataFrame with columns:
@@ -309,12 +314,12 @@ class IdentificationPipeline:
                 - trk_id: track ID
                 - identity: candidate identity for the face detection
                 - distance: identity cosine distance
-                - iou: spatial overlap between face detection and track box
+                - overlap: spatial overlap between face detection and track box
         '''
-        face_ious_df = face_ious_df or self.face_ious()
+        face_overlap_df = face_overlap_df or self.face_overlap_ratios()
 
         merged = self.face_data.merge(
-            face_ious_df,
+            face_overlap_df,
             on=['f', 'face_idx'],
             how='inner',
         )
@@ -324,7 +329,7 @@ class IdentificationPipeline:
             'trk_id',
             'identity',
             'distance',
-            'iou',
+            'overlap_ratio',
         ]
         face_match_candidates = merged[keep_cols]
         return face_match_candidates
@@ -334,17 +339,132 @@ class IdentificationPipeline:
         ) -> pd.DataFrame:
         df = face_match_candidates.copy()
         df['similarity'] = 1 - df['distance']
-        df['weighted_sim'] = df['similarity'] * df['iou']
+        df['weighted_sim'] = df['similarity'] * df['overlap_ratio']
 
         grouped = (
             df.groupby(['trk_id', 'identity'])
             .agg(
                 weighted_score=('weighted_sim', 'sum'),
-                total_iou=('iou', 'sum'),
+                total_overlap=('overlap_ratio', 'sum'),
                 count=('identity', 'count'),
             )
             .reset_index()
         )
         
-        grouped['iou_weighted_avg_sim'] = grouped['weighted_score'] / (grouped['total_iou'] + 1e-6)
-        return grouped.sort_values(by=['trk_id', 'iou_weighted_avg_sim'], ascending=[True, False])
+        grouped['overlap_weighted_avg_sim'] = grouped['weighted_score'] / (grouped['total_overlap'] + 1e-6)
+        return grouped.sort_values(by=['trk_id', 'overlap_weighted_avg_sim'], ascending=[True, False])
+
+    def save_id_event_images(
+            self,
+            face_overlap_df: pd.DataFrame = None,
+            overlap_threshold: float = 0.3,
+            credentials: tuple[str] = None,
+        ) -> dict:
+        trk_img_info = {}
+
+        face_overlap_df = face_overlap_df or self.face_overlap_df()
+        high_overlaps = face_overlap_df[face_overlap_df['overlap_ratio'] >= overlap_threshold]
+        all_trks = self.active_trks | self.inactive_trks
+        trks_df = self.trk_detections.groupby('trk_id')
+        
+        frames = []
+        for trk_id, grp in trks_df:
+            trk_faces = high_overlaps[high_overlaps['trk_id'] == trk_id]
+
+            if not trk_faces.empty:
+                use_both = len(trk_faces) >= 2
+
+                f_first = trk_faces['f'].min() if use_both else grp['f'].min()
+                f_last = trk_faces['f'].max()
+            else:
+                f_first = grp['f'].min()
+                f_last = grp['f'].max()
+
+            trk_id_frames = (f_first, f_last)
+            
+            for i, frame in enumerate(trk_id_frames):
+                row = grp[grp['f'] == frame].iloc[0]
+                frames.append({
+                    'trk_id': trk_id,
+                    'f': int(frame),
+                    'box': (int(row['x']), int(row['y']), int(row['w']), int(row['h'])),
+                    'image': all_trks[trk_id].id_event_images[i],
+                })
+
+        img_df = pd.DataFrame(frames).sort_values(by='f')
+
+        cap = cv2.VideoCapture(self.video_path)
+        f_prev = None
+        
+        for _, row in img_df.iterrows():
+            f_num, img_name = row[['f', 'image']]
+            trk_img_info.setdefault(row['trk_id'], []).append(img_name)
+
+            if f_num != f_prev:
+                try:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
+                    ret, frame = cap.read()
+                    if not ret:
+                        logger.warning(f'Frame {f_num} unreadable')
+                        continue
+                finally:
+                    f_prev = f_num
+
+            x, y, w, h = row['box']
+            crop = frame[y:y+h, x:x+w]
+
+            io_utils.save_event_image(
+                img=crop,
+                object_key=img_name,
+                credentials=credentials,
+                event_imgs_dir=self.event_imgs_dir
+            )
+        cap.release()
+
+    def _format_track_data(
+            self,
+            active_trks: Optional[dict] = None,
+            inactive_trks: Optional[dict] = None,
+        ) -> tuple[pd.DataFrame, ...]:
+
+        active_trks = active_trks or self.active_trks
+        inactive_trks = inactive_trks or self.inactive_trks
+
+        obs_records = []
+        state_records = []
+
+        for trk_dict in (active_trks, inactive_trks):
+            for trk_id, trk in trk_dict.items():
+                # observations (detections):
+                for age, bbox in trk.observations.items():
+                    f_num = trk.map_offset(offset=age)
+                    valid = age in trk.valid_observations
+                    box_idx = trk.bbox_indices[age]
+
+                    obs_records.append({
+                        'f': f_num,
+                        'trk_id': trk_id,
+                        'age': age,
+                        'box_idx': box_idx,
+                        'x1': bbox[0],
+                        'y1': bbox[1],
+                        'x2': bbox[2],
+                        'y2': bbox[3],
+                        'is_valid': 1 if valid else 0,
+                    })
+
+                # kalman filter states:
+                for t, bbox in enumerate(trk.history):
+                    state_records.append({
+                        'trk_id': trk_id,
+                        't': t,
+                        'x1': bbox[0],
+                        'y1': bbox[1],
+                        'x2': bbox[2],
+                        'y2': bbox[3],
+                    })
+
+        obs_df = pd.DataFrame(obs_records)
+        state_df = pd.DataFrame(state_records)
+
+        return obs_df, state_df

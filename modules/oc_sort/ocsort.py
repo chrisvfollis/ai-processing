@@ -1,6 +1,7 @@
 # standard dependencies
 import math
 from typing import Optional
+import uuid
 
 # 3rd-party dependencies
 import numpy as np
@@ -341,6 +342,8 @@ class KalmanBoxTracker:
 
         self.aspect_ratio_thresh = aspect_ratio_thresh
         self.min_box_area = min_box_area
+
+        self.id_event_imgs = [f'{uuid.uuid4()}.jpg', f'{uuid.uuid4()}.jpg']
     
     def update(self, bbox, idx=None):
         """

@@ -82,6 +82,9 @@ class TrackingPipeline:
             min_box_area=min_box_area,
         )
         
+        self.trk_obs_df = None
+        self.trk_states_df = None
+
         # SPEED/PERFORMANCE:
         self.primary_run_time = 0
         self.persist_time = 0
@@ -146,9 +149,8 @@ class TrackingPipeline:
 
         log_utils.press_stopwatch(self, 'persist_time')
 
-    def run(self) -> tuple[pd.DataFrame, ...]:
+    def run(self) -> tuple[dict, ...]:
         log_utils.press_stopwatch(self, 'primary_run_time')
-
         self.f_num = self.f_start
         
         while self.f_num < self.f_end:
@@ -163,58 +165,7 @@ class TrackingPipeline:
             self.f_num += 1
 
         log_utils.press_stopwatch(self, 'primary_run_time')
-
-        return self.format_results(
-            self.ocsort.active_trks, self.ocsort.inactive_trks
-        )
-
-    def format_results(
-            self,
-            active_trks: Optional[dict] = None,
-            inactive_trks: Optional[dict] = None,
-        ) -> tuple[pd.DataFrame, ...]:
-
-        active_trks = active_trks or self.ocsort.active_trks
-        inactive_trks = inactive_trks or self.ocsort.inactive_trks
-
-        obs_records = []
-        state_records = []
-
-        for trk_dict in (active_trks, inactive_trks):
-            for trk_id, trk in trk_dict.items():
-                # observations (detections):
-                for age, bbox in trk.observations.items():
-                    f_num = trk.map_offset(offset=age)
-                    valid = age in trk.valid_observations
-                    box_idx = trk.bbox_indices[age]
-
-                    obs_records.append({
-                        'f': f_num,
-                        'trk_id': trk_id,
-                        'age': age,
-                        'box_idx': box_idx,
-                        'x1': bbox[0],
-                        'y1': bbox[1],
-                        'x2': bbox[2],
-                        'y2': bbox[3],
-                        'is_valid': 1 if valid else 0,
-                    })
-
-                # kalman filter states:
-                for t, bbox in enumerate(trk.history):
-                    state_records.append({
-                        'trk_id': trk_id,
-                        't': t,
-                        'x1': bbox[0],
-                        'y1': bbox[1],
-                        'x2': bbox[2],
-                        'y2': bbox[3],
-                    })
-
-        obs_df = pd.DataFrame(obs_records)
-        state_df = pd.DataFrame(state_records)
-
-        return obs_df, state_df
+        return self.ocsort.active_trks, self.ocsort.inactive_trks
 
     def save_state(self):
         logger.info('Saving pipeline state...')

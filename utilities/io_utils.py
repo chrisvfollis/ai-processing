@@ -303,19 +303,22 @@ def read_embeddings(hdf5_file, target_frame, device):
 
 def save_event_image(
         img: np.ndarray,
-        credentials: tuple[str],
-        region='us-west-1',
-        bucket_name='timemanager-event-imgs',
-        project_root=None,
+        object_key: Optional[str] = None,
+        credentials: Optional[tuple[str]] = None,
+        region: str = 'us-west-1',
+        bucket_name: str = 'timemanager-event-imgs',
+        event_imgs_dir: str = None,
     ) -> str | None:
 
     if img is None:
         return None
-    
-    project_root = project_root or get_project_root()
-    event_imgs_dir = os.path.join(project_root, 'files/output/', 'event_imgs/')
 
-    object_key = f'{uuid.uuid4()}.jpg'
+    credentials = credentials or conn_utils.get_aws_credentials()
+    
+    event_imgs_dir = event_imgs_dir or os.path.join(
+        get_project_root(), 'files/output/', 'event_imgs/'
+    )
+    object_key = object_key or f'{uuid.uuid4()}.jpg'
     file_path = os.path.join(event_imgs_dir, object_key)
 
     cv2.imwrite(file_path, img)
@@ -444,7 +447,7 @@ def delete_s3_footage(
         if errors:
             for err in errors:
                 _, filename = utils.parse_obj_key(err['Key'])
-                print(f'Failed to delete {filename}: {err['Message']}')
+                print(f'Failed to delete {filename}: {err["Message"]}')
         else:
             all_successful = True
 
