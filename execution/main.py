@@ -203,7 +203,7 @@ if __name__ == '__main__':
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
     parser.add_argument('--priority-cam', type=str)
     parser.add_argument('--log-level', type=int, default=0)
-    
+
     args = parser.parse_args()
 
     log_utils.configure_logging(log_level=args.log_level)
@@ -219,8 +219,28 @@ if __name__ == '__main__':
     
     device = utils.get_default_device()
 
-    yolox_cfg = {}
-    faces_cfg = {}
+    yolox_cfg = {
+        'checkpoint': 'yolox_model_trt.pth',
+        'num_classes': 1,
+        'depth': 1.33,
+        'width': 1.25,
+        'input_size': (800, 1440),
+        'conf_thresh': 0.05,
+        'nms_thresh': 0.7,
+        'fp16': True,
+        'use_trt': True,
+    }
+    faces_cfg = {
+        'facenet_cfg': {
+            'checkpoint': 'facenet512_model_trt.pth',
+            'fp16': False,
+            'use_trt': True,
+        },
+        'centerface_cfg': {
+            'conf_thresh': 0.65,
+            'min_area': (40, 40),
+        },
+    }
     osnet_cfg = {}
 
     model_cfgs = {
