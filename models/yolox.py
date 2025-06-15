@@ -165,7 +165,7 @@ class YoloX:
             conf_thresh: Optional[float] = None,
             nms_thresh: Optional[float] = None,
             num_classes: Optional[int] = None,
-        ) -> list[torch.tensor | None]:
+        ) -> list[torch.Tensor | None]:
         '''
         Returns (list[torch.tensor or None]): List of tensors, one for each
             image (or None if there were no detections in that image). Each

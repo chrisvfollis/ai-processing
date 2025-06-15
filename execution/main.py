@@ -198,11 +198,11 @@ if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--log-level', type=int, default=0)
     parser.add_argument('--retain-footage', action='store_true', default=False)
     parser.add_argument('--save-all-data', action='store_true', default=False)
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
     parser.add_argument('--priority-cam', type=str)
-    parser.add_argument('--log-level', type=int, default=0)
 
     args = parser.parse_args()
 
