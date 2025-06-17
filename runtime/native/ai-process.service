@@ -4,16 +4,16 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-User=ubuntu
-Group=ubuntu
+User=ivakt1
+Group=ivakt1
 Type=simple
 EnvironmentFile=/etc/default/ai-process
-ExecStart=/bin/bash -c '/home/ubuntu/.local/share/virtualenvs/ai-processing-cIZ_oGug/bin/python3 /home/ubuntu/ai-processing/execution/main.py $EXTRA_ARGS'
+ExecStart=/bin/bash -c '/home/ivakt1/.local/share/virtualenvs/ai-processing-G17QV8he/bin/python3 /home/ivakt1/ai-processing/execution/main.py $EXTRA_ARGS'
 KillMode=control-group
-WorkingDirectory=/home/ubuntu/ai-processing/execution
-Environment="PYTHONPATH=/home/ubuntu/.local/share/virtualenvs/ai-processing-cIZ_oGug/lib/python3.10/site-packages"
-Environment="PATH=/usr/bin:/usr/local/bin:/bin:/usr/sbin:/sbin:/home/ubuntu/.local/bin:/home/ubuntu/.local/share/virtualenvs/ai-processing-cIZ_oGug/bin"
-Environment="LD_LIBRARY_PATH=/usr/local/cuda-12.4/lib:/usr/local/cuda-12.4/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+WorkingDirectory=/home/ivakt1/ai-processing/execution
+Environment="PYTHONPATH=/home/ivakt1/.local/share/virtualenvs/ai-processing-G17QV8he/lib/python3.10/site-packages"
+Environment="PATH=/home/ivakt1/.local/bin:/home/ivakt1/.local/share/virtualenvs/ai-processing-G17QV8he/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
 Environment="TMPDIR=/tmp"
 Environment="PYTHONUNBUFFERED=1"
 LimitFSIZE=infinity

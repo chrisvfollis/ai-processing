@@ -172,7 +172,14 @@ def main(
         'retain_footage': retain_footage,
     }
 
-    io_utils.clear_local_files()
+    dir_paths = io_utils.get_common_dirs()
+    target_dir_names = [
+        'output_dir',
+        'event_imgs_dir'
+    ]
+    target_dirs = [dir_paths[name] for name in target_dir_names]
+    
+    io_utils.clear_local_files(target_dirs=target_dirs)
     io_utils.clear_track_info('all')
 
     while True:
