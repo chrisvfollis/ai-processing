@@ -852,14 +852,16 @@ def get_api_tokens(credentials: dict = None) -> tuple[str | None, ...]:
 
 
 def fetch_person_data(
-        shop_uuid: str = None, access_token: str = None, save_data: bool = True,
-        db_name: str = 'data.db') -> list:
+        shop_uuid: str = None,
+        access_token: str = None,
+        save_data: bool = True,
+        db_name: str = 'data.db',
+    ) -> list:
     project_root = get_project_root()
 
-    db_path = os.path.join(project_root, 'files/', db_name)
     img_dir = os.path.join(project_root, 'files/input/', 'faces/')
 
-    shop_uuid = shop_uuid or get_shop(db_path=db_path)[0]
+    shop_uuid = shop_uuid or get_shop(db_name=db_name)[0]
     access_token = access_token or get_api_tokens()[0]
     
     webapp_api = APIClient(var_prefix='WEBAPP_API')
@@ -874,7 +876,7 @@ def fetch_person_data(
     if response.status_code == 200:
         person_data = response.json().get('employees', [])
         if save_data:
-            save_person_data(person_data, db_path=db_path, img_dir=img_dir)
+            save_person_data(person_data, db_name=db_name, img_dir=img_dir)
     else:
         person_data = []
         print(f'Error: {response.status_code}: {response.text}')
