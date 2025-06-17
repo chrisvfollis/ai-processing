@@ -2,9 +2,11 @@
 import os
 import pickle
 from typing import Optional
+import math
 
 # 3rd-party dependencies
 import pandas as pd
+import cv2
 
 # internal dependencies
 from utilities import io_utils, log_utils
