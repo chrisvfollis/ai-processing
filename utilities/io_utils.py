@@ -461,14 +461,15 @@ def download_s3_image(
         object_key,
         credentials=None,
         filename=None,
-        bucket_name='ivakt-employee-photos'
+        img_dir='files/input/faces/',
+        bucket_name='ivakt-employee-photos',
     ) -> bool:
     s3_client = conn_utils.s3_connect(
         region='us-west-1', credentials=credentials
     )
     if not filename:
         filename = object_key.split('/')[-1]
-    output_path = os.path.join(get_project_root(), 'files/input/', filename)
+    output_path = os.path.join(get_project_root(), img_dir, filename)
 
     try:
         if os.path.exists(output_path):
@@ -857,10 +858,6 @@ def fetch_person_data(
         save_data: bool = True,
         db_name: str = 'data.db',
     ) -> list:
-    project_root = get_project_root()
-
-    img_dir = os.path.join(project_root, 'files/input/', 'faces/')
-
     shop_uuid = shop_uuid or get_shop(db_name=db_name)[0]
     access_token = access_token or get_api_tokens()[0]
     
@@ -876,7 +873,7 @@ def fetch_person_data(
     if response.status_code == 200:
         person_data = response.json().get('employees', [])
         if save_data:
-            save_person_data(person_data, db_name=db_name, img_dir=img_dir)
+            save_person_data(person_data, db_name=db_name)
     else:
         person_data = []
         print(f'Error: {response.status_code}: {response.text}')
