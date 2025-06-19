@@ -210,7 +210,69 @@ class TrackingPipeline:
 
         logger.info(f'{len(self.ocsort.active_trks.keys())} tracks saved to be continued')
 
-    def generate_output_vid(self, trk_video_data):
+    def generate_output_vid(self, trk_video_data: dict):
+        logger.info(f'Generating output vid...')
+
+        output_vid_dir = os.path.join(self.output_dir, 'videos/')
+        file_prefix = self.video_file.split('.')[0]
+        output_vid_path = io_utils.get_unique_path(
+            output_vid_dir, f'{file_prefix}_tracker_output.mp4'
+        )
+
         cap = cv2.VideoCapture(self.video_path)
 
+        font = cv2.FONT_HERSHEY_PLAIN
+        text_scale = 2
+        text_thickness = 2
+        line_thickness = 2
+
+        def _get_color(idx):
+            idx *= 3
+            return ((37 * idx) % 255, (17 * idx) % 255, (29 * idx) % 255)
+
+        output_dims = (1920, 1080)
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(output_vid_path, fourcc, self.fps, output_dims)
+
         f_num = 0
+        while f_num < self.f_total:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            global_f_num = self.f_start + f_num
+
+            for det in self.detections.get(global_f_num, []):
+                x1, y1, w, h = utils.xywh_xyxy(det[:4], out='xywh')
+                box = tuple(map(int, [x1, y1, x1 + w, y1 + h]))
+                cv2.rectangle(frame, box[:2], box[2:], (255, 255, 255), line_thickness)
+
+            trk_data = trk_video_data.get(global_f_num, {})
+            for box, track_id in zip(
+                trk_data.get('online_boxes', []),
+                trk_data.get('online_ids', [])
+            ):
+                x1, y1, w, h = map(int, box)
+                xyxy = (x1, y1, x1 + w, y1 + h)
+                color = _get_color(track_id)
+                cv2.rectangle(frame, xyxy[:2], xyxy[2:], color, line_thickness)
+                cv2.putText(frame, str(track_id), (x1, y1 - 5), font, text_scale, color, text_thickness)
+
+            cv2.putText(
+                frame,
+                f'Frame: {global_f_num}',
+                (5, 20),
+                font,
+                text_scale,
+                (0, 0, 255),
+                text_thickness
+            )
+
+            resized_frame = cv2.resize(frame, output_dims)
+            out.write(resized_frame)
+
+            f_num += 1
+
+        cap.release()
+        out.release()
+        logger.info(f'Tracker output vid saved to: {output_vid_path}')
