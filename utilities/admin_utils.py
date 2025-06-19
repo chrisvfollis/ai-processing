@@ -25,7 +25,52 @@ from utilities.conn_utils import APIClient
 # -----------------------------------------------------------------------------
 
 
-def get_instance_info(nickname: str = None, shop_id: str = None):
+def get_edge_computer_info(
+        nickname: str = None, shop_id: str = None
+    ) -> dict | None:
+    '''
+    Fetches edge computer information using either its nickname or the ID of the
+    associated shop.
+
+    Args:
+        nickname (str): The nickname of the edge computer.
+        shop_id (str): The ID of the shop associated with the edge computer.
+
+    Returns:
+        computer_info (dict or None): A dictionary of the instance information
+            if any was found, otherwise None.
+    '''
+    if not nickname and not shop_id:
+        raise ValueError(
+            'At least one of `nickname` or `shop_id` must be provided'
+        )
+
+    internal_api = APIClient(var_prefix='INTERNAL_API')
+    params = {
+        key: value for key, value in [
+            ('nickname', nickname), ('shop_id', shop_id)
+        ] if value
+    }
+    computer_info = None
+    try:
+        r = internal_api.get('get_edge_computer_info/', params=params)
+        data = r.json()
+        if 'error' in data:
+            raise RequestException(data['error'])
+        
+        computer_info = data.get('results', None)
+
+    except RequestException as e:
+        print(f'Error making request: {e}')
+    except Exception as e:
+        print(f'Unexpected error: {e}')
+    
+    return computer_info
+
+
+def get_instance_info(
+        nickname: str = None, shop_id: str = None
+    ) -> dict | None:
     '''
     Fetches instance information using either its nickname or the ID of the
     associated shop.
@@ -38,12 +83,10 @@ def get_instance_info(nickname: str = None, shop_id: str = None):
         instance_info (dict or None): A dictionary of the instance information
             if any was found, otherwise None.
     '''
-    instance_info = None
-
     if not nickname and not shop_id:
-        error_message = ('At least one of `nickname` or `shop_id` must ' +
-                         'have an argument.')
-        raise ValueError(error_message)
+        raise ValueError(
+            'At least one of `nickname` or `shop_id` must be provided'
+        )
 
     internal_api = APIClient(var_prefix='INTERNAL_API')
     params = {
@@ -51,6 +94,7 @@ def get_instance_info(nickname: str = None, shop_id: str = None):
             ('nickname', nickname), ('shop_id', shop_id)
         ] if value
     }
+    instance_info = None
     try:
         r = internal_api.get('get_instance_info/', params=params)
         data = r.json()
