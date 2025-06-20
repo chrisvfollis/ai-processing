@@ -210,10 +210,15 @@ class TrackingPipeline:
 
         logger.info(f'{len(self.ocsort.active_trks.keys())} tracks saved to be continued')
 
-    def generate_output_vid(self, trk_video_data: Optional[dict] = None, face_data: Optional[pd.DataFrame] = None):
+    def generate_output_vid(
+            self,
+            trk_video_data: Optional[dict] = None,
+            face_data: Optional[pd.DataFrame] = None,
+            all_detections: bool = False,
+        ):
         trk_video_data = trk_video_data or self.trk_video_data
 
-        logger.info('Generating output vid...')
+        logger.info('Generating output video...')
 
         file_prefix = self.video_file.split('.')[0]
         output_filename = f'{file_prefix}_tracker_output.mp4'
@@ -246,16 +251,17 @@ class TrackingPipeline:
 
             global_f_num = self.f_start + f_num
 
-            for det in self.detections.get(global_f_num, []):
-                scaled_det = det[:4] * (1.0 / self.ocsort.scale)
-                x1, y1, x2, y2 = map(int, scaled_det)
-                cv2.rectangle(
-                    frame,
-                    (x1 - 2, y1 -2),
-                    (x2 + 2, y2 + 2),
-                    (255, 255, 255),
-                    text_thickness
-                )
+            if all_detections == True:
+                for det in self.detections.get(global_f_num, []):
+                    scaled_det = det[:4] * (1.0 / self.ocsort.scale)
+                    x1, y1, x2, y2 = map(int, scaled_det)
+                    cv2.rectangle(
+                        frame,
+                        (x1 - 2, y1 -2),
+                        (x2 + 2, y2 + 2),
+                        (255, 255, 255),
+                        text_thickness
+                    )
             
             if face_data is not None:
                 frame_face_data = face_data.loc[face_data['f'] == global_f_num]

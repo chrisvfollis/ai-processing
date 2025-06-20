@@ -32,7 +32,7 @@ class InferencePipeline:
             model_cfg: dict = {},
             device: torch.device = None,
             track_stride: int = 1,
-            id_freq: str = '1/s',
+            id_freq: str = '2/s',
         ):
         log_utils.press_stopwatch(self, 'init_time')
 
@@ -197,7 +197,9 @@ class InferencePipeline:
                 detections, img_h, img_w, margin=15
             )
 
-            facial_areas = self.face_analysis.identify_faces(img, regions)
+            facial_areas = self.face_analysis.identify_faces(
+                img, regions, id_cutoff=0.75
+            )
             face_data[f_num] = facial_areas
         
         person_detections = {}

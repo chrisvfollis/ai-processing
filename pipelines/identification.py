@@ -208,10 +208,16 @@ class IdentificationPipeline:
     def reassociate(self, initial_identities: pd.DataFrame, k=5) -> pd.DataFrame:
         '''
         Indirect identification by matching unidentified tracks to high-affinity
-        tracks that have been identified.
+        tracks that have been identified, excluding temporally overlapping tracks.
         '''
         knn_df = self.track_similarity_knn(k=k)
         identity_map = dict(initial_identities[['trk_id', 'identity']].values)
+
+        trk_to_frames = (
+            self.trk_detections.groupby('trk_id')['f']
+            .apply(set)
+            .to_dict()
+        )
 
         reassigned = []
         for trk_id in knn_df['trk_id'].unique():
@@ -219,17 +225,22 @@ class IdentificationPipeline:
                 continue  # already has identity
 
             neighbors = knn_df[knn_df['trk_id'] == trk_id]
-            neighbor_ids = neighbors['neighbor_trk_id'].tolist()
-            neighbor_identities = [identity_map.get(nid) for nid in neighbor_ids]
+            trk_frames = trk_to_frames.get(trk_id, set())
 
-            # majority vote (ignoring None):
+            valid_neighbors = [
+                row for _, row in neighbors.iterrows()
+                if trk_frames.isdisjoint(trk_to_frames.get(row['neighbor_trk_id'], set()))
+            ]
+
+            neighbor_identities = [
+                identity_map.get(row['neighbor_trk_id']) for row in valid_neighbors
+            ]
             votes = pd.Series(neighbor_identities).dropna()
+
             if not votes.empty:
                 identity = votes.mode().iloc[0]
 
-                # use distance to first (nearest) supporting neighbor with that
-                # identity:
-                for _, row in neighbors.iterrows():
+                for row in valid_neighbors:
                     if identity_map.get(row['neighbor_trk_id']) == identity:
                         reassigned.append({
                             'trk_id': trk_id,
