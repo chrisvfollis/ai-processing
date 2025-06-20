@@ -107,11 +107,9 @@ def run_pipelines(
             return process_result
         
         person_detections, face_data = inference.run()
-        if save_all_data:
-            inference.save_state()
 
         tracking = TrackingPipeline(filename, person_detections)
-        
+
         active_trks, inactive_trks = tracking.run()
         if save_all_data:
             tracking.generate_output_vid()
@@ -134,6 +132,9 @@ def run_pipelines(
             )
         except ValueError as e:
             logger.info(e)
+
+        if save_all_data:
+            inference.save_state()
 
         tracking.save_state()
         io_utils.save_track_info(

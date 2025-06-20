@@ -144,50 +144,56 @@ class OCSort:
         else:
             output_results = output_results.cpu().numpy()
             scores = output_results[:, 4] * output_results[:, 5]
-            bboxes = output_results[:, :4]  # x1y1x2y2
+            bboxes = output_results[:, :4]
 
         bboxes /= self.scale
         dets = np.concatenate((bboxes, np.expand_dims(scores, axis=-1)), axis=1)
 
         inds_low = scores > 0.1
         inds_high = scores < self.det_thresh
-        inds_second = np.logical_and(inds_low, inds_high)  # self.det_thresh > score > 0.1, for second matching
+        inds_second = np.logical_and(inds_low, inds_high)
         dets_second_indices = output_indices[inds_second]
-        dets_second = dets[inds_second]  # detections for second matching
-        
+        dets_second = dets[inds_second]
+
         remain_inds = scores > self.det_thresh
         dets_indices = output_indices[remain_inds]
         dets = dets[remain_inds]
-        
+
         new_dets = [dets, dets_indices, dets_second, dets_second_indices]
 
-        # get predicted locations from existing trackers:
         trk_preds = []
+        trk_velocities = []
+        last_boxes = []
+        k_observations = []
+        trk_id_list = []
         to_keep = {}
 
         for trk_id, trk in self.active_trks.items():
             pos = trk.predict()[0]
             if np.any(np.isnan(pos)):
-                continue  # skip this tracker
+                continue
+            trk_id_list.append(trk_id)
             trk_preds.append([pos[0], pos[1], pos[2], pos[3], 0])
+            trk_velocities.append(trk.velocity if trk.velocity is not None else np.array((0, 0)))
+            obs = trk.last_observation
+            if obs is None or len(obs) != 4:
+                obs = np.array([-1, -1, -1, -1], dtype=np.float32)
+            else:
+                obs = np.array(obs, dtype=np.float32).flatten()
+            last_boxes.append(obs)
+            k_observations.append(self._k_previous_obs(trk.observations, trk.age, self.delta_t))
             to_keep[trk_id] = trk
 
         self.active_trks = to_keep
-        trk_preds = np.array(trk_preds)
 
-        trk_velocities = np.array([
-            trk.velocity if (trk.velocity is not None) else np.array((0, 0))
-            for trk in self.active_trks.values()
-        ]) 
-        last_boxes = np.array([
-            trk.last_observation for trk in self.active_trks.values()
-            if trk.last_observation is not None
-        ])
-        k_observations = np.array([
-            self._k_previous_obs(trk.observations, trk.age, self.delta_t)
-            for trk in self.active_trks.values()
-        ])
+        trk_preds = np.array(trk_preds)
+        trk_velocities = np.array(trk_velocities)
+        last_boxes = np.array(last_boxes)
+        k_observations = np.array(k_observations)
+
         trk_data = [trk_preds, trk_velocities, last_boxes, k_observations]
+
+        self.trk_id_list = trk_id_list
 
         return new_dets, trk_data
 
