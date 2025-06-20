@@ -3,6 +3,7 @@ import os
 from typing import Optional
 
 # 3rd-party dependencies
+import numpy as np
 import pandas as pd
 import cv2
 import torch
@@ -27,8 +28,6 @@ class IdentificationPipeline:
             embeddings_file: Optional[str] = None,
         ):
         # INPUT DATA:
-        if face_data is None:
-            raise ValueError('No face data')
         self.face_data = face_data 
 
         self.active_trks = active_trks
@@ -99,23 +98,35 @@ class IdentificationPipeline:
         if face_overlap_df is None:
             face_overlap_df = self.face_overlaps
 
-        high_overlaps = face_overlap_df[face_overlap_df['overlap_ratio'] >= overlap_threshold]
+        has_overlap_data = (face_overlap_df is not None) and (not face_overlap_df.empty)
+        high_overlaps = face_overlap_df[face_overlap_df['overlap_ratio'] >= overlap_threshold] if has_overlap_data else pd.DataFrame()
+
         all_trks = self.active_trks | self.inactive_trks
         trks_df = self.trk_detections.groupby('trk_id')
-        
+
         frames = []
         for trk_id, grp in trks_df:
-            trk_faces = high_overlaps[high_overlaps['trk_id'] == trk_id]
+            trk_faces = high_overlaps[high_overlaps['trk_id'] == trk_id] if has_overlap_data else pd.DataFrame()
 
             if not trk_faces.empty:
                 use_both = len(trk_faces) >= 2
-
                 f_first = trk_faces['f'].min() if use_both else grp['f'].min()
                 f_last = trk_faces['f'].max()
             else:
-                f_first = grp['f'].min()
-                f_last = grp['f'].max()
-            
+                frame_width = 3840
+                frame_height = 2160
+                valid_boxes = grp[
+                    (grp['x'] + grp['w'] > 0) &
+                    (grp['y'] + grp['h'] > 0) &
+                    (grp['x'] < frame_width) &
+                    (grp['y'] < frame_height)
+                ]
+                if not valid_boxes.empty:
+                    f_first = valid_boxes['f'].min()
+                    f_last = valid_boxes['f'].max()
+                else:
+                    continue
+
             for i, frame in enumerate([f_first, f_last]):
                 row = grp[grp['f'] == frame].iloc[0]
                 frames.append({
@@ -129,6 +140,8 @@ class IdentificationPipeline:
 
         try:
             cap = cv2.VideoCapture(self.video_path)
+            img_w = 3840
+            img_h = 2160
             f_prev = None
 
             for _, row in img_df.iterrows():
@@ -137,7 +150,6 @@ class IdentificationPipeline:
                     try:
                         cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
                         ret, frame = cap.read()
-
                         if not ret:
                             logger.warning(f'Frame {f_num} unreadable')
                             continue
@@ -145,10 +157,18 @@ class IdentificationPipeline:
                         f_prev = f_num
 
                 if frame.size == 0:
+                    logger.warning(f'Empty frame {f_num}')
                     continue
-                
+
                 x, y, w, h = row['box']
-                crop = frame[y:y+h, x:x+w]
+                x1 = max(0, x)
+                y1 = max(0, y)
+                x2 = min(x + w, img_w)
+                y2 = min(y + h, img_h)
+                crop = frame[y1:y2, x1:x2]
+                if crop.size == 0:
+                    logger.warning(f'Empty crop at frame {f_num} for box {row["box"]}')
+                    continue
 
                 io_utils.save_event_image(
                     img=crop,
@@ -188,7 +208,7 @@ class IdentificationPipeline:
         tracks that have been identified.
         '''
         knn_df = self.track_similarity_knn(k=k)
-        identity_map = dict(initial_identities.values)
+        identity_map = dict(initial_identities[['trk_id', 'identity']].values)
 
         reassigned = []
         for trk_id in knn_df['trk_id'].unique():
@@ -226,6 +246,10 @@ class IdentificationPipeline:
             dists_df = self.embedding_dists
         else:
             dists_df = embedding_dists
+        
+        if 'trk_id1' not in dists_df.columns or 'trk_id2' not in dists_df.columns:
+            logger.error(f'Missing `trk_id1` & `trk_id2` cols in embedding distances df. Columns found: {dists_df.columns.tolist()}')
+            return pd.DataFrame() 
 
         dists_df = dists_df.dropna(subset=['trk_id1', 'trk_id2'])
         dists_df = dists_df[dists_df['trk_id1'] != dists_df['trk_id2']]
@@ -235,17 +259,31 @@ class IdentificationPipeline:
             .mean()
             .reset_index()
         )
-        all_ids = pd.unique(avg_dists[['trk_id1', 'trk_id2']].values.ravel())
-        pivot = avg_dists.pivot(
-            index='trk_id1', columns='trk_id2', values='distance'
-        )
 
+        nan_rows = avg_dists[avg_dists['distance'].isna()]
+        if not nan_rows.empty:
+            logger.info(f'Found {len(nan_rows)} NaN distances in avg_dists. ' +
+                        'These may indicate missing metadata or embeddings.')
+            logger.debug(nan_rows)
+
+        avg_dists['distance'] = avg_dists['distance'].fillna(1.0)
+
+        all_ids = pd.unique(avg_dists[['trk_id1', 'trk_id2']].values.ravel())
+        full_index = pd.MultiIndex.from_product([all_ids, all_ids], names=['trk_id1', 'trk_id2'])
+        avg_dists = avg_dists.set_index(['trk_id1', 'trk_id2']).reindex(full_index).fillna(1.0).reset_index()
+
+        pivot = avg_dists.pivot(index='trk_id1', columns='trk_id2', values='distance')
         pivot = pivot.reindex(index=all_ids, columns=all_ids, fill_value=1.0)
 
-        trk_ids = pivot.index.to_numpy()
         dist_matrix = pivot.to_numpy()
+        trk_ids = pivot.index.to_numpy()
 
-        # fit kNN using precomputed distances:
+        if np.isnan(dist_matrix).any():
+            raise ValueError('Distance matrix still contains NaNs after cleanup.')
+
+        dist_matrix = pivot.to_numpy()
+        n_samples = dist_matrix.shape[0]
+        k = min(k, n_samples)
         nn = NearestNeighbors(n_neighbors=k, metric='precomputed')
         nn.fit(dist_matrix)
         distances, indices = nn.kneighbors(dist_matrix)
@@ -282,8 +320,16 @@ class IdentificationPipeline:
         box_indices = hdf5_file['box_indices'][:]
 
         # create a mapping from (frame, box_idx) to metadata:
+        valid_keys = set(zip(frames.astype(int), box_indices.astype(int)))
         obs_df = detections.copy()
+        if obs_df.empty or 'f' not in obs_df.columns or 'box_idx' not in obs_df.columns:
+            logger.warning(
+                f'Track observations dataframe missing required columns: {obs_df.columns}'
+            )
+            return pd.DataFrame() 
+        obs_df = obs_df.astype({'f': int, 'box_idx': int})
         obs_df['key'] = list(zip(obs_df['f'], obs_df['box_idx']))
+        obs_df = obs_df[obs_df['key'].isin(valid_keys)]
         metadata_map = obs_df.set_index('key').to_dict('index')
 
         logger.info(f'Calculating cosine distances...')
@@ -306,13 +352,19 @@ class IdentificationPipeline:
                     meta_i = metadata_map.get(key_i, {})
                     meta_j = metadata_map.get(key_j, {})
 
+                    trk_id1 = meta_i.get('trk_id')
+                    trk_id2 = meta_j.get('trk_id')
+
+                    if (trk_id1 is None) or (trk_id2 is None):
+                        continue
+
                     distance_data.append({
                         'frame1': frames[i],
                         'box_idx1': box_indices[i],
-                        'trk_id1': meta_i.get('trk_id'),
+                        'trk_id1': trk_id1,
                         'frame2': frames[j],
                         'box_idx2': box_indices[j],
-                        'trk_id2': meta_j.get('trk_id'),
+                        'trk_id2': trk_id2,
                         'distance': distance,
                     })
 
@@ -335,13 +387,19 @@ class IdentificationPipeline:
                     meta_i = metadata_map.get(key_i, {})
                     meta_j = metadata_map.get(key_j, {})
 
+                    trk_id1 = meta_i.get('trk_id')
+                    trk_id2 = meta_j.get('trk_id')
+
+                    if (trk_id1 is None) or (trk_id2 is None):
+                        continue
+
                     distance_data.append({
                         'frame1': frames[start_idx + i],
                         'box_idx1': box_indices[start_idx + i],
-                        'trk_id1': meta_i.get('trk_id'),
+                        'trk_id1': trk_id1,
                         'frame2': frames[next_idx],
                         'box_idx2': box_indices[next_idx],
-                        'trk_id2': meta_j.get('trk_id'),
+                        'trk_id2': trk_id2,
                         'distance': distance,
                     })
 
@@ -481,8 +539,8 @@ class IdentificationPipeline:
                         'box_idx': box_idx,
                         'x': bbox[0],
                         'y': bbox[1],
-                        'w': bbox[0] + bbox[2],
-                        'h': bbox[1] + bbox[3],
+                        'w': bbox[2] - bbox[0],
+                        'h': bbox[3] - bbox[1],
                         'is_valid': 1 if valid else 0,
                     })
 
@@ -494,8 +552,8 @@ class IdentificationPipeline:
                         't': t,
                         'x': bbox[0],
                         'y': bbox[1],
-                        'w': bbox[0] + bbox[2],
-                        'h': bbox[1] + bbox[3],
+                        'w': bbox[2] - bbox[0],
+                        'h': bbox[3] - bbox[1],
                     })
 
         obs_df = pd.DataFrame(obs_records)

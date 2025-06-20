@@ -213,7 +213,7 @@ class TrackingPipeline:
     def generate_output_vid(self, trk_video_data: Optional[dict] = None):
         trk_video_data = trk_video_data or self.trk_video_data
 
-        logger.info(f'Generating output vid...')
+        logger.info('Generating output vid...')
 
         file_prefix = self.video_file.split('.')[0]
         output_filename = f'{file_prefix}_tracker_output.mp4'
@@ -235,6 +235,8 @@ class TrackingPipeline:
         output_dims = (1920, 1080)
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_vid_path, fourcc, self.fps, output_dims)
+        
+        name_cache = {}
 
         f_num = 0
         while f_num < self.f_total:
@@ -247,7 +249,13 @@ class TrackingPipeline:
             for det in self.detections.get(global_f_num, []):
                 scaled_det = det[:4] * (1.0 / self.ocsort.scale)
                 x1, y1, x2, y2 = map(int, scaled_det)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 3)
+                cv2.rectangle(
+                    frame,
+                    (x1 - 2, y1 -2),
+                    (x2 + 2, y2 + 2),
+                    (255, 255, 255),
+                    text_thickness
+                )
 
             trk_data = trk_video_data.get(global_f_num, {})
             for box, track_id in zip(
@@ -262,6 +270,30 @@ class TrackingPipeline:
                     frame,
                     str(track_id),
                     (x1, y1 - 5),
+                    font,
+                    text_scale,
+                    color,
+                    text_thickness,
+                )
+
+                if track_id in name_cache:
+                    full_name = name_cache[track_id]
+                else:
+                    full_name = 'Unidentified'
+                    trk_obj = (
+                        self.ocsort.active_trks.get(track_id) or
+                        self.ocsort.inactive_trks.get(track_id)
+                    )
+                    if trk_obj and hasattr(trk_obj, 'identity'):
+                        first, last = io_utils.lookup_name(trk_obj.identity)
+                        if first or last:
+                            full_name = f'{first} {last}'.strip()
+                    name_cache[track_id] = full_name
+    
+                cv2.putText(
+                    frame,
+                    full_name,
+                    (x1, y1 + h + 20),
                     font,
                     text_scale,
                     color,
@@ -285,4 +317,4 @@ class TrackingPipeline:
 
         cap.release()
         out.release()
-        logger.info(f'Output vid saved to: {output_vid_path}')
+        logger.info('Output video saved')

@@ -111,8 +111,6 @@ def run_pipelines(
         tracking = TrackingPipeline(filename, person_detections)
 
         active_trks, inactive_trks = tracking.run()
-        if save_all_data:
-            tracking.generate_output_vid()
 
         try:
             identification = IdentificationPipeline(
@@ -130,11 +128,11 @@ def run_pipelines(
             identification.save_id_event_images(
                 overlap_threshold=0.5, credentials=credentials
             )
-        
         except Exception:
-            logger.exception(f'Error during identification')
+            logger.exception(f'Error during identification:')
 
         if save_all_data:
+            tracking.generate_output_vid()
             inference.save_state()
 
         tracking.save_state()

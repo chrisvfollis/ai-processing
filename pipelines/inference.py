@@ -66,8 +66,8 @@ class InferencePipeline:
         self.resolution = video_info[0]
         self.frame_diag = video_info[1]
         self.fps = video_info[2]
-        # self.f_total = video_info[3]
-        self.f_total = 1500
+        self.f_total = video_info[3]
+        # self.f_total = 1500
 
         self.f_num = 0
 
@@ -378,7 +378,7 @@ class InferencePipeline:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
                 config_df.to_excel(writer, sheet_name='Inference Configuration', index=False)
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
-                logger.info(f'Saved inference runtime data to {excel_path}')
+                logger.info('Saved inference runtime data')
         except Exception as e:
             logger.info(f'Failed to save Excel file: {e}')
 
@@ -416,4 +416,4 @@ class InferencePipeline:
             pickle.dump(state, f)
         log_utils.press_stopwatch(self, 'pkl_io')
 
-        logger.info(f'Inference pipeline state saved to {save_path}')
+        logger.info('Inference pipeline state saved')
