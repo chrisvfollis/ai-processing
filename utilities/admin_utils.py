@@ -380,8 +380,37 @@ def s3_time_delete(
 # -----------------------------------------------------------------------------
 
 
-def queue_time_delete():
-    pass
+def clear_queue_range(
+        start: datetime | list = None,
+        end: datetime | list = None,
+        shop_id: Optional[str] = None,
+    ) -> None:
+    if (start is None) and (end is None):
+        raise ValueError(
+            'At least one of `start` or `end` must be provided.'
+        )
+
+    internal_api = APIClient(var_prefix='INTERNAL_API')
+
+    payload = {'directive': 'delete_range'}
+    if shop_id:
+        payload['shop_id'] = shop_id
+    if start:
+        if isinstance(start, list):
+            start = datetime(*start)
+        payload['start'] = start.isoformat()
+    if end:
+        if isinstance(end, list):
+            end = datetime(*end)
+        payload['end'] = end.isoformat()
+
+    response = internal_api.post('update_queue/', json=payload)
+
+    if response.status_code == 200:
+        print('Successfully cleared queue range')
+    else:
+        print(f'Failed posting to internal API: {response.text}')
+        print(response.status_code)
 
 
 # =============================================================================

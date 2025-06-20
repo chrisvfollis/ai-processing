@@ -928,7 +928,7 @@ def clear_queue_block(shop_id, timestamp) -> None:
     internal_api = APIClient(var_prefix='INTERNAL_API')
 
     payload = {
-        'action': 'clear_section',
+        'directive': 'clear_section',
         'shop_id': shop_id,
         'timestamp': timestamp.isoformat()
     }
