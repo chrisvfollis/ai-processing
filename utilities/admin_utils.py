@@ -216,7 +216,7 @@ def auto_scp(
 # -----------------------------------------------------------------------------
 
 
-def list_download(object_keys: list | str, output_dir='resources/downloads',
+def s3_list_download(object_keys: list | str, output_dir='resources/downloads',
                   config: Optional[dict | str] = None, s3_client=None):
     
     s3_client = s3_client or conn_utils.s3_connect(region=config['region'])
@@ -241,7 +241,7 @@ def list_download(object_keys: list | str, output_dir='resources/downloads',
     return results
 
 
-def list_delete(
+def s3_list_delete(
         object_keys: list | str, region: str = 'us-west-1',
         bucket: str = None, s3_client=None,
     ):
@@ -270,7 +270,7 @@ def list_delete(
     return results
 
 
-def time_delete(
+def s3_time_delete(
         start: datetime | list = None,
         end: datetime | list = None,
         shop_id: str = None,
@@ -281,10 +281,14 @@ def time_delete(
     ):
     '''
     Args:
-        start: date/time in UTC of the start of the time period. If only start is
-               specified without end, then all files after the start are deleted.
-        end: date/time in UTC of the end of the time period. If only end is
-             specified without start, then all files prior to the end are deleted.
+        start (datetime or list): The date/time of the start of the time period.
+            It should be UTC if `use_key_timestamp` is False, otherwise match
+            the object key. If only `start` is specified, then all subsequent
+            files are deleted.
+        end (datetime or list): The date/time of the end of the time period. It
+            should be UTC if `use_key_timestamp` is False, otherwise match the
+            object key. If only end is specified, then all prior files are
+            deleted.
     '''
     def _parse_timestamp_from_key(obj_key):
         try:
@@ -309,10 +313,16 @@ def time_delete(
     if isinstance(end, list):
         end = datetime(*end)
 
-    if start and start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
-    if end and end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
+    if use_key_timestamp:
+        if start and start.tzinfo is not None:
+            start = start.replace(tzinfo=None)
+        if end and end.tzinfo is not None:
+            end = end.replace(tzinfo=None)
+    else:
+        if start and start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end and end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
 
     object_keys = []
     timestamps_to_clear = set()
@@ -353,7 +363,7 @@ def time_delete(
     except ClientError as e:
         print(f"Error listing objects: {e}")
 
-    results = list_delete(
+    results = s3_list_delete(
         object_keys,
         region,
         bucket,
@@ -363,6 +373,15 @@ def time_delete(
         io_utils.clear_queue_block(shop_id, timestamp)
 
     return results
+
+
+# =============================================================================
+#                         - API/REMOTE DATABASE -
+# -----------------------------------------------------------------------------
+
+
+def queue_time_delete():
+    pass
 
 
 # =============================================================================
