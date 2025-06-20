@@ -948,7 +948,9 @@ def clear_queue_block(shop_id, timestamp) -> None:
         print(response.status_code) 
 
 
-def post_event_data(shop_id, time_prefix, delete_data: bool = True) -> bool:
+def post_event_data(
+        shop_id, time_prefix, delete_data: bool = True, logger=None
+    ) -> bool:
     successful_post = False
 
     webapp_api = APIClient(var_prefix='WEBAPP_API')
@@ -993,13 +995,26 @@ def post_event_data(shop_id, time_prefix, delete_data: bool = True) -> bool:
 
     response = webapp_api.post('save_employee_event_logs/', json=event_data)
     if response.status_code == 200:
-        print(f'Success: posted {num_tracks} tracks')
+        success_message = f'Success: posted {num_tracks} tracks'
+        if logger is None:
+            print(success_message)
+        else:
+            logger.info(success_message)
+
         if delete_data:
             clear_track_info(time_prefix)
 
         successful_post = True
     else:
-        print(f'Failed posting to webapp: {response.text}')
-        print(response.status_code)
+        failure_messages = [
+            f'Failed posting to webapp: {response.text}',
+            response.status_code,
+        ]
+        if logger is None:
+            print(failure_messages[0])
+            print(failure_messages[1])
+        else:
+            logger.error(failure_messages[0])
+            logger.error(failure_messages[1])
 
     return successful_post

@@ -56,7 +56,7 @@ def wrap_up_segment(
     ):
     timestamp = utils.frame_timestamp(time_prefix)
 
-    io_utils.post_event_data(shop_id, time_prefix, delete_data=True)
+    io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
     io_utils.clear_queue_block(shop_id, timestamp)
 
     io_utils.clear_local_files(time_prefix)
