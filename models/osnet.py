@@ -211,7 +211,6 @@ class OSNet:
             kept.append(i)
         
         if not batch_images:
-            print('No detections in batch with valid area for embedding')
             return
 
         batch_tensor = self.preprocess(batch_images)

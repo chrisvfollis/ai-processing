@@ -212,7 +212,7 @@ class TrackingPipeline:
 
     def generate_output_vid(self, trk_video_data: Optional[dict] = None):
         trk_video_data = trk_video_data or self.trk_video_data
-        
+
         logger.info(f'Generating output vid...')
 
         output_vid_dir = os.path.join(self.output_dir, 'videos/')
@@ -258,7 +258,15 @@ class TrackingPipeline:
                 xyxy = (x1, y1, x1 + w, y1 + h)
                 color = _get_color(track_id)
                 cv2.rectangle(frame, xyxy[:2], xyxy[2:], color, line_thickness)
-                cv2.putText(frame, str(track_id), (x1, y1 - 5), font, text_scale, color, text_thickness)
+                cv2.putText(
+                    frame,
+                    str(track_id),
+                    (x1, y1 - 5),
+                    font,
+                    text_scale,
+                    color,
+                    text_thickness,
+                )
 
             cv2.putText(
                 frame,
@@ -267,7 +275,7 @@ class TrackingPipeline:
                 font,
                 text_scale,
                 (0, 0, 255),
-                text_thickness
+                text_thickness,
             )
 
             resized_frame = cv2.resize(frame, output_dims)
