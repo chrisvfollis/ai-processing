@@ -132,7 +132,7 @@ def run_pipelines(
             logger.exception(f'Error during identification:')
 
         if save_all_data:
-            tracking.generate_output_vid()
+            tracking.generate_output_vid(face_data=face_data)
             inference.save_state()
 
         tracking.save_state()

@@ -210,7 +210,7 @@ class TrackingPipeline:
 
         logger.info(f'{len(self.ocsort.active_trks.keys())} tracks saved to be continued')
 
-    def generate_output_vid(self, trk_video_data: Optional[dict] = None):
+    def generate_output_vid(self, trk_video_data: Optional[dict] = None, face_data: Optional[pd.DataFrame] = None):
         trk_video_data = trk_video_data or self.trk_video_data
 
         logger.info('Generating output vid...')
@@ -224,9 +224,9 @@ class TrackingPipeline:
         cap = cv2.VideoCapture(self.video_path)
 
         font = cv2.FONT_HERSHEY_PLAIN
-        text_scale = 2
-        text_thickness = 2
-        line_thickness = 2
+        text_scale = 3
+        text_thickness = 3
+        line_thickness = 3
 
         def _get_color(idx):
             idx *= 3
@@ -235,7 +235,7 @@ class TrackingPipeline:
         output_dims = (1920, 1080)
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_vid_path, fourcc, self.fps, output_dims)
-        
+
         name_cache = {}
 
         f_num = 0
@@ -256,6 +256,38 @@ class TrackingPipeline:
                     (255, 255, 255),
                     text_thickness
                 )
+            
+            if face_data is not None:
+                frame_face_data = face_data.loc[face_data['f'] == global_f_num]
+                if not frame_face_data.empty:
+                    cv2.putText(
+                        frame,
+                        f'FACE(S) PRESENT',
+                        (1920, 20),
+                        font,
+                        text_scale,
+                        (0, 0, 255),
+                        text_thickness,
+                    )
+                    frame_face_data = (
+                        frame_face_data
+                        .sort_values('distance')
+                        .groupby(['f', 'x', 'y', 'w', 'h'], as_index=False)
+                        .first()
+                    )
+                for _, row in frame_face_data.iterrows():
+                    x1, y1, w, h = map(int, row[['x', 'y', 'w', 'h']])
+                    x2, y2 = x1 + w, y1 + h
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (200, 90, 5), line_thickness)
+                    cv2.putText(
+                        frame,
+                        row['name'],
+                        (x1, y1 - 5),
+                        font,
+                        text_scale,
+                        (200, 90, 5),
+                        text_thickness,
+                    )
 
             trk_data = trk_video_data.get(global_f_num, {})
             for box, track_id in zip(

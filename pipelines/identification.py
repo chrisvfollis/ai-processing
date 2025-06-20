@@ -56,7 +56,7 @@ class IdentificationPipeline:
         self.face_overlaps = None
         self.track_identities = None
 
-    def run(self) -> pd.DataFrame:
+    def run(self, min_overlap=0.3) -> pd.DataFrame:
         if self.embedding_dists is None:
             logger.info("Generating embedding distance matrix...")
             self.embedding_dists = self.embedding_cos_dists()
@@ -75,6 +75,9 @@ class IdentificationPipeline:
         else:
             face_overlap_df = self.face_overlap_ratios()
             face_match_candidates = self._collect_face_match_candidates(face_overlap_df)
+            face_match_candidates = face_match_candidates[
+                face_match_candidates['overlap_ratio'] >= min_overlap
+            ]
             direct_identifications = self.assign_identities(face_match_candidates)
 
         indirect_identifications = self.reassociate(direct_identifications)
