@@ -159,7 +159,7 @@ class InferencePipeline:
 
         self._cleanup()
 
-        self._save_run_info()
+        self.save_run_info()
         self.face_data = self.face_analysis.consolidate_face_data(self.face_data)
         if (self.face_data is None) or (self.face_data.empty):
             logger.info(f'No face data from inference run')
@@ -262,7 +262,7 @@ class InferencePipeline:
         self.osnet.flush_buffers(structure='video_data', release=True)
         io_utils.clear_memory()
 
-    def _save_run_info(self):
+    def save_run_info(self):
         runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
         commit_hash, commit_datetime = utils.get_git_commit_info()
 

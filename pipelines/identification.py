@@ -1,6 +1,7 @@
 # standard dependencies
 import os
 from typing import Optional
+import uuid
 
 # 3rd-party dependencies
 import numpy as np
@@ -209,7 +210,11 @@ class IdentificationPipeline:
         '''
         Indirect identification by matching unidentified tracks to high-affinity
         tracks that have been identified, excluding temporally overlapping tracks.
+        Also links together unknown tracks with similar embeddings using synthetic UUIDs.
         '''
+        if self.trk_detections.empty:
+            return pd.DataFrame()
+
         knn_df = self.track_similarity_knn(k=k)
         identity_map = dict(initial_identities[['trk_id', 'identity']].values)
 
@@ -220,6 +225,8 @@ class IdentificationPipeline:
         )
 
         reassigned = []
+        synthetic_id_map = {}
+
         for trk_id in knn_df['trk_id'].unique():
             if trk_id in identity_map:
                 continue  # already has identity
@@ -249,6 +256,37 @@ class IdentificationPipeline:
                             'assignment_cost': row['distance'],
                         })
                         break
+            else:
+                # no neighbors with identity; try synthetic linking:
+                linked_ids = []
+                for row in valid_neighbors:
+                    nid = row['neighbor_trk_id']
+                    if nid in synthetic_id_map:
+                        linked_ids.append(synthetic_id_map[nid])
+
+                if linked_ids:
+                    synthetic_identity = linked_ids[0]
+                else:
+                    synthetic_identity = str(uuid.uuid4())
+
+                synthetic_id_map[trk_id] = synthetic_identity
+                reassigned.append({
+                    'trk_id': trk_id,
+                    'identity': synthetic_identity,
+                    'assignment_type': 'synthetic',
+                    'assignment_cost': valid_neighbors[0]['distance'] if valid_neighbors else 1.0,
+                })
+
+                for row in valid_neighbors:
+                    nid = row['neighbor_trk_id']
+                    if nid not in identity_map and nid not in synthetic_id_map:
+                        synthetic_id_map[nid] = synthetic_identity
+                        reassigned.append({
+                            'trk_id': nid,
+                            'identity': synthetic_identity,
+                            'assignment_type': 'synthetic',
+                            'assignment_cost': row['distance'],
+                        })
         return pd.DataFrame(reassigned)
 
     def track_similarity_knn(

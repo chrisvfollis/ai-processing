@@ -35,6 +35,8 @@ class TrackingPipeline:
             use_byte=False,
             f_start=0,
             f_end=None,
+            min_lifespan=5,
+            min_avg_size=0.004,
             prior_pkl=False,
         ):
         # INFERENCE DATA:
@@ -87,6 +89,10 @@ class TrackingPipeline:
         self.trk_obs_df = None
         self.trk_states_df = None
         self.trk_video_data = {}
+
+        self.min_lifespan = min_lifespan
+        self.min_avg_size = min_avg_size * math.prod(self.resolution)
+        self.filtered_tracks = {}
 
         # SPEED/PERFORMANCE:
         self.primary_run_time = 0
@@ -187,6 +193,156 @@ class TrackingPipeline:
 
         log_utils.press_stopwatch(self, 'primary_run_time')
         return self.ocsort.active_trks, self.ocsort.inactive_trks
+
+    def filter_tracks(self):
+        low_lifespan = []
+        small_avg_area = []
+
+        for trk_id, trk in self.ocsort.inactive_trks.items():
+            if io_utils.identity_is_known(trk.identity):
+                continue
+
+            lifespan = trk.age / self.fps
+            if lifespan < self.min_lifespan:
+                low_lifespan.append(trk_id)
+            
+            elif trk.average_area() < self.min_avg_size:
+                small_avg_area.append(trk_id)
+        
+        for trk_id in set(low_lifespan + small_avg_area):
+            try:
+                del self.ocsort.inactive_trks[trk_id]
+            except KeyError:
+                continue
+
+        self.filtered_tracks = {
+            'low_lifespan': low_lifespan,
+            'small_avg_area': small_avg_area,
+        }
+
+    def _calculate_run_stats(self):
+        all_trks = self.ocsort.active_trks | self.ocsort.inactive_trks
+        
+        num_identified = 0
+        lifespans = []
+
+        for trk in all_trks.values():
+            lifespans.append(trk.age / self.fps)
+
+            if io_utils.identity_is_known(trk.identity):
+                num_identified += 1
+        
+        avg_lifespan = sum(lifespans) / len(lifespans)
+
+        return avg_lifespan, num_identified
+
+    def save_run_info(self):
+        logger.info('Saving tracking run info...')
+
+        runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
+        os.makedirs(runtime_data_dir, exist_ok=True)
+
+        commit_hash, commit_datetime = utils.get_git_commit_info()
+        clip_identifier = f"{self.video_file.split('.')[0]}_{commit_hash}"
+
+        if len(os.listdir(runtime_data_dir)) > 200:
+            for f in os.listdir(runtime_data_dir):
+                try:
+                    os.remove(os.path.join(runtime_data_dir, f))
+                except Exception:
+                    continue
+
+        config_data = {
+            'module': [
+                *['software'] * 2,
+                *['video'] * 2,
+                *['tracker'] * 5
+            ],
+            'parameter': [
+                'git_commit_hash',          # Software
+                'git_commit_datetime',
+
+                'resolution',               # Video
+                'fps',
+
+                'input_dims',               # Tracker
+                'iou_threshold',
+                'min_box_area',
+                'aspect_ratio_thresh',
+                'min_lifespan_filter'
+            ],
+            'value': [
+                commit_hash,
+                commit_datetime,
+
+                f'{self.resolution[0]}x{self.resolution[1]}',
+                f'{self.fps}',
+
+                self.ocsort.scale,
+                self.ocsort.iou_threshold,
+                self.ocsort.min_box_area,
+                self.ocsort.aspect_ratio_thresh,
+                self.min_lifespan,
+            ]
+        }
+        config_df = pd.DataFrame(config_data)
+
+        performance_data = {
+            'module': ['pipeline'] * 2,
+            'metric': ['primary_run_time', 'persist_time'],
+            'value': [self.primary_run_time, self.persist_time],
+        }
+        performance_df = pd.DataFrame(performance_data)
+
+        avg_lifespan, num_identified = self._calculate_run_stats()
+
+        stats_data = {
+            'module': ['tracks'] * 5,
+            'metric': [
+                'num_inactive',
+                'num_lifespan_filtered',
+                'num_avg_area_filtered',
+                'avg_lifespan',
+                'num_identified',
+            ],
+            'value': [
+                len(self.ocsort.inactive_trks),
+                len(self.filtered_tracks.get('low_lifespan', [])),
+                len(self.filtered_tracks.get('small_avg_area', [])),
+                avg_lifespan,
+                num_identified,
+            ],
+        }
+        stats_df = pd.DataFrame(stats_data)
+
+        track_rows = []
+        for trk_id, trk in {**self.ocsort.active_trks, **self.ocsort.inactive_trks}.items():
+            for age, bbox in trk.observations.items():
+                f_num = trk.map_offset(offset=age)
+                area = max(0, bbox[2] - bbox[0]) * max(0, bbox[3] - bbox[1])
+                track_rows.append({
+                    'track_id': trk_id,
+                    'frame': f_num,
+                    'area': area,
+                    'is_valid': int(age in trk.valid_observations),
+                    'identity': trk.identity,
+                })
+        track_df = pd.DataFrame(track_rows)
+
+        filename = io_utils.get_unique_filename(
+            runtime_data_dir, f'tracking_data_{clip_identifier}.xlsx'
+        )
+        excel_path = os.path.join(runtime_data_dir, filename)
+
+        try:
+            with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+                config_df.to_excel(writer, sheet_name='Configuration', index=False)
+                performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
+                stats_df.to_excel(writer, sheet_name='Stats', index=False)
+                track_df.to_excel(writer, sheet_name='Tracking Data', index=False)
+            logger.info(f'Saved tracking runtime data to {excel_path}')
+        except Exception as e:
+            logger.error(f'Failed to save Excel file: {e}')
 
     def save_state(self):
         logger.info('Saving pipeline state...')

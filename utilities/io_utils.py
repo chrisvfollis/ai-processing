@@ -606,6 +606,13 @@ def lookup_name(identity_uuid, db_name='data.db') -> tuple:
     return result
 
 
+def identity_is_known(identity_uuid: str) -> bool:
+    if identity_uuid is None:
+        return False
+    first, last = lookup_name(identity_uuid)
+    return bool(first or last)
+
+
 def get_designation(identity_uuid, db_name='data.db') -> str | None:
     db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)

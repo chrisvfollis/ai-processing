@@ -439,3 +439,20 @@ class KalmanBoxTracker:
         offset = offset if (offset is not None) else self.age
 
         return start + offset
+
+    def average_area(self):
+        avg_area = 0.0
+
+        if not self.observations:
+            return avg_area
+
+        areas = []
+        for bbox in self.observations.values():
+            x1, y1, x2, y2 = bbox[:4]
+            w = max(0, x2 - x1)
+            h = max(0, y2 - y1)
+            areas.append(w * h)
+        if areas:
+            avg_area = np.mean(areas)
+
+        return avg_area

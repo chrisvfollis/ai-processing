@@ -47,9 +47,9 @@ def process_queue_segment(footage_records: list[tuple], process_config: tuple):
 
 
 def wrap_up_segment(
-        shop_id: str,
         segment_filenames: list,
         time_prefix: str,
+        shop_id: str,
         credentials: tuple[str],
         retain_footage: bool,
         save_all_data: bool,
@@ -111,6 +111,7 @@ def run_pipelines(
         tracking = TrackingPipeline(filename, person_detections)
 
         active_trks, inactive_trks = tracking.run()
+        tracking.filter_tracks()
 
         try:
             identification = IdentificationPipeline(
@@ -130,6 +131,9 @@ def run_pipelines(
             )
         except Exception:
             logger.exception(f'Error during identification:')
+        
+        inference.save_run_info()
+        tracking.save_run_info()
 
         if save_all_data:
             tracking.generate_output_vid(face_data=face_data)
