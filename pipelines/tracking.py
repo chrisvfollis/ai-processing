@@ -210,7 +210,9 @@ class TrackingPipeline:
 
         logger.info(f'{len(self.ocsort.active_trks.keys())} tracks saved to be continued')
 
-    def generate_output_vid(self, trk_video_data: dict):
+    def generate_output_vid(self, trk_video_data: Optional[dict] = None):
+        trk_video_data = trk_video_data or self.trk_video_data
+        
         logger.info(f'Generating output vid...')
 
         output_vid_dir = os.path.join(self.output_dir, 'videos/')

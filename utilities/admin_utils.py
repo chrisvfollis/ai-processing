@@ -245,7 +245,6 @@ def list_delete(
         object_keys: list | str, region: str = 'us-west-1',
         bucket: str = None, s3_client=None,
     ):
-
     s3_client = s3_client or conn_utils.s3_connect(region=region)
 
     results = {'deleted': [], 'failed': {}}
@@ -272,9 +271,13 @@ def list_delete(
 
 
 def time_delete(
-        start: datetime | list = None, end: datetime | list = None,
-        shop_id: str = None, region: str = 'us-west-1', bucket: str = None,
-        s3_client: list = None
+        start: datetime | list = None,
+        end: datetime | list = None,
+        shop_id: str = None,
+        region: str = 'us-west-1',
+        bucket: str = None,
+        s3_client: list = None,
+        use_key_timestamp: bool = False,
     ):
     '''
     Args:
@@ -326,21 +329,36 @@ def time_delete(
                 obj_key = object['Key']
                 last_modified = object['LastModified']
 
-                if (
-                    ((start is None) or (last_modified > start)) and
-                    ((end is None) or (last_modified < end))
-                ):
-                    object_keys.append(obj_key)
+                if use_key_timestamp:
                     timestamp = _parse_timestamp_from_key(obj_key)
-                    if timestamp:
+                    if timestamp and (
+                        ((start is None) or (timestamp > start)) and
+                        ((end is None) or (timestamp < end))
+                    ):
+                        object_keys.append(obj_key)
                         timestamps_to_clear.add(timestamp)
+                else:
+                    last_modified = object['LastModified']
+                    if (
+                        ((start is None) or (last_modified > start)) and
+                        ((end is None) or (last_modified < end))
+                    ):
+                        object_keys.append(obj_key)
+                        timestamp = _parse_timestamp_from_key(obj_key)
+                        if timestamp:
+                            timestamps_to_clear.add(timestamp)
 
         print(f'Matching object keys: {object_keys}')
 
     except ClientError as e:
         print(f"Error listing objects: {e}")
 
-    results = list_delete(object_keys, existing_setup=[s3_client, bucket])
+    results = list_delete(
+        object_keys,
+        region,
+        bucket,
+        s3_client,
+    )
     for timestamp in timestamps_to_clear:
         io_utils.clear_queue_block(shop_id, timestamp)
 

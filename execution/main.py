@@ -111,7 +111,10 @@ def run_pipelines(
             inference.save_state()
 
         tracking = TrackingPipeline(filename, person_detections)
+        
         active_trks, inactive_trks = tracking.run()
+        if save_all_data:
+            tracking.generate_output_vid()
 
         try:
             identification = IdentificationPipeline(
