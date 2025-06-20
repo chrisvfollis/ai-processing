@@ -62,17 +62,28 @@ class IdentificationPipeline:
             logger.info("Generating embedding distance matrix...")
             self.embedding_dists = self.embedding_cos_dists()
 
-        face_overlap_df = self.face_overlap_ratios()
-        face_match_candidates = self._collect_face_match_candidates(face_overlap_df)
+        if (
+            self.face_data is None or self.face_data.empty or
+            'identity' not in self.face_data.columns or
+            self.face_data['identity'].isna().all()
+        ):
+            logger.info(
+                'No valid face identities found; skipping direct ID assignment.'
+            )
+            direct_identifications = pd.DataFrame(
+                columns=['trk_id', 'identity', 'assignment_type', 'assignment_cost']
+            )
+        else:
+            face_overlap_df = self.face_overlap_ratios()
+            face_match_candidates = self._collect_face_match_candidates(face_overlap_df)
+            direct_identifications = self.assign_identities(face_match_candidates)
 
-        direct_identifications = self.assign_identities(face_match_candidates)
         indirect_identifications = self.reassociate(direct_identifications)
 
         track_identities = pd.concat(
             [direct_identifications, indirect_identifications],
             ignore_index=True
-        )
-        track_identities = track_identities.drop_duplicates('trk_id')
+        ).drop_duplicates('trk_id')
 
         self.track_identities = track_identities
         return track_identities
@@ -224,9 +235,12 @@ class IdentificationPipeline:
             .mean()
             .reset_index()
         )
+        all_ids = pd.unique(avg_dists[['trk_id1', 'trk_id2']].values.ravel())
         pivot = avg_dists.pivot(
             index='trk_id1', columns='trk_id2', values='distance'
-        ).fillna(1.0)
+        )
+
+        pivot = pivot.reindex(index=all_ids, columns=all_ids, fill_value=1.0)
 
         trk_ids = pivot.index.to_numpy()
         dist_matrix = pivot.to_numpy()

@@ -181,7 +181,7 @@ class TrackingPipeline:
 
             if self.f_num % self.progress_interval == 0:
                 progress = utils.calculate_progress(self.f_num, self.f_total)
-                logger.info(f'{progress}%')
+                logger.info(f'[tracking] — {progress}%')
         
             self.f_num += 1
 
@@ -245,10 +245,9 @@ class TrackingPipeline:
             global_f_num = self.f_start + f_num
 
             for det in self.detections.get(global_f_num, []):
-                scaled_det = det[:4] * self.ocsort.scale
-                x1, y1, w, h = utils.xywh_xyxy(scaled_det, out='xywh')
-                box = tuple(map(int, [x1, y1, x1 + w, y1 + h]))
-                cv2.rectangle(frame, box[:2], box[2:], (255, 255, 255), 3)
+                scaled_det = det[:4] * (1.0 / self.ocsort.scale)
+                x1, y1, x2, y2 = map(int, scaled_det)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 3)
 
             trk_data = trk_video_data.get(global_f_num, {})
             for box, track_id in zip(
