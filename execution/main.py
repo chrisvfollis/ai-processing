@@ -130,8 +130,9 @@ def run_pipelines(
             identification.save_id_event_images(
                 overlap_threshold=0.5, credentials=credentials
             )
-        except ValueError as e:
-            logger.info(e)
+        
+        except Exception:
+            logger.exception(f'Error during identification')
 
         if save_all_data:
             inference.save_state()

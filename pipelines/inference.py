@@ -161,6 +161,8 @@ class InferencePipeline:
 
         self._save_run_info()
         self.face_data = self.face_analysis.consolidate_face_data(self.face_data)
+        if self.face_data.empty:
+            logger.info(f'No face data from inference run')
 
         return self.person_detections, self.face_data
 

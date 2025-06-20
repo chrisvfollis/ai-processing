@@ -83,8 +83,11 @@ class IdentificationPipeline:
             overlap_threshold: float = 0.3,
             credentials: tuple[str] = None,
         ):
+        logger.info('Saving ID event images...')
 
-        face_overlap_df = face_overlap_df or self.face_overlaps
+        if face_overlap_df is None:
+            face_overlap_df = self.face_overlaps
+
         high_overlaps = face_overlap_df[face_overlap_df['overlap_ratio'] >= overlap_threshold]
         all_trks = self.active_trks | self.inactive_trks
         trks_df = self.trk_detections.groupby('trk_id')
@@ -208,7 +211,10 @@ class IdentificationPipeline:
             k: int = 5,
             embedding_dists: Optional[pd.DataFrame] = None,
         ) -> pd.DataFrame:
-        dists_df = embedding_dists or self.embedding_dists
+        if embedding_dists is None:
+            dists_df = self.embedding_dists
+        else:
+            dists_df = embedding_dists
 
         dists_df = dists_df.dropna(subset=['trk_id1', 'trk_id2'])
         dists_df = dists_df[dists_df['trk_id1'] != dists_df['trk_id2']]
@@ -254,7 +260,8 @@ class IdentificationPipeline:
         distance_data = []
         
         hdf5_file = hdf5_file or h5py.File(self.embeddings_path, 'r')
-        detections = detections or self.trk_detections
+        if detections is None:
+            detections = self.trk_detections
 
         num_embeddings = hdf5_file['embeddings'].shape[0]
         frames = hdf5_file['frames'][:]
@@ -390,7 +397,8 @@ class IdentificationPipeline:
                 - distance: identity cosine distance
                 - overlap: spatial overlap between face detection and track box
         '''
-        face_overlap_df = face_overlap_df or self.face_overlaps
+        if face_overlap_df is None:
+            face_overlap_df = self.face_overlaps
 
         merged = self.face_data.merge(
             face_overlap_df,
@@ -457,10 +465,10 @@ class IdentificationPipeline:
                         'trk_id': trk_id,
                         'age': age,
                         'box_idx': box_idx,
-                        'x1': bbox[0],
-                        'y1': bbox[1],
-                        'x2': bbox[2],
-                        'y2': bbox[3],
+                        'x': bbox[0],
+                        'y': bbox[1],
+                        'w': bbox[0] + bbox[2],
+                        'h': bbox[1] + bbox[3],
                         'is_valid': 1 if valid else 0,
                     })
 
@@ -470,10 +478,10 @@ class IdentificationPipeline:
                     state_records.append({
                         'trk_id': trk_id,
                         't': t,
-                        'x1': bbox[0],
-                        'y1': bbox[1],
-                        'x2': bbox[2],
-                        'y2': bbox[3],
+                        'x': bbox[0],
+                        'y': bbox[1],
+                        'w': bbox[0] + bbox[2],
+                        'h': bbox[1] + bbox[3],
                     })
 
         obs_df = pd.DataFrame(obs_records)

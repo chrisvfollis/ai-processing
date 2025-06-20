@@ -215,11 +215,11 @@ class TrackingPipeline:
 
         logger.info(f'Generating output vid...')
 
-        output_vid_dir = os.path.join(self.output_dir, 'videos/')
         file_prefix = self.video_file.split('.')[0]
-        output_vid_path = io_utils.get_unique_path(
-            output_vid_dir, f'{file_prefix}_tracker_output.mp4'
-        )
+        output_filename = f'{file_prefix}_tracker_output.mp4'
+
+        output_vid_dir = os.path.join(self.output_dir, 'videos/')
+        output_vid_path = io_utils.get_unique_path(output_vid_dir, output_filename)
 
         cap = cv2.VideoCapture(self.video_path)
 
@@ -245,9 +245,10 @@ class TrackingPipeline:
             global_f_num = self.f_start + f_num
 
             for det in self.detections.get(global_f_num, []):
-                x1, y1, w, h = utils.xywh_xyxy(det[:4], out='xywh')
+                scaled_det = det[:4] * self.ocsort.scale
+                x1, y1, w, h = utils.xywh_xyxy(scaled_det, out='xywh')
                 box = tuple(map(int, [x1, y1, x1 + w, y1 + h]))
-                cv2.rectangle(frame, box[:2], box[2:], (255, 255, 255), line_thickness)
+                cv2.rectangle(frame, box[:2], box[2:], (255, 255, 255), 3)
 
             trk_data = trk_video_data.get(global_f_num, {})
             for box, track_id in zip(
@@ -285,4 +286,4 @@ class TrackingPipeline:
 
         cap.release()
         out.release()
-        logger.info(f'Tracker output vid saved to: {output_vid_path}')
+        logger.info(f'Output vid saved to: {output_vid_path}')
