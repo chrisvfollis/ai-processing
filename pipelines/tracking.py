@@ -187,7 +187,7 @@ class TrackingPipeline:
 
             if self.f_num % self.progress_interval == 0:
                 progress = utils.calculate_progress(self.f_num, self.f_total)
-                logger.info(f'[tracking] — {progress}%')
+                logger.progress(f'tracking —> {progress}%')
         
             self.f_num += 1
 
@@ -223,16 +223,18 @@ class TrackingPipeline:
     def _calculate_run_stats(self):
         all_trks = self.ocsort.active_trks | self.ocsort.inactive_trks
         
+        avg_lifespan = 0
         num_identified = 0
+        
         lifespans = []
-
         for trk in all_trks.values():
             lifespans.append(trk.age / self.fps)
 
             if io_utils.identity_is_known(trk.identity):
                 num_identified += 1
         
-        avg_lifespan = sum(lifespans) / len(lifespans)
+        if lifespans:
+            avg_lifespan = sum(lifespans) / len(lifespans)
 
         return avg_lifespan, num_identified
 

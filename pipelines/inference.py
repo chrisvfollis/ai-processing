@@ -153,13 +153,12 @@ class InferencePipeline:
             del frame_batch
 
             if log_progress == True:
-                logger.info(f'[inference] — {self.progress}%')
+                logger.progress(f'inference —> {self.progress}%')
         
         log_utils.press_stopwatch(self, 'primary_run_time')
 
         self._cleanup()
 
-        self.save_run_info()
         self.face_data = self.face_analysis.consolidate_face_data(self.face_data)
         if (self.face_data is None) or (self.face_data.empty):
             logger.info(f'No face data from inference run')

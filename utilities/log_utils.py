@@ -18,6 +18,10 @@ import torch
 pass
 
 
+PROGRESS_LEVEL = 25
+logging.addLevelName(PROGRESS_LEVEL, "PROGRESS")
+
+
 def configure_logging(log_level=0):
     log_dir = os.path.abspath(os.path.join(os.getcwd(), '..', 'files', 'logs'))
     os.makedirs(log_dir, exist_ok=True)
@@ -25,7 +29,14 @@ def configure_logging(log_level=0):
     log_file = os.path.join(log_dir, 'app.log')
     MB = 1024 * 1024
 
-    formatter = logging.Formatter(
+    if not hasattr(logging.Logger, 'progress'):
+        def log_progress(self, message, *args, **kwargs):
+            if self.isEnabledFor(PROGRESS_LEVEL):
+                self._log(PROGRESS_LEVEL, message, args, **kwargs)
+
+        logging.Logger.progress = log_progress
+
+    formatter = ColorFormatter(
         fmt="%(asctime)s [%(levelname)s] %(name)s PID[%(process)d]: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
@@ -35,7 +46,10 @@ def configure_logging(log_level=0):
         maxBytes=(500 * MB),
         backupCount=4
     )
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(name)s PID[%(process)d]: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    ))
 
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
@@ -50,6 +64,23 @@ def configure_logging(log_level=0):
 
 def get_logger(name=None):
     return logging.getLogger(name or __name__)
+
+
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        'PROGRESS': '\033[96m',  # bright cyan
+        'INFO': '\033[92m',
+        'WARNING': '\033[93m',
+        'ERROR': '\033[91m',
+        'DEBUG': '\033[90m',
+        'RESET': '\033[0m',
+    }
+
+    def format(self, record):
+        levelname = record.levelname
+        color = self.COLORS.get(levelname, self.COLORS['RESET'])
+        message = super().format(record)
+        return f"{color}{message}{self.COLORS['RESET']}"
 
 
 def press_stopwatch(instance, target_attr: str):

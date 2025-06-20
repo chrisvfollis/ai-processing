@@ -106,6 +106,8 @@ class IdentificationPipeline:
         high_overlaps = face_overlap_df[face_overlap_df['overlap_ratio'] >= overlap_threshold] if has_overlap_data else pd.DataFrame()
 
         all_trks = self.active_trks | self.inactive_trks
+        if self.trk_detections is None or self.trk_detections.empty:
+            return 
         trks_df = self.trk_detections.groupby('trk_id')
 
         frames = []
@@ -216,6 +218,9 @@ class IdentificationPipeline:
             return pd.DataFrame()
 
         knn_df = self.track_similarity_knn(k=k)
+        if knn_df.empty:
+            return pd.DataFrame()
+
         identity_map = dict(initial_identities[['trk_id', 'identity']].values)
 
         trk_to_frames = (
@@ -335,7 +340,11 @@ class IdentificationPipeline:
 
         dist_matrix = pivot.to_numpy()
         n_samples = dist_matrix.shape[0]
+
         k = min(k, n_samples)
+        if k == 0:
+            return pd.DataFrame()
+        
         nn = NearestNeighbors(n_neighbors=k, metric='precomputed')
         nn.fit(dist_matrix)
         distances, indices = nn.kneighbors(dist_matrix)

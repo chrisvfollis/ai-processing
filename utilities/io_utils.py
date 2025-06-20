@@ -18,6 +18,7 @@ import cv2
 import torch
 import boto3
 from botocore.exceptions import EndpointConnectionError, NoCredentialsError
+from botocore.config import Config
 import requests
 import psutil
 
@@ -347,12 +348,16 @@ def upload_file(
 def upload_data(credentials, max_workers=8):
     output_dir = os.path.join(get_project_root(), 'files/output')
     try:
+        config = Config(
+            region_name='us-west-1',
+            max_pool_connections=max_workers * 3
+        )
         session = boto3.session.Session()
         s3_client = session.client(
             's3',
             aws_access_key_id=credentials[0],
             aws_secret_access_key=credentials[1],
-            region_name='us-west-1'
+            config=config,
         )
         bucket_name = 'visionservice-data'
 
