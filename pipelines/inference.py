@@ -13,6 +13,7 @@ warnings.filterwarnings(
 import pandas as pd
 import cv2
 import torch
+import numpy as np
 
 # internal dependencies
 from models import YoloX, OSNet
@@ -201,7 +202,11 @@ class InferencePipeline:
         for idx, detections in enumerate(yolo_output):
             f_num = frame_data['start'] + (idx * self.track_stride)
 
-            person_detections[f_num] = detections
+            if (
+                isinstance(detections, torch.Tensor) or
+                isinstance(detections, np.ndarray)
+            ):
+                person_detections[f_num] = detections
 
         return person_detections, face_data
 

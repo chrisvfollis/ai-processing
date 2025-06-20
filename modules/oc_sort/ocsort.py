@@ -5,6 +5,7 @@ import uuid
 
 # 3rd-party dependencies
 import numpy as np
+import torch
 
 # internal dependencies
 from modules.oc_sort import association
@@ -71,7 +72,7 @@ class OCSort:
         }
         KalmanBoxTracker.next_id = 0
 
-    def update(self, output_results: np.ndarray, f_num=None):
+    def update(self, output_results: torch.Tensor, f_num=None):
         """
         Params:
           dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
@@ -80,8 +81,6 @@ class OCSort:
         """
         if output_results is None:
             return np.empty((0, 5))
-        elif not isinstance(output_results, np.ndarray):
-            output_results = np.array(output_results)
 
         self.frame_count += 1
 
