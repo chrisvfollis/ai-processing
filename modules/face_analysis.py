@@ -461,7 +461,6 @@ class FaceAnalysis:
             img: np.ndarray,
             regions: Optional[Sequence] = None,
             id_cutoff: Optional[float] = None,
-            align: bool = False,
             expand_percentage: int = 0,
             enhance: Optional[bool] = None,
             db_path: Optional[str] = None,

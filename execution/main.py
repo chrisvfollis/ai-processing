@@ -1,7 +1,7 @@
 # standard dependencies
 import os
 import sys
-import multiprocessing
+# import multiprocessing
 import time
 import argparse
 from datetime import datetime
@@ -10,6 +10,7 @@ from typing import Optional
 # 3rd-party dependencies
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import torch
+import torch.multiprocessing as multiprocessing
 
 # internal dependencies
 from utilities import io_utils, log_utils, conn_utils
@@ -31,7 +32,7 @@ def process_queue_segment(footage_records: list[tuple], process_config: tuple):
         ((record,) + process_config) for record in footage_records
     ]
 
-    with multiprocessing.Pool(processes=3) as pool:
+    with multiprocessing.Pool(processes=4) as pool:
         time.sleep(1)   # ensure workers have enough time to start
         initial_pids = {p.pid for p in pool._pool if p.is_alive()}
 

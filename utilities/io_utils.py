@@ -365,6 +365,8 @@ def upload_data(credentials, max_workers=8):
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for root, _, files in os.walk(output_dir):
                 for file in files:
+                    if file.endswith('.mp4'):
+                        continue
                     file_path = os.path.join(root, file)
                     object_key = file
                     upload_tasks.append(executor.submit(

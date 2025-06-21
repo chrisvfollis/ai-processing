@@ -229,7 +229,7 @@ class YoloX:
             ).astype(np.float32)
             padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
 
-            padded_img = padded_img[:, :, ::-1]
+            padded_img = padded_img[:, :, ::-1]     # converts BGR to RGB
             padded_img /= 255.0
             if mean is not None:
                 padded_img -= mean

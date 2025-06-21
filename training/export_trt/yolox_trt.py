@@ -44,10 +44,15 @@ def main(
         model,
         [dummy_input],
         fp16_mode=True,
-        max_batch_size=16,
+        max_batch_size=20,
         max_workspace_size=(1 << 33),
         log_level=trt.Logger.INFO,
-        opt_shapes=[(1,3,800,1440), (8,3,800,1440), (16,3,800,1440)],
+        opt_shapes=[
+            (1, 3, 800, 1440),
+            (8, 3, 800, 1440),
+            (16, 3, 800, 1440),
+            (20, 3, 800, 1440),
+        ],
     )
 
     del model
