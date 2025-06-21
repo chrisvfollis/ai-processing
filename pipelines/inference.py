@@ -32,7 +32,7 @@ class InferencePipeline:
             model_cfg: dict = {},
             device: torch.device = None,
             track_stride: int = 1,
-            id_freq: str = '2/s',
+            id_freq: str = '2 Hz',
         ):
         log_utils.press_stopwatch(self, 'init_time')
 
@@ -77,11 +77,8 @@ class InferencePipeline:
         self.effective_fps = self.fps // self.track_stride
         self.aligned_1s_interval = self.effective_fps * self.track_stride
 
-        if id_freq == '1/s':
-            self.id_stride = self.aligned_1s_interval
-        else:
-            id_freq = int(id_freq.split('/')[0])
-            self.id_stride = self.aligned_1s_interval // id_freq
+        id_freq = int(id_freq.split()[0])
+        self.id_stride = self.aligned_1s_interval // id_freq
 
         self.progress_interval = (
             ((self.f_total // 4) // self.track_stride) * self.track_stride
@@ -136,7 +133,7 @@ class InferencePipeline:
         log_utils.press_stopwatch(self, 'skim_time')
         return result
 
-    def run(self, batch_size: int = 16):
+    def run(self, batch_size: int = 20):
         self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
@@ -213,7 +210,7 @@ class InferencePipeline:
 
         return person_detections, face_data
 
-    def _collect_frames(self, batch_size: int = 16):
+    def _collect_frames(self, batch_size: int = 20):
         log_progress_update = False
 
         batch_start = self.f_num
