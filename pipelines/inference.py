@@ -12,6 +12,7 @@ warnings.filterwarnings(
 # 3rd-party dependencies
 import pandas as pd
 import cv2
+import av
 import torch
 import numpy as np
 
@@ -211,45 +212,57 @@ class InferencePipeline:
         return person_detections, face_data
 
     def _collect_frames(self, batch_size: int = 20):
-        log_progress_update = False
+        if not hasattr(self, 'av_container'):
+            self.av_container = av.open(self.video_path)
+            self.av_stream = self.av_container.streams.video[0]
+            self.av_stream.thread_type = 'FRAME'
+            self.av_stream.thread_count = 5
+            self._av_frame_iter = self.av_container.decode(self.av_stream)
+            self._av_next_pts = 0
 
+        log_progress_update = False
         batch_start = self.f_num
-        batch_end = min(self.f_total, (
-            batch_start + (batch_size * self.track_stride)
-        ))
         frames = []
         id_frames = {}
 
         log_utils.press_stopwatch(self, 'read_time')
-        while self.f_num < batch_end:
-            ret, frame = self.cap.read()
-            if not ret:
+
+        while len(frames) < batch_size and self.f_num < self.f_total:
+            try:
+                frame = next(self._av_frame_iter)
+            except StopIteration:
                 break
-            
+
+            if frame.pts is None or frame.pts < self._av_next_pts:
+                continue
+
+            img = frame.to_ndarray(format='bgr24')  # Converts to BGR numpy array
+
             if self.f_num % self.track_stride == 0:
-                frames.append(frame)
+                frames.append(img)
                 idx = len(frames) - 1
                 if self.f_num % self.id_stride == 0:
                     id_frames[idx] = {
-                        'frame': frame,
+                        'frame': img,
                         'f_num': self.f_num,
                     }
-            
+
             if self.f_num % self.progress_interval == 0:
                 log_progress_update = True
                 self.progress = utils.calculate_progress(self.f_num, self.f_total)
-            
+
             self.f_num += 1
+            self._av_next_pts += 1  # advance expected pts
 
         log_utils.press_stopwatch(self, 'read_time')
 
-        frame_batch = {
-            'start': batch_start,    # included in the batch
-            'end': batch_end,   # not included: only marks the end
+        return {
+            'start': batch_start,
+            'end': self.f_num,
             'frames': frames,
             'id_frames': id_frames,
-        }
-        return frame_batch, log_progress_update
+        }, log_progress_update
+
 
     def _cleanup(self):
         self.cap.release()
