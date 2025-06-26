@@ -539,6 +539,32 @@ def crop_region(img, region):
     return img[y1:y2, x1:x2].copy()
 
 
+def expand_bbox(x1, y1, x2, y2, img_w, img_h, margin=0.3):
+    '''
+    Expands the bounding box by a given margin percentage.
+
+    Args:
+        x1, y1, x2, y2: Original bounding box coordinates.
+        img_w, img_h: Dimensions of the original image.
+        margin (float): Margin as a fraction of box size.
+
+    Returns:
+        Expanded (x1, y1, x2, y2), clipped to image bounds.
+    '''
+    box_w = x2 - x1
+    box_h = y2 - y1
+
+    delta_w = int(box_w * margin / 2)
+    delta_h = int(box_h * margin / 2)
+
+    new_x1 = max(0, x1 - delta_w)
+    new_y1 = max(0, y1 - delta_h)
+    new_x2 = min(img_w, x2 + delta_w)
+    new_y2 = min(img_h, y2 + delta_h)
+
+    return new_x1, new_y1, new_x2, new_y2
+
+
 def xywh_xyxy(coordinates, out='xyxy'):
     if torch.is_tensor(coordinates):
         coordinates = coordinates.detach().cpu().numpy()

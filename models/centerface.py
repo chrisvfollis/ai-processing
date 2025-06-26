@@ -48,6 +48,8 @@ class CenterFace:
 
         self.ignore_landmarks = ignore_landmarks
 
+        self.expand_margin = expand_margin
+
         self.save_data = save_data
         if self.save_data:
             self.i = 0
@@ -269,6 +271,10 @@ class CenterFace:
             detected_faces = []
             for i, box in enumerate(dets):
                 x1, y1, x2, y2 = map(int, box[:4])
+                if self.expand_margin:
+                    x1, y1, x2, y2 = utils.expand_bbox(
+                        x1, y1, x2, y2, w, h, margin=self.expand_margin
+                    )
                 score = float(box[4])
                 face_w = x2 - x1
                 face_h = y2 - y1
@@ -298,7 +304,7 @@ class CenterFace:
                     nose=nose,
                     mouth_right=mouth_right,
                     mouth_left=mouth_left,
-                    confidence=score
+                    confidence=score,
                 )
                 detected_faces.append(face_region)
 
