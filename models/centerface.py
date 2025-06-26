@@ -61,15 +61,15 @@ class CenterFace:
 
         for img in img_data:
             h, w = img.shape[:2]
-            img_h_new = int(np.ceil(h / 32) * 32)
-            img_w_new = int(np.ceil(w / 32) * 32)
+            target_size = max(h, w)
+            new_h = new_w = int(np.ceil(target_size / 32) * 32)
 
-            scale_h = img_h_new / h
-            scale_w = img_w_new / w
+            scale_h = new_h / h
+            scale_w = new_w / w
 
-            image_cv = cv2.resize(img, dsize=(img_w_new, img_h_new))
+            resized = cv2.resize(img, dsize=(new_w, new_h))
             blob = (
-                cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB)
+                cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
                 .transpose(2, 0, 1)
                 .astype('float32')
             )
@@ -303,6 +303,10 @@ class CenterFace:
 
         return all_results
 
+    def forward(self, x):
+        heatmaps, scales_out, offsets, landmarks = self.model(x)
+        return heatmaps
+
     def visualize_detections(
             self, image: np.ndarray, face_detections: list[FacialAreaRegion],
             output_path: str = None
@@ -429,7 +433,3 @@ class CenterFace:
         with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
             detections_df.to_excel(writer, sheet_name='Detections', index=False)
             artifact_df.to_excel(writer, sheet_name='Pipeline Artifacts', index=False)   
-
-    def forward(self, x):
-        heatmaps, scales_out, offsets, landmarks = self.model(x)
-        return heatmaps
