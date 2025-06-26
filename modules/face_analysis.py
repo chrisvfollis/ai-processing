@@ -24,7 +24,7 @@ logger = log_utils.get_logger(__name__)
 class FaceAnalysis:
     def __init__(
             self,
-            id_cutoff: float = 0.8,
+            id_cutoff: float = 0.9,
             device: torch.device = None,
             centerface_cfg: dict = {},
             clearface_cfg: Optional[dict] = None,

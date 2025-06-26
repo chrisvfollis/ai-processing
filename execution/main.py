@@ -260,7 +260,7 @@ if __name__ == '__main__':
             'use_trt': True,
         },
         'centerface_cfg': {
-            'conf_thresh': 0.65,
+            'conf_thresh': 0.55,
             'min_area': (32, 32),
         },
     }

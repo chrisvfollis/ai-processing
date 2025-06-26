@@ -21,7 +21,7 @@ class CenterFace:
             self,
             device: torch.device = None,
             checkpoint: str = 'centerface.pth',
-            conf_thresh: float = 0.65,
+            conf_thresh: float = 0.55,
             min_area: tuple[int] | int = (40, 40),
             ignore_landmarks: bool = False,
             expand_margin: float = 0.25,
