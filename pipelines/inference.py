@@ -51,10 +51,10 @@ class InferencePipeline:
             osnet_cfg = model_cfg['osnet'] | {'device': self.device}
             self.osnet = OSNet(**osnet_cfg)
 
-        self.osnet.activate_buffers(
-            file_prefix=video_file.split('.')[0],
-            structure='video_data'
-        )
+            self.osnet.activate_buffers(
+                file_prefix=video_file.split('.')[0],
+                structure='video_data'
+            )
 
         # PATHS/FILENAMES/ETC:
         self.project_root = io_utils.get_project_root()
