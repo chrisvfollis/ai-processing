@@ -24,6 +24,7 @@ class CenterFace:
             conf_thresh: float = 0.65,
             min_area: tuple[int] | int = (40, 40),
             ignore_landmarks: bool = False,
+            expand_margin: float = 0.25,
             save_data: bool = False,
         ):
         
@@ -88,9 +89,9 @@ class CenterFace:
     
     def postprocess(self, heatmap, lms, offset, scale, img_shape, ignore_landmarks, conf_thresh, min_area, scale_h, scale_w):
         if not ignore_landmarks:
-            dets, lms_out = self.decode(heatmap, scale, offset, lms, img_shape, ignore_landmarks, conf_thresh, min_area)
+            dets, lms_out = self._decode(heatmap, scale, offset, lms, img_shape, ignore_landmarks, conf_thresh, min_area)
         else:
-            dets = self.decode(heatmap, scale, offset, None, img_shape, ignore_landmarks, conf_thresh, min_area)
+            dets = self._decode(heatmap, scale, offset, None, img_shape, ignore_landmarks, conf_thresh, min_area)
 
         if len(dets) > 0:
             dets[:, 0:4:2] /= scale_w
@@ -105,7 +106,7 @@ class CenterFace:
 
         return dets if ignore_landmarks else (dets, lms_out)
 
-    def decode(self, heatmap, scale, offset, landmark, size, ignore_landmarks, conf_thresh, min_area):
+    def _decode(self, heatmap, scale, offset, landmark, size, ignore_landmarks, conf_thresh, min_area):
         def _translate_dims(scale0, scale1, y_idx, x_idx):
             log_h = scale0[y_idx, x_idx]
             log_w = scale1[y_idx, x_idx]
@@ -162,7 +163,7 @@ class CenterFace:
 
         boxes = np.asarray(boxes, dtype=np.float32)
         if boxes.size != 0:
-            keep = self.nms(boxes[:, :4], boxes[:, 4], 0.3)
+            keep = self._nms(boxes[:, :4], boxes[:, 4], 0.3)
             boxes = boxes[keep, :]
 
             if not ignore_landmarks:
@@ -175,7 +176,7 @@ class CenterFace:
 
         return (boxes, lms_out) if not ignore_landmarks else boxes
     
-    def nms(self, boxes, scores, nms_thresh):
+    def _nms(self, boxes, scores, nms_thresh):
         keep = []
         num_detections = boxes.shape[0]
         suppressed = np.zeros((num_detections,), dtype=bool)
@@ -225,18 +226,26 @@ class CenterFace:
         if isinstance(min_area, Iterable):
             min_area = math.prod(min_area)
 
-        heatmaps, scales_out, offsets, landmarks_out, scales_hw = self.inference(imgs)
-
-        all_results = []
+        valid_indices = []
+        valid_imgs = []
+        all_results = [[] for _ in range(len(imgs))]
 
         for idx, img in enumerate(imgs):
-            region = regions[idx] if regions is not None else None
+            h, w = img.shape[:2]
+            if h * w < min_area:
+                continue
+            else:
+                valid_indices.append(idx)
+                valid_imgs.append(img)
+
+        heatmaps, scales_out, offsets, landmarks_out, scales_hw = self.inference(valid_imgs)
+
+        for idx, img in enumerate(valid_imgs):
+            original_idx = valid_indices[idx]
+            region = regions[original_idx] if regions is not None else None
+
             h, w = img.shape[:2]
             scale_h, scale_w = scales_hw[idx]
-
-            if h * w < min_area:
-                all_results.append([])
-                continue
 
             heatmap = heatmaps[idx : idx+1]   # keep batch axis
             scale_out = scales_out[idx : idx+1]
@@ -294,9 +303,9 @@ class CenterFace:
                 detected_faces.append(face_region)
 
             if self.save_data:
-                self.face_detections.setdefault(self.i + idx, []).extend(detected_faces)
+                self.face_detections.setdefault(self.i + original_idx, []).extend(detected_faces)
 
-            all_results.append(detected_faces)
+            all_results[original_idx] = detected_faces
 
         if self.save_data:
             self.i += len(imgs)
