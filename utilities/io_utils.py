@@ -265,6 +265,8 @@ def clear_local_files(
             if os.path.isfile(file_path):
                 if file_path.endswith('_tracking_pipeline.pkl'):
                     continue
+                elif file_path.endswith('_faces.csv'):
+                    continue
             else:
                 continue
 

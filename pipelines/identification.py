@@ -47,10 +47,14 @@ class IdentificationPipeline:
         self.video_file = video_file
         self.video_path = os.path.join(self.input_dir, video_file)
 
-        self.embeddings_file = embeddings_file or (
-            f'{video_file.split(".")[0]}_embeddings.hdf5'
-        )
-        self.embeddings_path = os.path.join(self.output_dir, self.embeddings_file)
+        try:
+            self.embeddings_file = embeddings_file or (
+                f'{video_file.split(".")[0]}_embeddings.hdf5'
+            )
+            self.embeddings_path = os.path.join(self.output_dir, self.embeddings_file)
+        except FileNotFoundError:
+            self.embeddings_file = None
+            self.embeddings_path = None
 
         # STATS/OUTPUT DATA:
         self.embedding_dists = None
@@ -59,7 +63,6 @@ class IdentificationPipeline:
 
     def run(self, min_overlap=0.3) -> pd.DataFrame:
         if self.embedding_dists is None:
-            logger.info("Generating embedding distance matrix...")
             self.embedding_dists = self.embedding_cos_dists()
 
         if (
@@ -81,15 +84,17 @@ class IdentificationPipeline:
             ]
             direct_identifications = self.assign_identities(face_match_candidates)
 
-        indirect_identifications = self.reassociate(direct_identifications)
+        if (self.embedding_dists is None) or self.embedding_dists.empty:
+            self.track_identities = direct_identifications
+        else:
+            indirect_identifications = self.reassociate(direct_identifications)
 
-        track_identities = pd.concat(
-            [direct_identifications, indirect_identifications],
-            ignore_index=True
-        ).drop_duplicates('trk_id')
-
-        self.track_identities = track_identities
-        return track_identities
+            self.track_identities = pd.concat(
+                [direct_identifications, indirect_identifications],
+                ignore_index=True
+            ).drop_duplicates('trk_id')
+            
+        return self.track_identities
 
     def save_id_event_images(
             self,
@@ -372,7 +377,12 @@ class IdentificationPipeline:
     ) -> pd.DataFrame:
         distance_data = []
         
-        hdf5_file = hdf5_file or h5py.File(self.embeddings_path, 'r')
+        try:
+            hdf5_file = hdf5_file or h5py.File(self.embeddings_path, 'r')
+            logger.info('Generating embedding distance matrix...')
+        except FileNotFoundError:
+            return pd.DataFrame()
+        
         if detections is None:
             detections = self.trk_detections
 

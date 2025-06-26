@@ -4,6 +4,7 @@ from math import ceil
 import os
 
 # 3rd-party dependencies
+import cv2
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,9 +13,12 @@ import torchvision.models._utils as _utils
 import torchvision.models as models
 
 # internal dependencies
-from utilities import io_utils
+from utilities import io_utils, log_utils
 from utilities import general_utils as utils
 from modules.data_structures import FacialAreaRegion
+
+
+logger = log_utils.get_logger(__name__)
 
 
 class RetinaFace:
@@ -22,16 +26,20 @@ class RetinaFace:
             self,
             checkpoint: str = 'retinaface.pth',
             device: torch.device = None,
-            conf_thresh: float = 0.02,
-            nms_thresh: float = 0.4,
+            conf_thresh: float = 0.6,
+            nms_thresh: float = 0.3,
             top_k: int = 5000,
             keep_top_k: int = 750,
-            min_sizes: list = [[16, 32], [64, 128], [256, 512]],
+            min_sizes: list = [
+                [16, 32],
+                [64, 128],
+                [256, 512],
+            ],
             steps: list = [8, 16, 32],
             variance: list = [0.1, 0.2],
             clip: bool = False,
             fp16: bool = False,
-            expand_margin: float = 0.10,
+            expand_margin: bool = True,
     ):
         project_root = io_utils.get_project_root()
         self.checkpoint_path = os.path.join(
@@ -170,70 +178,89 @@ class RetinaFace:
         return keep
 
     def preprocess(self, img):
+        if img is None or not isinstance(img, np.ndarray) or img.size == 0:
+            raise ValueError("Invalid input image")
+
+        max_dim = max(img.shape[:2])
+        if max_dim > 1500:
+            scale = 512 / 2000.0
+            new_w = int(img.shape[1] * scale)
+            new_h = int(img.shape[0] * scale)
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        resized_height, resized_width = img.shape[:2]
+
         img = img.astype(np.float32, copy=True)
         img -= (104.0, 117.0, 123.0)
         img = img.transpose(2, 0, 1)
-        img_tensor = torch.from_numpy(img).unsqueeze(0)
-        return img_tensor.to(self.device)
+        img_tensor = torch.from_numpy(img).unsqueeze(0).to(self.device)
+
+        return img_tensor, (resized_height, resized_width)
 
     def detect(self, img):
-        im_height, im_width = img.shape[:2]
+        orig_h, orig_w = img.shape[:2]
+        img_tensor, (resized_h, resized_w) = self.preprocess(img)
 
-        img_np = np.float32(img)
-        img_tensor = self.preprocess(img)
+        scale_x = orig_w / max(1, resized_w)
+        scale_y = orig_h / max(1, resized_h)
 
         with torch.no_grad():
-            loc, conf, landms = self.model(img_tensor)
+            try:
+                loc, conf, landms = self.model(img_tensor)
+            except Exception:
+                logger.exception(f'Model forward failed.')
+                return []
 
         scale = torch.tensor(
-            [im_width, im_height, im_width, im_height],
+            [resized_w, resized_h, resized_w, resized_h],
             device=self.device,
-            dtype=loc.dtype,
+            dtype=loc.dtype
         )
-        resize = 1
 
-        priors = self.get_priors(image_size=(im_height, im_width))
+        priors = self.get_priors(image_size=(resized_h, resized_w))
         prior_data = priors.data
 
         boxes = self.decode(loc.data.squeeze(0), prior_data, self.variance)
-        boxes = boxes * scale / resize
+        boxes = boxes * scale
         boxes = boxes.cpu().numpy()
+
+        boxes[:, [0, 2]] *= scale_x
+        boxes[:, [1, 3]] *= scale_y
+
         scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
 
         scale1 = torch.tensor(
-            [im_width, im_height] * 5,
+            [resized_w, resized_h] * 5,
             dtype=loc.dtype,
             device=self.device
         )
         landms = self.decode_landm(landms.data.squeeze(0), prior_data, self.variance)
-        landms = landms * scale1 / resize
+        landms = landms * scale1
         landms = landms.cpu().numpy()
 
-        # ignore low scores
+        landms[:, 0::2] *= scale_x
+        landms[:, 1::2] *= scale_y
+
+        # filter + NMS
         inds = np.where(scores > self.conf_thresh)[0]
         boxes = boxes[inds]
         landms = landms[inds]
         scores = scores[inds]
 
-        # keep top-K before NMS
         order = scores.argsort()[::-1][:self.top_k]
         boxes = boxes[order]
         landms = landms[order]
         scores = scores[order]
 
-        # do NMS
         dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
         keep = self.py_cpu_nms(dets, self.nms_thresh)
-        # keep = nms(dets, args.nms_threshold,force_cpu=args.cpu)
         dets = dets[keep, :]
         landms = landms[keep]
 
-        # keep top-K faster NMS
         dets = dets[:self.keep_top_k, :]
         landms = landms[:self.keep_top_k, :]
 
-        dets = np.concatenate((dets, landms), axis=1)
-        return dets
+        return np.concatenate((dets, landms), axis=1)
 
     def detect_faces(self, img: np.ndarray) -> list[FacialAreaRegion]:
         '''
@@ -252,8 +279,9 @@ class RetinaFace:
         for det in detections:
             x1, y1, x2, y2 = det[0:4]
             if self.expand_margin:
-                x1, y1, x2, y2 = utils.expand_bbox(
-                    x1, y1, x2, y2, img_w, img_h, margin=self.expand_margin
+                x1, y1, x2, y2 = utils.expand_bbox_asym(
+                    x1, y1, x2, y2, img_w, img_h, top=0.01, bottom=0.175,
+                    left=0.05, right=0.05
                 )
             confidence = det[4]
             w = x2 - x1

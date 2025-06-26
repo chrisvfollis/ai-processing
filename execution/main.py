@@ -116,17 +116,16 @@ def run_pipelines(
         tracking.filter_tracks()
 
         try:
-            identification = IdentificationPipeline(
-                filename, face_data, active_trks, inactive_trks
-            )
+            all_trks = [active_trks, inactive_trks]
+            identification = IdentificationPipeline(filename, face_data, *all_trks)
+
             trk_identity_df = identification.run()
-            
+
             for _, row in trk_identity_df.iterrows():
-                trk_id, identity = row[['trk_id', 'identity']]
-                if trk_id in active_trks:
-                    active_trks[trk_id].identity = identity
-                elif trk_id in inactive_trks:
-                    inactive_trks[trk_id].identity = identity
+                trk_id = row['trk_id']
+                for trk_set in all_trks:
+                    if trk_id in trk_set:
+                        trk_set[trk_id].identity = row['identity']
 
             identification.save_id_event_images(
                 overlap_threshold=0.5, credentials=credentials
@@ -138,9 +137,10 @@ def run_pipelines(
         tracking.save_run_info()
 
         if save_all_data:
-            face_data.to_csv(os.path.join(
-                files_dir_path, 'output/', f'{time_prefix}_{cam_id}_faces.csv'
-            ))
+            if (face_data is not None) and (not face_data.empty):
+                face_data.to_csv(os.path.join(
+                    files_dir_path, 'output/', f'{time_prefix}_{cam_id}_faces.csv'
+                ))
             tracking.generate_output_vid(face_data=face_data)
             inference.save_state()
 
@@ -267,6 +267,9 @@ if __name__ == '__main__':
             'conf_thresh': 0.55,
             'min_area': (32, 32),
         },
+        # 'clearface_cfg': {
+        #     'checkpoint': '90000_G.pth',
+        # }
     }
     osnet_cfg = {}
 

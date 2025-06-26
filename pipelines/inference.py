@@ -148,8 +148,6 @@ class InferencePipeline:
         logger.info(f'Running inference pipeline for {self.video_file}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
 
-        self.cap = cv2.VideoCapture(self.video_path)
-
         while self.f_num < self.f_total:
             frame_batch, log_progress = self._collect_frames(batch_size)
             results = self.process_batch(frame_batch)
@@ -274,8 +272,6 @@ class InferencePipeline:
         }, log_progress_update
 
     def _cleanup(self):
-        self.cap.release()
-
         if self.use_features:
             self.osnet.flush_buffers(structure='video_data', release=True)
 
@@ -419,6 +415,11 @@ class InferencePipeline:
         state['face_analysis'] = None
 
         state['cap'] = None
+
+        state['av_container'] = None
+        state['av_stream'] = None
+        state['_av_frame_iter'] = None
+        state['_av_next_pts'] = None
 
         for f, dets in state['person_detections'].items():
             if isinstance(dets, torch.Tensor):

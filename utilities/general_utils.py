@@ -565,6 +565,16 @@ def expand_bbox(x1, y1, x2, y2, img_w, img_h, margin=0.3):
     return new_x1, new_y1, new_x2, new_y2
 
 
+def expand_bbox_asym(x1, y1, x2, y2, img_w, img_h, top=0.05, bottom=0.15, left=0.05, right=0.05):
+    w = x2 - x1
+    h = y2 - y1
+    new_x1 = max(int(x1 - left * w), 0)
+    new_x2 = min(int(x2 + right * w), img_w)
+    new_y1 = max(int(y1 - top * h), 0)
+    new_y2 = min(int(y2 + bottom * h), img_h)
+    return new_x1, new_y1, new_x2, new_y2
+
+
 def xywh_xyxy(coordinates, out='xyxy'):
     if torch.is_tensor(coordinates):
         coordinates = coordinates.detach().cpu().numpy()

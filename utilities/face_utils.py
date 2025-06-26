@@ -14,58 +14,40 @@ def adjust_and_extract(
         detection: FacialAreaRegion,
         source_img: np.ndarray,
         align: bool = False,
-        width_border: int = 0,
-        height_border: int = 0,
-        save_data: bool = False,
-        data_index: tuple = None
 ):
     '''
     Applies any relevant adjustments to the detection, then extracts its
     image from the source image by cropping the detected facial area.
     '''
     detection.confidence = detection.confidence or 0
-
-    if save_data:
-        index_prefix = f'{data_index[0]}_{data_index[1]}'
-        starting_path = os.path.join('../files/output', index_prefix)
-
-        unaligned_path = f'{starting_path}_unaligned_detection.png'
-        if align:
-            aligned_path = f'{starting_path}_aligned_detection.png'
     
-    if align == False or save_data:
+    if align == False:
         face_img = source_img[
             int(detection.y) : int(detection.y + detection.h),
             int(detection.x) : int(detection.x + detection.w)
         ]
+    elif align == True:
+        if not (detection.left_eye and detection.right_eye):
+            print('No eye landmarks')
+        # calculate eye midpoint:
+        eye_x = int((detection.left_eye[0] + detection.right_eye[0]) / 2)
+        eye_y = int((detection.left_eye[1] + detection.right_eye[1]) / 2)
 
-        if save_data:
-            cv2.imwrite(unaligned_path, face_img)   # save unaligned image
+        box_w, box_h = detection.w, detection.h
+        x1 = eye_x - box_w // 2
+        y1 = eye_y - box_h // 2
+        x2 = x1 + box_w
+        y2 = y1 + box_h
 
-    if align == True:
-        sub_img, relative_x, relative_y = extract_sub_image(source_img, detection)
+        x1 = max(x1, 0)
+        y1 = max(y1, 0)
+        x2 = min(x2, source_img.shape[1])
+        y2 = min(y2, source_img.shape[0])
 
-        sub_img_xyxy = utils.xywh_xyxy(
-            (relative_x, relative_y, detection.w, detection.h)
-        )
+        face_img = source_img[y1:y2, x1:x2]
 
-        aligned_sub_img, angle = align_img_wrt_eyes(sub_img, detection)
-
-        rotated_x1, rotated_y1, rotated_x2, rotated_y2 = project_facial_area(
-            facial_area=sub_img_xyxy, angle=angle,
-            size=(sub_img.shape[0], sub_img.shape[1]),
-        )
-
-        face_img = aligned_sub_img[
-            rotated_y1 : rotated_y2,
-            rotated_x1 : rotated_x2
-        ]
-        del aligned_sub_img, sub_img
-
-        if save_data:
-            cv2.imwrite(aligned_path, face_img) # save aligned image
-        
-        detection = reframe_points(detection, width_border, height_border)
+        detection.x = x1
+        detection.y = y1
 
     return detection, face_img
 
@@ -99,9 +81,10 @@ def format_response(
     '''
     facial_area, face_img = face_obj.facial_area, face_obj.img
 
-    face_img = convert_color(face_img, color_face)
-    if normalize_face:
-        face_img = face_img / 255  # normalize input in [0, 1]
+    if (face_img is not None) and (face_img.size != 0):
+        face_img = convert_color(face_img, color_face)
+        if normalize_face:
+            face_img = face_img / 255  # normalize input in [0, 1]
 
     # cast to int for flask, and do final checks for borders
     x = max(0, int(facial_area.x))

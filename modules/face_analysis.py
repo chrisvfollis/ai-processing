@@ -5,6 +5,7 @@ import pickle
 import math
 
 # 3rd-party dependencies
+import cv2
 import numpy as np
 import pandas as pd
 import cv2
@@ -77,7 +78,6 @@ class FaceAnalysis:
                 employees: set[str],
                 enhance: bool = True,
         ) -> list[dict]:
-
             representations: list[dict] = []
             employee_list = sorted(employees)
 
@@ -88,27 +88,65 @@ class FaceAnalysis:
 
                 img_obj_list = self.detect(
                     img,
-                    detector="retinaface",
+                    detector='retinaface',
                     enhance=enhance,
-                    color_face="bgr",
+                    color_face='bgr',
                     normalize_face=normalize_face,
                 )[0]
 
                 if not img_obj_list:
                     representations.append({
-                        "identity": employee_path,
-                        "hash": image_utils.find_image_hash(employee_path),
-                        "embedding": None,
-                        "target_x": 0, "target_y": 0,
-                        "target_w": 0, "target_h": 0,
+                        'identity': employee_path,
+                        'hash': image_utils.find_image_hash(employee_path),
+                        'embedding': None,
+                        'target_x': 0,
+                        'target_y': 0,
+                        'target_w': 0,
+                        'target_h': 0,
                     })
                     continue
 
+                if len(img_obj_list) > 1:
+                    img_obj_list.sort(
+                        key=lambda obj: obj['confidence'],
+                        reverse=True
+                    )
+                    img_obj_list = [img_obj_list[0]]
+
                 face_imgs, facial_areas, confidences = [], [], []
                 for obj in img_obj_list:
-                    face_imgs.append(obj["face_img"])
-                    facial_areas.append(obj["facial_area"])
-                    confidences.append(obj.get("confidence", 0))
+                    fa_dict = obj['facial_area']
+                    detection = FacialAreaRegion(**fa_dict, confidence=obj['confidence'])
+                    aligned_detection, aligned_img = face_utils.adjust_and_extract(
+                        detection=detection,
+                        source_img=img,
+                        align=True,
+                    )
+
+                    face_imgs.append(aligned_img)
+                    facial_areas.append({
+                        'x': aligned_detection.x,
+                        'y': aligned_detection.y,
+                        'w': aligned_detection.w,
+                        'h': aligned_detection.h,
+                        'left_eye': aligned_detection.left_eye,
+                        'right_eye': aligned_detection.right_eye,
+                        'nose': aligned_detection.nose,
+                        'mouth_left': aligned_detection.mouth_left,
+                        'mouth_right': aligned_detection.mouth_right,
+                    })
+                    confidences.append(obj['confidence'])
+                    try:
+                        ref_img = aligned_img
+                        if ref_img.dtype == np.float32:
+                            ref_img = (ref_img * 255).clip(0, 255).astype(np.uint8)
+
+                        reference_img_name = io_utils.get_unique_path(
+                            self.output_dir, 'reference_img.jpg'
+                        )
+                        cv2.imwrite(reference_img_name, ref_img)
+                    except Exception as e:
+                        logger.info(e)
 
                 embed_results = self.represent(
                     face_imgs,
@@ -118,13 +156,15 @@ class FaceAnalysis:
                 )
 
                 for res in embed_results:
-                    fa = res["facial_area"]
+                    fa = res['facial_area']
                     representations.append({
-                        "identity": employee_path,
-                        "hash": image_utils.find_image_hash(employee_path),
-                        "embedding": res["embedding"],
-                        "target_x": fa["x"], "target_y": fa["y"],
-                        "target_w": fa["w"], "target_h": fa["h"],
+                        'identity': employee_path,
+                        'hash': image_utils.find_image_hash(employee_path),
+                        'embedding': res['embedding'],
+                        'target_x': fa['x'],
+                        'target_y': fa['y'],
+                        'target_w': fa['w'],
+                        'target_h': fa['h'],
                     })
 
             return representations
@@ -264,14 +304,9 @@ class FaceAnalysis:
                 all_facial_areas = [self.retinaface.detect_faces(imgs[0])]
             press_stopwatch(self, 'face_detection_time')
 
-        
             press_stopwatch(self, 'other_processing_time')
             for img_idx, (img, facial_areas) in enumerate(zip(imgs, all_facial_areas)):
                 height, width = img.shape[:2]
-
-                args_ = {}
-                args_['width_border'] = int(0.5 * width)
-                args_['height_border'] = int(0.5 * height)
 
                 format_args = {
                     'color_face': color_face,
@@ -283,10 +318,15 @@ class FaceAnalysis:
                 img_resp = []
                 for facial_area in facial_areas:
                     facial_area, face_img = face_utils.adjust_and_extract(
-                        facial_area, img, **args_
+                        facial_area, img, align=False
                     )
+                    if (face_img is None) or (face_img.size == 0):
+                        continue
+        
                     if enhance:
                         face_img = self.enhance(face_img, is_rgb=True)
+                        if (face_img is None) or (face_img.size == 0):
+                            continue
 
                     face_obj = DetectedFace(
                         img=face_img,
@@ -430,6 +470,7 @@ class FaceAnalysis:
                 distances = distance_matrix[i].detach().cpu().numpy().tolist()
 
                 result_df['distance'] = distances
+                result_df['confidence'] = embedding_obj['face_confidence']
 
                 result_df = result_df.drop(columns=['embedding'])
                 result_df = result_df[result_df['distance'] <= id_cutoff]

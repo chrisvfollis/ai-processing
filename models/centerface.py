@@ -228,43 +228,39 @@ class CenterFace:
         if isinstance(min_area, Iterable):
             min_area = math.prod(min_area)
 
-        valid_indices = []
-        valid_imgs = []
         all_results = [[] for _ in range(len(imgs))]
 
-        for idx, img in enumerate(imgs):
+        for original_idx, img in enumerate(imgs):
             h, w = img.shape[:2]
             if h * w < min_area:
                 continue
-            else:
-                valid_indices.append(idx)
-                valid_imgs.append(img)
 
-        heatmaps, scales_out, offsets, landmarks_out, scales_hw = self.inference(valid_imgs)
+            region = regions[original_idx] if regions else None
+            heatmaps, scales_out, offsets, landmarks_out, scales_hw = self.inference(img)
 
-        for idx, img in enumerate(valid_imgs):
-            original_idx = valid_indices[idx]
-            region = regions[original_idx] if regions is not None else None
+            scale_h, scale_w = scales_hw[0]
+            heatmap = heatmaps[0:1]
+            scale_out = scales_out[0:1]
+            offset = offsets[0:1]
+            lms_out = landmarks_out[0:1]
 
-            h, w = img.shape[:2]
-            scale_h, scale_w = scales_hw[idx]
-
-            heatmap = heatmaps[idx : idx+1]   # keep batch axis
-            scale_out = scales_out[idx : idx+1]
-            offset = offsets[idx  : idx+1]
-            lms_out = landmarks_out[idx : idx+1]
+            target_size = max(h, w)
+            model_input_shape = (
+                int(np.ceil(target_size / 32) * 32),
+                int(np.ceil(target_size / 32) * 32),
+            )
 
             if not self.ignore_landmarks:
                 dets, lms = self.postprocess(
                     heatmap, lms_out, offset, scale_out,
-                    (int(np.ceil(h / 32) * 32), int(np.ceil(w / 32) * 32)),
-                    self.ignore_landmarks, conf_thresh, min_area, scale_h, scale_w
+                    model_input_shape, self.ignore_landmarks,
+                    conf_thresh, min_area, scale_h, scale_w
                 )
             else:
                 dets = self.postprocess(
                     heatmap, None, offset, scale_out,
-                    (int(np.ceil(h / 32) * 32), int(np.ceil(w / 32) * 32)),
-                    self.ignore_landmarks, conf_thresh, min_area, scale_h, scale_w
+                    model_input_shape, self.ignore_landmarks,
+                    conf_thresh, min_area, scale_h, scale_w
                 )
                 lms = None
 
