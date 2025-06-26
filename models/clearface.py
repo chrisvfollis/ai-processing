@@ -27,7 +27,7 @@ class ClearFace:
             out_nc: int = 3,
             nf: int = 64,
             nb: int = 16
-        ):
+    ):
         self.device = device or utils.get_default_device()
 
         project_root = io_utils.get_project_root()

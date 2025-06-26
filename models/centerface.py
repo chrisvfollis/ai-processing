@@ -26,7 +26,7 @@ class CenterFace:
             ignore_landmarks: bool = False,
             expand_margin: float = 0.25,
             save_data: bool = False,
-        ):
+    ):
         
         self.device = device or utils.get_default_device()
 
@@ -219,7 +219,7 @@ class CenterFace:
             regions: list[Sequence] = None,
             conf_thresh: float = None,
             min_area: tuple[int] | int = None,
-        ) -> list[list[FacialAreaRegion]]:
+    ) -> list[list[FacialAreaRegion]]:
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]
 
@@ -325,7 +325,7 @@ class CenterFace:
     def visualize_detections(
             self, image: np.ndarray, face_detections: list[FacialAreaRegion],
             output_path: str = None
-        ):
+    ):
         '''
         Visualizes detected faces and their landmarks on the input image.
 
@@ -371,7 +371,7 @@ class CenterFace:
     def visualize_heatmaps(
             self, image: np.ndarray, heatmaps: list[np.ndarray],
             regions: Sequence = None, alpha: float = 0.35
-        ) -> np.ndarray:
+    ) -> np.ndarray:
         '''
         Overlay the CenterFace heatmap on the original image.
 

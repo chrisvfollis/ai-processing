@@ -44,7 +44,7 @@ class APIClient:
     def get(
             self, endpoint: str, headers: dict = None, params: dict = None,
             json=None
-        ) -> requests.models.Response:
+    ) -> requests.models.Response:
 
         endpoint_url = self.endpoint_url(endpoint)
         headers = headers or self.headers
@@ -54,7 +54,7 @@ class APIClient:
     def post(
             self, endpoint: str, headers: dict = None, params: dict = None,
             json=None
-        ) -> requests.models.Response:
+    ) -> requests.models.Response:
 
         endpoint_url = self.endpoint_url(endpoint)
         headers = headers or self.headers

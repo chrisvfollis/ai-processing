@@ -37,7 +37,7 @@ class OSNet:
             loss: str = 'triplet',
             buffer_limit: int = 100,
             mode: str = 'eval'
-        ):
+    ):
         self.project_root = io_utils.get_project_root()
         self.weights_path = os.path.join(
             self.project_root, 'models/weights/', weights_file
@@ -115,7 +115,7 @@ class OSNet:
 
     def preprocess(
             self, input_data: np.ndarray | list[np.ndarray]
-        ) -> torch.Tensor:
+    ) -> torch.Tensor:
         '''
         Args:
             input_data: A single image (HWC ndarray) or a list of such images.
@@ -159,7 +159,7 @@ class OSNet:
 
     def postprocess(
             self, output_data, batched=False
-        ) -> np.ndarray | list[np.ndarray]:
+    ) -> np.ndarray | list[np.ndarray]:
         if not batched:
             postprocessed = output_data.cpu().detach().numpy().flatten() 
         else:
@@ -243,7 +243,7 @@ class OSNet:
             file_prefix: str,
             structure: str = 'standard',
             buffer_limit: int = None,
-        ):
+    ):
         '''
         Sets up the appropriate buffer attributes for the given output structure,
         and creates a corresponding HDF5 file for dumping the buffered data.
@@ -295,7 +295,7 @@ class OSNet:
     def update_buffers(
             self, embedding_data: np.ndarray | list[np.ndarray],
             index: int, box_indices: list[int] = None, structure: str = None
-        ) -> None:
+    ) -> None:
         structure = structure or self.buffer_type
 
         if isinstance(embedding_data, np.ndarray):
@@ -347,7 +347,7 @@ class OSNet:
             hdf5_file: Optional[h5py.File] = None,
             embeddings: Optional[np.ndarray] = None,
             indices: Optional[np.ndarray] = None, 
-        ):
+    ):
         """
         Writes embedding data out to an HDF5 file.
 

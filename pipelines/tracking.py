@@ -38,7 +38,7 @@ class TrackingPipeline:
             min_lifespan=5,
             min_avg_size=0.004,
             prior_pkl=False,
-        ):
+    ):
         # INFERENCE DATA:
         self.detections = detections
 
@@ -373,7 +373,7 @@ class TrackingPipeline:
             trk_video_data: Optional[dict] = None,
             face_data: Optional[pd.DataFrame] = None,
             all_detections: bool = False,
-        ):
+    ):
         trk_video_data = trk_video_data or self.trk_video_data
 
         logger.info('Generating output video...')

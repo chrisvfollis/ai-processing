@@ -114,7 +114,7 @@ def event_img_finetune(
         PK: tuple[int] = None,
         lr: float = 3e-4,
         weight_decay: float = 1e-4,
-    ) -> tuple[str]:
+) -> tuple[str]:
     checkpoint_id = str(uuid.uuid4())
 
     project_root = io_utils.get_project_root()
@@ -272,7 +272,7 @@ def run_grid_search(
             'lr': [3e-4, 1e-3, 3e-3],
             'weight_decay': [0, 1e-4, 1e-3],
         }
-    ):
+):
     combinations = list(itertools.product(
         hyperparam_grid['triplet_margin'],
         hyperparam_grid['lr'],

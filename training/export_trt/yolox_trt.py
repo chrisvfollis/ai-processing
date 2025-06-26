@@ -17,7 +17,7 @@ def main(
         num_classes=1,
         depth=1.33,
         width=1.25,
-    ):
+):
     output_dir = os.path.join(
         io_utils.get_project_root(), 'models/weights/yolox/'
     )

@@ -373,7 +373,7 @@ def cluster_bboxes_into_regions(
         max_width: int = 1920,
         max_height: int = 1080,
         margin: int = 15,
-    ) -> list[tuple]:
+) -> list[tuple]:
     '''
     Clusters bounding boxes into the minimum number of non-overlapping image regions.
     
@@ -502,7 +502,7 @@ def filter_sparse_rows(cost_matrix):
 def apply_offset(
         coordinates: Iterable[int] | Iterable[Iterable[int]],
         offset: Sequence[int]
-    ):
+):
     '''
     Recursively applies a given (x, y) offset to an arbitrarily nested
     set of coordinates.
@@ -676,7 +676,7 @@ def create_track_df(time_prefix: str) -> pd.DataFrame:
 
 def merge_track_records(
         track_records: pd.DataFrame, max_gap: int = 75
-    ) -> pd.DataFrame:
+) -> pd.DataFrame:
     merged = []
     for identity, group in track_records.groupby('identity'):
         if identity == '':

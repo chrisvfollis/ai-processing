@@ -19,7 +19,7 @@ class FaceNet512:
             device: torch.device = None,
             fp16: bool = False,
             use_trt: bool = False,
-        ):
+    ):
         project_root = io_utils.get_project_root()
         self.checkpoint_path = os.path.join(
             project_root, 'models/weights/facenet/', checkpoint

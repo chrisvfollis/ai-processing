@@ -27,7 +27,7 @@ class IdentificationPipeline:
             active_trks: dict,
             inactive_trks: dict,
             embeddings_file: Optional[str] = None,
-        ):
+    ):
         # INPUT DATA:
         self.face_data = face_data 
 
@@ -96,7 +96,7 @@ class IdentificationPipeline:
             face_overlap_df: pd.DataFrame = None,
             overlap_threshold: float = 0.3,
             credentials: tuple[str] = None,
-        ):
+    ):
         logger.info('Saving ID event images...')
 
         if face_overlap_df is None:
@@ -298,7 +298,7 @@ class IdentificationPipeline:
             self,
             k: int = 5,
             embedding_dists: Optional[pd.DataFrame] = None,
-        ) -> pd.DataFrame:
+    ) -> pd.DataFrame:
         if embedding_dists is None:
             dists_df = self.embedding_dists
         else:
@@ -369,7 +369,7 @@ class IdentificationPipeline:
             hdf5_file: Optional[str] = None,
             detections: Optional[pd.DataFrame] = None,
             chunk_size: int = 100,
-        ) -> pd.DataFrame:
+    ) -> pd.DataFrame:
         distance_data = []
         
         hdf5_file = hdf5_file or h5py.File(self.embeddings_path, 'r')
@@ -508,7 +508,7 @@ class IdentificationPipeline:
 
     def _collect_face_match_candidates(
             self, face_overlap_df: pd.DataFrame = None
-        ) -> pd.DataFrame:
+    ) -> pd.DataFrame:
         '''
         Collects candidate face-to-track associations for recognized faces.
         
@@ -551,7 +551,7 @@ class IdentificationPipeline:
 
     def _track_identity_scores(
             self, face_match_candidates: pd.DataFrame
-        ) -> pd.DataFrame:
+    ) -> pd.DataFrame:
         df = face_match_candidates.copy()
         df['similarity'] = 1 - df['distance']
         df['weighted_sim'] = df['similarity'] * df['overlap_ratio']
@@ -573,7 +573,7 @@ class IdentificationPipeline:
             self,
             active_trks: Optional[dict] = None,
             inactive_trks: Optional[dict] = None,
-        ) -> tuple[pd.DataFrame, ...]:
+    ) -> tuple[pd.DataFrame, ...]:
 
         active_trks = active_trks or self.active_trks
         inactive_trks = inactive_trks or self.inactive_trks

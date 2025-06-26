@@ -27,7 +27,7 @@ from utilities.conn_utils import APIClient
 
 def get_edge_computer_info(
         nickname: str = None, shop_id: str = None
-    ) -> dict | None:
+) -> dict | None:
     '''
     Fetches edge computer information using either its nickname or the ID of the
     associated shop.
@@ -70,7 +70,7 @@ def get_edge_computer_info(
 
 def get_instance_info(
         nickname: str = None, shop_id: str = None
-    ) -> dict | None:
+) -> dict | None:
     '''
     Fetches instance information using either its nickname or the ID of the
     associated shop.
@@ -135,7 +135,7 @@ def auto_scp(
         local_dir: str = 'Downloads/',
         nickname: str = None,
         shop_id: str = None,
-    ):
+):
     def _scp_download(remote_path, local_path, instance_info, recursive):
         key_path = os.path.join('files/keys/', instance_info['key_filename'])
         remote_user = instance_info['remote_user']
@@ -244,7 +244,7 @@ def s3_list_download(object_keys: list | str, output_dir='resources/downloads',
 def s3_list_delete(
         object_keys: list | str, region: str = 'us-west-1',
         bucket: str = None, s3_client=None,
-    ):
+):
     s3_client = s3_client or conn_utils.s3_connect(region=region)
 
     results = {'deleted': [], 'failed': {}}
@@ -278,7 +278,7 @@ def s3_time_delete(
         bucket: str = None,
         s3_client: list = None,
         use_key_timestamp: bool = False,
-    ):
+):
     '''
     Args:
         start (datetime or list): The date/time of the start of the time period.
@@ -384,7 +384,7 @@ def clear_queue_range(
         start: datetime | list = None,
         end: datetime | list = None,
         shop_id: Optional[str] = None,
-    ) -> None:
+) -> None:
     if (start is None) and (end is None):
         raise ValueError(
             'At least one of `start` or `end` must be provided.'
@@ -459,7 +459,7 @@ def save_approved_img_data(
         approved_records: list[tuple] = None,
         bucket_name: str = 'timemanager-event-imgs',
         shop_id: str = None,
-    ) -> pd.DataFrame:
+) -> pd.DataFrame:
     approved_records = approved_records or get_approved_records(shop_id)
 
     project_root = io_utils.get_project_root()

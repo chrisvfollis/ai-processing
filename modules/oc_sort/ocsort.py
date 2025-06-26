@@ -47,7 +47,7 @@ class OCSort:
             input_dims=(800, 1440),
             aspect_ratio_thresh=1.6,
             min_box_area=100,
-        ):
+    ):
         # PIXEL SPACE TRANSLATION:
         img_h, img_w = img_dims
         input_h, input_w = input_dims

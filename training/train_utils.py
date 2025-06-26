@@ -14,7 +14,7 @@ def clean_dataset(
         dataset: pd.DataFrame,
         class_col: str = 'person_id',
         split: str | int = 'test',
-    ) -> pd.DataFrame:
+) -> pd.DataFrame:
     '''
     Removes classes from the dataset with fewer samples than the minimum
     required for the given split.  
@@ -42,7 +42,7 @@ def create_dataset_manifest(
         validation: pd.DataFrame,
         testing: Optional[pd.DataFrame] = None,
         output_path: str = None,
-    ) -> pd.DataFrame:
+) -> pd.DataFrame:
     '''
     Saves pertinent information about each sample in the dataset, such as
     whether it was in the training, validation, or (optional) testing set. 
@@ -84,7 +84,7 @@ def log_training_run(
     num_epochs: int,
     final_train_loss: float,
     final_val_score: float,
-    ) -> bool:
+) -> bool:
     webapp_api = APIClient(var_prefix='INTERNAL_API')
 
     model_info = {
@@ -149,7 +149,7 @@ def upload_training_files(
         epoch_data_path: str = None,
         region: str = 'us-west-1',
         bucket_name: str = 'ivakt-training-files',
-    ):
+):
     s3_client = conn_utils.s3_connect(region=region)
 
     for path in [checkpoint_path, manifest_path, epoch_data_path]:

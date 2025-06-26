@@ -35,7 +35,7 @@ class InferencePipeline:
             track_stride: int = 1,
             id_freq: str = '2 Hz',
             use_features: bool = True,
-        ):
+    ):
         log_utils.press_stopwatch(self, 'init_time')
 
         # MODEL SETUP:

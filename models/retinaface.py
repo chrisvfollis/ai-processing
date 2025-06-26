@@ -32,7 +32,7 @@ class RetinaFace:
             clip: bool = False,
             fp16: bool = False,
             expand_margin: float = 0.10,
-        ):
+    ):
         project_root = io_utils.get_project_root()
         self.checkpoint_path = os.path.join(
             project_root, 'models/weights/', checkpoint

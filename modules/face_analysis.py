@@ -29,7 +29,7 @@ class FaceAnalysis:
             centerface_cfg: dict = {},
             clearface_cfg: Optional[dict] = None,
             facenet_cfg: dict = {},
-        ):
+    ):
         self.device = device or utils.get_default_device()
 
         # PATHS:
@@ -72,11 +72,11 @@ class FaceAnalysis:
             refresh_database: bool = True,
             enhance: bool = True,
             normalize_face: bool = True,
-        ):
+    ):
         def __find_bulk_embeddings(
                 employees: set[str],
                 enhance: bool = True,
-            ) -> list[dict]:
+        ) -> list[dict]:
 
             representations: list[dict] = []
             employee_list = sorted(employees)
@@ -232,7 +232,7 @@ class FaceAnalysis:
             enhance: bool = True,
             color_face: str = 'rgb',
             normalize_face: bool = True,
-        ) -> list[list[dict]]:
+    ) -> list[list[dict]]:
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]
 
@@ -307,7 +307,7 @@ class FaceAnalysis:
             img: np.ndarray,
             is_rgb=True,
             output_path=None
-        ):
+    ):
         # Start timing
         enhanced_face = self.clearface.forward(img, is_rgb=is_rgb)
         # End timing
@@ -323,7 +323,7 @@ class FaceAnalysis:
             facial_areas: list[dict],
             confidences: list[float],
             postprocess: bool = True,
-        ) -> list[dict]:
+    ) -> list[dict]:
         """
         Args:
             face_imgs (List[np.ndarray]): List of cropped face images (from
@@ -367,7 +367,7 @@ class FaceAnalysis:
             id_cutoff: Optional[float] = None,
             enhance: bool = True,
             refresh_database: bool = True,
-        ) -> list[list[pd.DataFrame]]:
+    ) -> list[list[pd.DataFrame]]:
         per_image_resp_objs = []
 
         id_cutoff = id_cutoff or self.id_cutoff
@@ -451,7 +451,7 @@ class FaceAnalysis:
             id_cutoff: Optional[float] = None,
             enhance: Optional[bool] = None,
             db_path: Optional[str] = None,
-        ) -> list[pd.DataFrame]:
+    ) -> list[pd.DataFrame]:
         def _postprocess_output(all_face_dfs):
             '''
             - Adds employee names, UUIDs, and designations to the dataframes.
@@ -544,7 +544,7 @@ class FaceAnalysis:
 
     def consolidate_face_data(
             self, face_data: dict[list[pd.DataFrame]]
-        ) -> pd.DataFrame:
+    ) -> pd.DataFrame:
         merged_dfs = []
         for frame, dfs in face_data.items():
             for i, df in enumerate(dfs):

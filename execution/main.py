@@ -55,7 +55,7 @@ def wrap_up_segment(
         credentials: tuple[str],
         retain_footage: bool,
         save_all_data: bool,
-    ):
+):
     timestamp = utils.frame_timestamp(time_prefix)
 
     io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
@@ -83,11 +83,11 @@ def run_pipelines(
         log_level: int = 0,
         credentials: tuple[str, ...] = None,
         save_all_data=False,
-    ) -> bool:
+) -> bool:
+    files_dir_path = os.path.join(io_utils.get_project_root(), 'files/')
+
     log_utils.configure_logging(log_level=log_level)
     io_utils.clear_memory()
-
-    files_dir_path = os.path.join(io_utils.get_project_root(), 'files/')
 
     shop_id, filename = footage_record[1:3]
     time_prefix, cam_id = utils.decode_vid_filename(filename)
@@ -173,7 +173,7 @@ def main(
         retain_footage: bool = False,
         starting_point: Optional[datetime] = None,
         priority_cam: Optional[int] = None,
-    ):
+):
     log_utils.configure_logging(log_level=log_level)
 
     process_cfg = (model_configs, device, log_level, credentials, save_all_data)

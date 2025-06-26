@@ -23,7 +23,7 @@ class YOLOv4:
             nms_thresh: float = 0.5,
             conf_thresh: float = 0.65,
             input_dims: tuple[int] = (416, 416)
-        ):
+    ):
         self.device = device or utils.get_default_device()
 
         self.model = Yolov4Model(inference=True)

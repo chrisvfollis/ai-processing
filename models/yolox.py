@@ -36,7 +36,7 @@ class YoloX:
             fp16: bool = True,
             use_trt: bool = False,
             decode: bool = True,
-        ):
+    ):
         def _configure_batchnorm(model):
             '''
             Adjust BatchNorm2d layers to use YOLOX-specific epsilon and
@@ -167,7 +167,7 @@ class YoloX:
             conf_thresh: Optional[float] = None,
             nms_thresh: Optional[float] = None,
             num_classes: Optional[int] = None,
-        ) -> list[torch.Tensor | None]:
+    ) -> list[torch.Tensor | None]:
         '''
         Returns (list[torch.tensor or None]): List of tensors, one for each
             image (or None if there were no detections in that image). Each
@@ -309,7 +309,7 @@ class YOLOPAFPN(nn.Module):
             in_channels=[256, 512, 1024],
             depthwise=False,
             act="silu",
-        ):
+    ):
         super().__init__()
         self.backbone = CSPDarknet(depth, width, depthwise=depthwise, act=act)
         self.in_features = in_features
@@ -413,7 +413,7 @@ class YOLOXHead(nn.Module):
             act="silu",
             depthwise=False,
             decode=True,
-        ):
+    ):
         """
         Args:
             act (str): activation type of conv. Defalut value: "silu".

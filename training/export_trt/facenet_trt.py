@@ -40,7 +40,7 @@ def main(
         checkpoint='facenet512.pth',
         input_size=(160, 160),
         fp16=False,
-    ):
+):
     output_dir = os.path.join(
         io_utils.get_project_root(), 'models/weights/facenet/'
     )

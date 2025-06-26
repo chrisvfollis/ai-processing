@@ -103,7 +103,7 @@ def remove_files(
         file_paths: list[str] | str,
         missing_ok: bool = True,
         verbose: bool = True
-    ) -> int:
+) -> int:
     file_paths = [file_paths] if isinstance(file_paths, str) else file_paths
     total_removed = 0
 
@@ -244,7 +244,7 @@ def clear_local_files(
         target_file_prefix: Optional[str] = None,
         target_file_extensions: Optional[list] = None,
         target_dirs: Optional[list[str]] = None,
-    ) -> int:
+) -> int:
     if not target_dirs:
         dir_paths = get_common_dirs()
         target_dir_names = [
@@ -309,7 +309,7 @@ def save_event_image(
         region: str = 'us-west-1',
         bucket_name: str = 'timemanager-event-imgs',
         event_imgs_dir: str = None,
-    ) -> str | None:
+) -> str | None:
 
     if img is None:
         return None
@@ -336,7 +336,7 @@ def save_event_image(
 
 def upload_file(
         s3_client, bucket_name: str, file_path: str, object_key: str
-    ) -> bool:
+) -> bool:
     try:
         s3_client.upload_file(file_path, bucket_name, object_key)
         return True
@@ -400,7 +400,7 @@ def download_s3_footage(
         credentials: Optional[tuple[str, ...]] = None,
         region: str = 'us-west-1',
         bucket_name: str = 'ivakt-footage',
-    ) -> bool:
+) -> bool:
     s3_client = conn_utils.s3_connect(region, credentials)
     project_root = get_project_root()
 
@@ -432,7 +432,7 @@ def delete_s3_footage(
         credentials: Optional[tuple[str, ...]] = None,
         region: str = 'us-west-1',
         bucket_name: str = 'ivakt-footage',
-    ) -> bool:
+) -> bool:
     object_keys = [object_keys] if isinstance(object_keys, str) else object_keys
     s3_client = conn_utils.s3_connect(region, credentials)
     
@@ -470,7 +470,7 @@ def download_s3_image(
         filename=None,
         img_dir='files/input/faces/',
         bucket_name='ivakt-employee-photos',
-    ) -> bool:
+) -> bool:
     s3_client = conn_utils.s3_connect(
         region='us-west-1', credentials=credentials
     )
@@ -871,7 +871,7 @@ def fetch_person_data(
         access_token: str = None,
         save_data: bool = True,
         db_name: str = 'data.db',
-    ) -> list:
+) -> list:
     shop_uuid = shop_uuid or get_shop(db_name=db_name)[0]
     access_token = access_token or get_api_tokens()[0]
     
@@ -899,7 +899,7 @@ def get_queue_block(
         shop_id: str,
         start_from: list | datetime = None,
         priority_camera: str = None,
-    ) -> list[tuple] | None:
+) -> list[tuple] | None:
     '''
     Returns:
         queue_block (list[tuple] or None): A list of rows corresponding to each
@@ -957,7 +957,7 @@ def clear_queue_block(shop_id, timestamp) -> None:
 
 def post_event_data(
         shop_id, time_prefix, delete_data: bool = True, logger=None
-    ) -> bool:
+) -> bool:
     successful_post = False
 
     webapp_api = APIClient(var_prefix='WEBAPP_API')

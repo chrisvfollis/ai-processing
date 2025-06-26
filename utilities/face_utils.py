@@ -18,7 +18,7 @@ def adjust_and_extract(
         height_border: int = 0,
         save_data: bool = False,
         data_index: tuple = None
-    ):
+):
     '''
     Applies any relevant adjustments to the detection, then extracts its
     image from the source image by cropping the detected facial area.
@@ -76,7 +76,7 @@ def format_response(
         width = None,
         height = None,
         normalize_face: bool = False,
-    ) -> dict:
+) -> dict:
     '''
     Returns:
         dict: A dictionary with:
