@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 # 3rd-party dependencies
+import pandas as pd
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import torch
 import torch.multiprocessing as multiprocessing
@@ -75,7 +76,6 @@ def wrap_up_segment(
 #                     - INDIVIDUAL VIDEO PROCESSING -
 # -----------------------------------------------------------------------------
 
-
 def run_pipelines(
         footage_record: tuple,
         model_cfg: dict,
@@ -84,9 +84,10 @@ def run_pipelines(
         credentials: tuple[str, ...] = None,
         save_all_data=False,
     ) -> bool:
-
     log_utils.configure_logging(log_level=log_level)
     io_utils.clear_memory()
+
+    files_dir_path = os.path.join(io_utils.get_project_root(), 'files/')
 
     shop_id, filename = footage_record[1:3]
     time_prefix, cam_id = utils.decode_vid_filename(filename)
@@ -97,7 +98,7 @@ def run_pipelines(
     try:
         object_key = f'{shop_id}/{filename}'
         if not os.path.exists(
-            os.path.join(io_utils.get_project_root(), 'files/input/', filename)
+            os.path.join(files_dir_path, 'input/', filename)
         ):
             if not io_utils.download_s3_footage(object_key, credentials):
                 raise S3DownloadError(f'Failed to download footage: {object_key}')
@@ -137,6 +138,9 @@ def run_pipelines(
         tracking.save_run_info()
 
         if save_all_data:
+            face_data.to_csv(os.path.join(
+                files_dir_path, 'output/', f'{time_prefix}_{cam_id}_faces.csv'
+            ))
             tracking.generate_output_vid(face_data=face_data)
             inference.save_state()
 
