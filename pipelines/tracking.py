@@ -220,6 +220,59 @@ class TrackingPipeline:
             'small_avg_area': small_avg_area,
         }
 
+    def format_track_data(
+            self,
+            active_trks: Optional[dict] = None,
+            inactive_trks: Optional[dict] = None,
+    ) -> tuple[pd.DataFrame, ...]:
+
+        active_trks = active_trks or self.ocsort.active_trks
+        inactive_trks = inactive_trks or self.ocsort.inactive_trks
+
+        obs_records = []
+        state_records = []
+
+        for trk_dict in (active_trks, inactive_trks):
+            for trk_id, trk in trk_dict.items():
+                # observations (detections):
+                for age, bbox in trk.observations.items():
+                    f_num = trk.map_offset(offset=age)
+                    valid = age in trk.valid_observations
+                    box_idx = trk.bbox_indices[age]
+
+                    if len(bbox) != 5:
+                        logger.info(f'Detection: {bbox}')
+                        continue
+
+                    obs_records.append({
+                        'f': f_num,
+                        'trk_id': trk_id,
+                        'age': age,
+                        'box_idx': box_idx,
+                        'x': bbox[0],
+                        'y': bbox[1],
+                        'w': bbox[2] - bbox[0],
+                        'h': bbox[3] - bbox[1],
+                        'is_valid': 1 if valid else 0,
+                    })
+
+                # kalman filter states:
+                for t, bbox in enumerate(trk.history):
+                    bbox = bbox.flatten()
+                    state_records.append({
+                        'trk_id': trk_id,
+                        't': t,
+                        'x': bbox[0],
+                        'y': bbox[1],
+                        'w': bbox[2] - bbox[0],
+                        'h': bbox[3] - bbox[1],
+                    })
+
+        obs_df = pd.DataFrame(obs_records)
+        state_df = pd.DataFrame(state_records)
+
+        return obs_df, state_df
+
     def _calculate_run_stats(self):
         all_trks = self.ocsort.active_trks | self.ocsort.inactive_trks
         
@@ -239,8 +292,6 @@ class TrackingPipeline:
         return avg_lifespan, num_identified
 
     def save_run_info(self):
-        logger.info('Saving tracking run info...')
-
         runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
         os.makedirs(runtime_data_dir, exist_ok=True)
 
@@ -342,13 +393,10 @@ class TrackingPipeline:
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
                 stats_df.to_excel(writer, sheet_name='Stats', index=False)
                 track_df.to_excel(writer, sheet_name='Tracking Data', index=False)
-            logger.info(f'Saved tracking runtime data to {excel_path}')
         except Exception as e:
             logger.error(f'Failed to save Excel file: {e}')
 
     def save_state(self):
-        logger.info('Saving pipeline state...')
-
         file_prefix = self.video_file.split('.')[0]
         save_path = os.path.join(
             self.output_dir, f'{file_prefix}_tracking_pipeline.pkl'

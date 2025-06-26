@@ -136,17 +136,17 @@ class FaceAnalysis:
                         'mouth_right': aligned_detection.mouth_right,
                     })
                     confidences.append(obj['confidence'])
-                    try:
-                        ref_img = aligned_img
-                        if ref_img.dtype == np.float32:
-                            ref_img = (ref_img * 255).clip(0, 255).astype(np.uint8)
+                    # try:
+                    #     ref_img = aligned_img
+                    #     if ref_img.dtype == np.float32:
+                    #         ref_img = (ref_img * 255).clip(0, 255).astype(np.uint8)
 
-                        reference_img_name = io_utils.get_unique_path(
-                            self.output_dir, 'reference_img.jpg'
-                        )
-                        cv2.imwrite(reference_img_name, ref_img)
-                    except Exception as e:
-                        logger.info(e)
+                    #     reference_img_name = io_utils.get_unique_path(
+                    #         self.output_dir, 'reference_img.jpg'
+                    #     )
+                    #     cv2.imwrite(reference_img_name, ref_img)
+                    # except Exception as e:
+                    #     logger.info(e)
 
                 embed_results = self.represent(
                     face_imgs,
@@ -584,7 +584,9 @@ class FaceAnalysis:
         return all_face_dfs
 
     def consolidate_face_data(
-            self, face_data: dict[list[pd.DataFrame]]
+            self,
+            face_data: dict[list[pd.DataFrame]],
+            cam_id: int = None,
     ) -> pd.DataFrame:
         merged_dfs = []
         for frame, dfs in face_data.items():
@@ -592,6 +594,7 @@ class FaceAnalysis:
                 if df.empty:
                     continue
                 df = df.copy()
+                df['cam_id'] = cam_id
                 df['f'] = frame
                 df['face_idx'] = i
                 merged_dfs.append(df)

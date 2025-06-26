@@ -38,7 +38,7 @@ def process_queue_segment(footage_records: list[tuple], process_config: tuple):
         initial_pids = {p.pid for p in pool._pool if p.is_alive()}
 
         async_results = pool.starmap_async(
-            run_pipelines, footage_processing_tasks
+            run_worker_pipeline, footage_processing_tasks
         )
         worker_monitor = log_utils.observability_thread(
             'failed_workers', args=(pool, initial_pids, async_results),
@@ -76,15 +76,17 @@ def wrap_up_segment(
 #                     - INDIVIDUAL VIDEO PROCESSING -
 # -----------------------------------------------------------------------------
 
-def run_pipelines(
+
+def run_worker_pipeline(
         footage_record: tuple,
         model_cfg: dict,
         device: torch.device,
         log_level: int = 0,
         credentials: tuple[str, ...] = None,
-        save_all_data=False,
+        save_all_data: bool = False,
+        identify: str = 'local',
 ) -> bool:
-    files_dir_path = os.path.join(io_utils.get_project_root(), 'files/')
+    file_dir_path = os.path.join(io_utils.get_project_root(), 'files/')
 
     log_utils.configure_logging(log_level=log_level)
     io_utils.clear_memory()
@@ -98,7 +100,7 @@ def run_pipelines(
     try:
         object_key = f'{shop_id}/{filename}'
         if not os.path.exists(
-            os.path.join(files_dir_path, 'input/', filename)
+            os.path.join(file_dir_path, 'input/', filename)
         ):
             if not io_utils.download_s3_footage(object_key, credentials):
                 raise S3DownloadError(f'Failed to download footage: {object_key}')
@@ -114,48 +116,70 @@ def run_pipelines(
 
         active_trks, inactive_trks = tracking.run()
         tracking.filter_tracks()
+        trk_detections, _ = tracking.format_track_data()
 
-        try:
-            all_trks = [active_trks, inactive_trks]
-            identification = IdentificationPipeline(filename, face_data, *all_trks)
+        if identify == 'local':
+            try:
+                active_trks, inactive_trks = identify_local_tracks(
+                    face_data, active_trks, inactive_trks, trk_detections,
+                    filename, credentials,
+                )
+                if save_all_data:
+                    if face_data is not None and not face_data.empty:
+                        face_data.to_csv(os.path.join(
+                            file_dir_path, 'output/', f'{time_prefix}_{cam_id}_faces.csv'
+                        ))
+                    tracking.generate_output_vid(face_data=face_data)
+            except Exception:
+                logger.exception('Error during local ID')
 
-            trk_identity_df = identification.run()
-
-            for _, row in trk_identity_df.iterrows():
-                trk_id = row['trk_id']
-                for trk_set in all_trks:
-                    if trk_id in trk_set:
-                        trk_set[trk_id].identity = row['identity']
-
-            identification.save_id_event_images(
-                overlap_threshold=0.5, credentials=credentials
+            io_utils.save_track_info(
+                time_prefix, cam_id, inactive_trks, tracking.fps
             )
-        except Exception:
-            logger.exception(f'Error during identification:')
+        elif identify == 'global':
+            if face_data is not None and not face_data.empty:
+                trk_detections_path = os.path.join(
+                    file_dir_path, 'output/', f'{time_prefix}_{cam_id}_trk_dets.parquet'
+                )
+                face_data_path = os.path.join(
+                    file_dir_path, 'output/', f'{time_prefix}_{cam_id}_faces.parquet'
+                )
+                face_data.to_parquet(face_data_path)
+                trk_detections.to_parquet(trk_detections_path)
         
         inference.save_run_info()
         tracking.save_run_info()
 
-        if save_all_data:
-            if (face_data is not None) and (not face_data.empty):
-                face_data.to_csv(os.path.join(
-                    files_dir_path, 'output/', f'{time_prefix}_{cam_id}_faces.csv'
-                ))
-            tracking.generate_output_vid(face_data=face_data)
-            inference.save_state()
-
         tracking.save_state()
-        io_utils.save_track_info(
-            time_prefix, cam_id, inactive_trks, tracking.fps
-        )
-        process_result = True
+
         logger.info(f'Processed {filename}')
+        process_result = True
     except Exception:
         logger.exception(f'Error occurred while processing {filename}')
     finally:
         io_utils.clear_memory()
 
     return process_result
+
+
+def identify_local_tracks(
+        face_data, active_trks, inactive_trks, trk_detections, filename, credentials
+):
+    all_trks = [active_trks, inactive_trks]
+    identification = IdentificationPipeline(filename, face_data, *all_trks, trk_detections)
+
+    trk_identity_df = identification.run()
+
+    for _, row in trk_identity_df.iterrows():
+        trk_id = row['trk_id']
+        for trk_set in all_trks:
+            if trk_id in trk_set:
+                trk_set[trk_id].identity = row['identity']
+
+    identification.save_id_event_images(
+        overlap_threshold=0.5, credentials=credentials
+    )
+    return active_trks, inactive_trks
 
 
 # =============================================================================

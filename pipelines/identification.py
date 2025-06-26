@@ -26,6 +26,7 @@ class IdentificationPipeline:
             face_data: pd.DataFrame,
             active_trks: dict,
             inactive_trks: dict,
+            trk_detections: pd.DataFrame,
             embeddings_file: Optional[str] = None,
     ):
         # INPUT DATA:
@@ -34,8 +35,7 @@ class IdentificationPipeline:
         self.active_trks = active_trks
         self.inactive_trks = inactive_trks
 
-        obs_df, _ = self._format_track_data(active_trks, inactive_trks)
-        self.trk_detections = obs_df
+        self.trk_detections = trk_detections
 
         # PATHS/FILENAMES/ETC:
         self.project_root = io_utils.get_project_root()
@@ -70,9 +70,6 @@ class IdentificationPipeline:
             'identity' not in self.face_data.columns or
             self.face_data['identity'].isna().all()
         ):
-            logger.info(
-                'No valid face identities found; skipping direct ID assignment.'
-            )
             direct_identifications = pd.DataFrame(
                 columns=['trk_id', 'identity', 'assignment_type', 'assignment_cost']
             )
@@ -167,7 +164,7 @@ class IdentificationPipeline:
                     finally:
                         f_prev = f_num
 
-                if frame.size == 0:
+                if frame is None or frame.size == 0:
                     logger.warning(f'Empty frame {f_num}')
                     continue
 
@@ -177,7 +174,7 @@ class IdentificationPipeline:
                 x2 = min(x + w, img_w)
                 y2 = min(y + h, img_h)
                 crop = frame[y1:y2, x1:x2]
-                if crop.size == 0:
+                if crop is None or crop.size == 0:
                     logger.warning(f'Empty crop at frame {f_num} for box {row["box"]}')
                     continue
 
@@ -578,56 +575,3 @@ class IdentificationPipeline:
         
         grouped['overlap_weighted_avg_sim'] = grouped['weighted_score'] / (grouped['total_overlap'] + 1e-6)
         return grouped.sort_values(by=['trk_id', 'overlap_weighted_avg_sim'], ascending=[True, False])
-
-    def _format_track_data(
-            self,
-            active_trks: Optional[dict] = None,
-            inactive_trks: Optional[dict] = None,
-    ) -> tuple[pd.DataFrame, ...]:
-
-        active_trks = active_trks or self.active_trks
-        inactive_trks = inactive_trks or self.inactive_trks
-
-        obs_records = []
-        state_records = []
-
-        for trk_dict in (active_trks, inactive_trks):
-            for trk_id, trk in trk_dict.items():
-                # observations (detections):
-                for age, bbox in trk.observations.items():
-                    f_num = trk.map_offset(offset=age)
-                    valid = age in trk.valid_observations
-                    box_idx = trk.bbox_indices[age]
-
-                    if len(bbox) != 5:
-                        logger.info(f'Detection: {bbox}')
-                        continue
-
-                    obs_records.append({
-                        'f': f_num,
-                        'trk_id': trk_id,
-                        'age': age,
-                        'box_idx': box_idx,
-                        'x': bbox[0],
-                        'y': bbox[1],
-                        'w': bbox[2] - bbox[0],
-                        'h': bbox[3] - bbox[1],
-                        'is_valid': 1 if valid else 0,
-                    })
-
-                # kalman filter states:
-                for t, bbox in enumerate(trk.history):
-                    bbox = bbox.flatten()
-                    state_records.append({
-                        'trk_id': trk_id,
-                        't': t,
-                        'x': bbox[0],
-                        'y': bbox[1],
-                        'w': bbox[2] - bbox[0],
-                        'h': bbox[3] - bbox[1],
-                    })
-
-        obs_df = pd.DataFrame(obs_records)
-        state_df = pd.DataFrame(state_records)
-
-        return obs_df, state_df

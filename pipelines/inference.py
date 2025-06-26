@@ -75,6 +75,8 @@ class InferencePipeline:
 
         self.f_num = 0
 
+        self.time_prefix, self.cam_id = utils.decode_vid_filename(self.video_file)
+
         # PARAMETERS:
         self.track_stride = track_stride
 
@@ -164,7 +166,9 @@ class InferencePipeline:
 
         self._cleanup()
 
-        self.face_data = self.face_analysis.consolidate_face_data(self.face_data)
+        self.face_data = self.face_analysis.consolidate_face_data(
+            self.face_data, cam_id=self.cam_id
+        )
         if (self.face_data is None) or (self.face_data.empty):
             logger.info(f'No face data from inference run')
 
@@ -395,13 +399,10 @@ class InferencePipeline:
             with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
                 config_df.to_excel(writer, sheet_name='Inference Configuration', index=False)
                 performance_df.to_excel(writer, sheet_name='Performance Metrics', index=False)
-                logger.info('Saved inference runtime data')
         except Exception as e:
             logger.info(f'Failed to save Excel file: {e}')
 
     def save_state(self):
-        logger.info('Saving inference pipeline state...')
-
         file_prefix = self.video_file.split('.')[0]
         filename = io_utils.get_unique_filename(
             self.output_dir, f'{file_prefix}_inference_pipeline.pkl'
