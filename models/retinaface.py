@@ -13,6 +13,7 @@ import torchvision.models as models
 
 # internal dependencies
 from utilities import io_utils
+from utilities import general_utils as utils
 from modules.data_structures import FacialAreaRegion
 
 
@@ -30,6 +31,7 @@ class RetinaFace:
             variance: list = [0.1, 0.2],
             clip: bool = False,
             fp16: bool = False,
+            expand_margin: float = 0.10,
         ):
         project_root = io_utils.get_project_root()
         self.checkpoint_path = os.path.join(
@@ -63,6 +65,7 @@ class RetinaFace:
         self.steps = steps
         self.clip = clip
         self.variance = variance
+        self.expand_margin = expand_margin
     
     def get_priors(self, image_size: tuple[int]):
         image_size = image_size
@@ -244,9 +247,14 @@ class RetinaFace:
         '''
         results = []
         detections = self.detect(img)
+        img_h, img_w = img.shape[:2]
 
         for det in detections:
             x1, y1, x2, y2 = det[0:4]
+            if self.expand_margin:
+                x1, y1, x2, y2 = utils.expand_bbox(
+                    x1, y1, x2, y2, img_w, img_h, margin=self.expand_margin
+                )
             confidence = det[4]
             w = x2 - x1
             h = y2 - y1
