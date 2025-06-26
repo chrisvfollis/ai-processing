@@ -78,8 +78,13 @@ class InferencePipeline:
         self.effective_fps = self.fps // self.track_stride
         self.aligned_1s_interval = self.effective_fps * self.track_stride
 
-        id_freq = int(id_freq.split()[0])
-        self.id_stride = self.aligned_1s_interval // id_freq
+        if id_freq == 'fps':
+            self.id_stride = 1
+        else:
+            id_Hz_val = int(
+                str(id_freq).split()[0]
+            )
+            self.id_stride = self.aligned_1s_interval // id_Hz_val
 
         self.progress_interval = (
             ((self.f_total // 4) // self.track_stride) * self.track_stride
