@@ -24,56 +24,7 @@ logger = log_utils.get_logger(__name__)
 
 
 # =============================================================================
-#                      - QUEUE SEGMENT MULTIPROCESSING -
-# -----------------------------------------------------------------------------
-
-
-def process_queue_segment(footage_records: list[tuple], process_config: tuple):
-    footage_processing_tasks = [
-        ((record,) + process_config) for record in footage_records
-    ]
-
-    with multiprocessing.Pool(processes=4) as pool:
-        time.sleep(1)   # ensure workers have enough time to start
-        initial_pids = {p.pid for p in pool._pool if p.is_alive()}
-
-        async_results = pool.starmap_async(
-            run_worker_pipeline, footage_processing_tasks
-        )
-        worker_monitor = log_utils.observability_thread(
-            'failed_workers', args=(pool, initial_pids, async_results),
-            logger=logger
-        )
-        worker_monitor.start()
-        async_results.get()
-
-
-def wrap_up_segment(
-        segment_filenames: list,
-        time_prefix: str,
-        shop_id: str,
-        credentials: tuple[str],
-        retain_footage: bool,
-        save_all_data: bool,
-):
-    timestamp = utils.frame_timestamp(time_prefix)
-
-    io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
-    io_utils.clear_queue_block(shop_id, timestamp)
-
-    io_utils.clear_local_files(time_prefix)
-
-    if retain_footage == False:
-        object_keys = [f'{shop_id}/{filename}' for filename in segment_filenames]
-        io_utils.delete_s3_footage(object_keys, credentials)
-
-    if save_all_data == True:
-        logger.info('Uploading data...')
-        io_utils.upload_data(credentials)
-
-
-# =============================================================================
-#                     - INDIVIDUAL VIDEO PROCESSING -
+#                      - INDIVIDUAL VIDEO PROCESSING -
 # -----------------------------------------------------------------------------
 
 
@@ -180,6 +131,55 @@ def identify_local_tracks(
         overlap_threshold=0.5, credentials=credentials
     )
     return active_trks, inactive_trks
+
+
+# =============================================================================
+#                      - QUEUE SEGMENT MULTIPROCESSING -
+# -----------------------------------------------------------------------------
+
+
+def process_queue_segment(footage_records: list[tuple], process_config: tuple):
+    footage_processing_tasks = [
+        ((record,) + process_config) for record in footage_records
+    ]
+
+    with multiprocessing.Pool(processes=4) as pool:
+        time.sleep(1)   # ensure workers have enough time to start
+        initial_pids = {p.pid for p in pool._pool if p.is_alive()}
+
+        async_results = pool.starmap_async(
+            run_worker_pipeline, footage_processing_tasks
+        )
+        worker_monitor = log_utils.observability_thread(
+            'failed_workers', args=(pool, initial_pids, async_results),
+            logger=logger
+        )
+        worker_monitor.start()
+        async_results.get()
+
+
+def wrap_up_segment(
+        segment_filenames: list,
+        time_prefix: str,
+        shop_id: str,
+        credentials: tuple[str],
+        retain_footage: bool,
+        save_all_data: bool,
+):
+    timestamp = utils.frame_timestamp(time_prefix)
+
+    io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
+    io_utils.clear_queue_block(shop_id, timestamp)
+
+    io_utils.clear_local_files(time_prefix)
+
+    if retain_footage == False:
+        object_keys = [f'{shop_id}/{filename}' for filename in segment_filenames]
+        io_utils.delete_s3_footage(object_keys, credentials)
+
+    if save_all_data == True:
+        logger.info('Uploading data...')
+        io_utils.upload_data(credentials)
 
 
 # =============================================================================
