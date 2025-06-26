@@ -69,14 +69,12 @@ class FaceAnalysis:
     def _prepare_data(
             self,
             db_path,
-            expand_percentage: int = 0,
             refresh_database: bool = True,
             enhance: bool = True,
             normalize_face: bool = True,
         ):
         def __find_bulk_embeddings(
                 employees: set[str],
-                expand_percentage: int = 0,
                 enhance: bool = True,
             ) -> list[dict]:
 
@@ -91,7 +89,6 @@ class FaceAnalysis:
                 img_obj_list = self.detect(
                     img,
                     detector="retinaface",
-                    expand_percentage=expand_percentage,
                     enhance=enhance,
                     color_face="bgr",
                     normalize_face=normalize_face,
@@ -138,7 +135,6 @@ class FaceAnalysis:
         file_parts = [
             'ds', 'model', 'facenet512',
             'detector', 'centerface',
-            'expand', str(expand_percentage),
         ]
         file_name = '_'.join(file_parts) + '.pkl'
         file_name = file_name.replace('-', '').lower()
@@ -219,7 +215,6 @@ class FaceAnalysis:
                 self.retinaface = RetinaFace(device=self.device)
             representations += __find_bulk_embeddings(
                 employees=new_images,
-                expand_percentage=expand_percentage,
                 enhance=enhance,
             )
             must_save_pickle = True
@@ -234,7 +229,6 @@ class FaceAnalysis:
             self,
             imgs: np.ndarray | list[np.ndarray],
             detector: str = 'centerface',
-            expand_percentage: int = 0,
             enhance: bool = True,
             color_face: str = 'rgb',
             normalize_face: bool = True,
@@ -243,9 +237,6 @@ class FaceAnalysis:
             imgs = [imgs]
 
         per_image_resp_objs = []
-        args_template = {
-            'expand_percentage': expand_percentage,
-        }
 
         if detector == 'skip':
             for img in imgs:
@@ -278,7 +269,7 @@ class FaceAnalysis:
             for img_idx, (img, facial_areas) in enumerate(zip(imgs, all_facial_areas)):
                 height, width = img.shape[:2]
 
-                args_ = args_template.copy()
+                args_ = {}
                 args_['width_border'] = int(0.5 * width)
                 args_['height_border'] = int(0.5 * height)
 
@@ -374,7 +365,6 @@ class FaceAnalysis:
             imgs: list[np.ndarray],
             db_path: str,
             id_cutoff: Optional[float] = None,
-            expand_percentage: int = 0,
             enhance: bool = True,
             refresh_database: bool = True,
         ) -> list[list[pd.DataFrame]]:
@@ -384,7 +374,6 @@ class FaceAnalysis:
 
         representations = self._prepare_data(
             db_path,
-            expand_percentage=expand_percentage,
             refresh_database=refresh_database,
             enhance=enhance,
         )
@@ -396,7 +385,6 @@ class FaceAnalysis:
         per_image_objs = self.detect(
             imgs,
             enhance=enhance,
-            expand_percentage=expand_percentage
         )
         for source_objs in per_image_objs:
             resp_obj = []
@@ -461,7 +449,6 @@ class FaceAnalysis:
             img: np.ndarray,
             regions: Optional[Sequence] = None,
             id_cutoff: Optional[float] = None,
-            expand_percentage: int = 0,
             enhance: Optional[bool] = None,
             db_path: Optional[str] = None,
         ) -> list[pd.DataFrame]:
@@ -532,7 +519,6 @@ class FaceAnalysis:
         per_image_face_dfs = self.find(
             imgs=batch_imgs,
             id_cutoff=id_cutoff,
-            expand_percentage=expand_percentage,
             enhance=enhance,
             db_path=db_path,
         )

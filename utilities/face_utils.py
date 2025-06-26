@@ -13,7 +13,6 @@ from modules.face_analysis import FacialAreaRegion
 def adjust_and_extract(
         detection: FacialAreaRegion,
         source_img: np.ndarray,
-        expand_percentage: int = 0,
         align: bool = False,
         width_border: int = 0,
         height_border: int = 0,
@@ -33,18 +32,6 @@ def adjust_and_extract(
         unaligned_path = f'{starting_path}_unaligned_detection.png'
         if align:
             aligned_path = f'{starting_path}_aligned_detection.png'
-        
-    if expand_percentage > 0:
-        # Expand the facial region height and width by the provided percentage
-        # ensuring that the expanded region stays within source_img.shape limits:
-        expanded_w = detection.w + int(detection.w * expand_percentage / 100)
-        expanded_h = detection.h + int(detection.h * expand_percentage / 100)
-
-        detection.x = max(0, detection.x - int((expanded_w - detection.w) / 2))
-        detection.y = max(0, detection.y - int((expanded_h - detection.h) / 2))
-
-        detection.w = min(source_img.shape[1] - detection.x, expanded_w)
-        detection.h = min(source_img.shape[0] - detection.y, expanded_h)
     
     if align == False or save_data:
         face_img = source_img[
