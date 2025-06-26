@@ -34,6 +34,7 @@ class InferencePipeline:
             device: torch.device = None,
             track_stride: int = 1,
             id_freq: str = '2 Hz',
+            use_features: bool = True,
         ):
         log_utils.press_stopwatch(self, 'init_time')
 
@@ -42,11 +43,13 @@ class InferencePipeline:
 
         yolox_cfg = model_cfg['yolox'] | {'device': self.device}
         faces_cfg = model_cfg['faces'] | {'device': self.device}
-        osnet_cfg = model_cfg['osnet'] | {'device': self.device}
-        
+            
         self.yolox = YoloX(**yolox_cfg)
         self.face_analysis = FaceAnalysis(**faces_cfg)
-        self.osnet = OSNet(**osnet_cfg)
+
+        if use_features:
+            osnet_cfg = model_cfg['osnet'] | {'device': self.device}
+            self.osnet = OSNet(**osnet_cfg)
 
         self.osnet.activate_buffers(
             file_prefix=video_file.split('.')[0],
@@ -75,6 +78,9 @@ class InferencePipeline:
         # PARAMETERS:
         self.track_stride = track_stride
 
+        self.prog_interval = (
+            ((self.f_total // 4) // self.track_stride) * self.track_stride
+        )
         self.effective_fps = self.fps // self.track_stride
         self.aligned_1s_interval = self.effective_fps * self.track_stride
 
@@ -86,9 +92,7 @@ class InferencePipeline:
             )
             self.id_stride = self.aligned_1s_interval // id_Hz_val
 
-        self.progress_interval = (
-            ((self.f_total // 4) // self.track_stride) * self.track_stride
-        )
+        self.use_features = use_features
 
         # INFERENCE DATA STORAGE:
         self.person_detections = {}
@@ -188,11 +192,12 @@ class InferencePipeline:
                 detections = [
                     utils.xywh_xyxy(d, out='xywh') for d in detections
                 ]
-            try:
-                self.osnet.extraction_batch(img, detections, f_num)
-            except ValueError as e:
-                print(e)
-                continue
+            if self.use_features:
+                try:
+                    self.osnet.extraction_batch(img, detections, f_num)
+                except ValueError as e:
+                    print(e)
+                    continue
 
             img_h, img_w = img.shape[:2]
             regions = utils.cluster_bboxes_into_regions(
@@ -252,7 +257,7 @@ class InferencePipeline:
                         'f_num': self.f_num,
                     }
 
-            if self.f_num % self.progress_interval == 0:
+            if self.f_num % self.prog_interval == 0:
                 log_progress_update = True
                 self.progress = utils.calculate_progress(self.f_num, self.f_total)
 
@@ -268,11 +273,12 @@ class InferencePipeline:
             'id_frames': id_frames,
         }, log_progress_update
 
-
     def _cleanup(self):
         self.cap.release()
 
-        self.osnet.flush_buffers(structure='video_data', release=True)
+        if self.use_features:
+            self.osnet.flush_buffers(structure='video_data', release=True)
+
         io_utils.clear_memory()
 
     def save_run_info(self):
@@ -327,8 +333,8 @@ class InferencePipeline:
                 self.yolox.nms_thresh,
                 self.yolox.conf_thresh,
 
-                self.osnet.input_dims,                          
-                self.osnet.output_shape,
+                self.osnet.input_dims if self.use_features else 'N/A',                          
+                self.osnet.output_shape if self.use_features else 'N/A',
     
                 self.face_analysis.id_cutoff,
                 self.face_analysis.enhance_faces,
@@ -374,9 +380,9 @@ class InferencePipeline:
                 self.yolox.inference_time,
                 self.yolox.postprocess_time,
 
-                self.osnet.preprocess_time,
-                self.osnet.embedding_time,
-                self.osnet.flush_time,
+                self.osnet.preprocess_time if self.use_features else 'N/A',
+                self.osnet.embedding_time if self.use_features else 'N/A',
+                self.osnet.flush_time if self.use_features else 'N/A',
 
                 self.face_analysis.identification_pipeline_time,
                 self.face_analysis.face_detection_time,
