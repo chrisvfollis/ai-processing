@@ -338,14 +338,14 @@ def main(
             filenames = [row[2] for row in queue_block_records]
             time_prefix, _ = utils.decode_vid_filename(filenames[0])
 
-        time_logger, stop_timing  = log_utils.observability_thread(
+        time_logger, stop_timing = log_utils.observability_thread(
             target='elapsed_time', logger=logger
         )
         time_logger.start()
 
         queue_segment_multiprocess(queue_block_records, process_cfg)
         if id_strategy == 'global':
-            present_identified_df, _, _ = global_identification(
+            results = global_identification(
                 time_prefix,
                 output_dir,
                 min_score=0.55,
@@ -356,6 +356,9 @@ def main(
                 confidence_weight=0.5,
                 distance_weight=0.5,
             )
+            
+
+
 
         stop_timing.set()
         time_logger.join()

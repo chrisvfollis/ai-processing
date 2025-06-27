@@ -13,6 +13,7 @@ import errno
 
 # 3rd-party dependencies
 import numpy as np
+import pandas as pd
 import h5py
 import cv2
 import torch
@@ -682,6 +683,64 @@ def save_track_info(time_prefix: str, cam_id: str, target_trks: dict,
             time_prefix,
             cam_id,
             trk_id,
+            identity,
+            start_img,
+            end_img,
+            start_time,
+            end_time,
+        )
+        cursor.execute(query, values)
+
+    conn_utils.close_sqlite_db(conn, cursor, commit=True)
+
+
+def save_attendance_info(
+        time_prefix: str,
+        cam_id: str,
+        presence_df: pd.DataFrame,
+        video_fps: int,
+        video_frame_count: int,
+        db_name: str = 'data.db',
+) -> None:
+    db_path = os.path.join(get_project_root(), 'files/', db_name)
+    conn, cursor = conn_utils.sqlite_db_connect(db_path)
+
+    columns = [
+        'time_prefix',
+        'camera',
+        'track_id',
+        'identity',
+        'start_img',
+        'end_img',
+        'start_time',
+        'end_time',
+    ]
+
+    query_columns = utils.query_columns_string(columns)
+    param_placeholders = utils.query_param_placeholders(columns)
+
+    query = f'''
+        INSERT INTO track_info {query_columns}
+        VALUES {param_placeholders}
+    '''
+
+    start_frame = 0
+    end_frame = video_frame_count - 1
+    start_time = utils.frame_timestamp(time_prefix, start_frame, video_fps)
+    end_time = utils.frame_timestamp(time_prefix, end_frame, video_fps)
+
+    for _, row in presence_df.iterrows():
+        if not row['present_flag']:
+            continue
+
+        identity = row['identity']
+        start_img = None
+        end_img = None
+
+        values = (
+            time_prefix,
+            cam_id,
+            -1,
             identity,
             start_img,
             end_img,
