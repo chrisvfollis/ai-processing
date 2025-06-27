@@ -1,13 +1,15 @@
 # standard dependencies
 import os
 import sys
-# import multiprocessing
+from pathlib import Path
+import math
 import time
 import argparse
 from datetime import datetime
 from typing import Optional
 
 # 3rd-party dependencies
+import numpy as np
 import pandas as pd
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import torch
@@ -134,7 +136,7 @@ def identify_local_tracks(
 
 
 # =============================================================================
-#                      - QUEUE SEGMENT MULTIPROCESSING -
+#                      - QUEUE SEGMENT PROCESSING -
 # -----------------------------------------------------------------------------
 
 
@@ -156,6 +158,104 @@ def process_queue_segment(footage_records: list[tuple], process_config: tuple):
         )
         worker_monitor.start()
         async_results.get()
+
+
+def global_identification(
+        time_prefix: str,
+        output_dir: str,
+        # ----- feature-engineering knobs ----------------------------------
+        min_match_distance: float = 0.30,
+        max_mismatch_distance: float = 0.90,
+        confidence_weight: float = 0.50,
+        distance_weight: float = 0.50,
+        # ----- fusion / filtering knobs -----------------------------------
+        min_score: float = 0.55,
+        reliability_scale: float = 0.90,      # α – scales score→success-prob
+        fp_rate: float = 0.02,                # β – per-detection false-pos rate
+        prior_presence: float = 0.10,         # π – prior P(identity present)
+        recall_est: float = 0.65,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    face_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_faces.parquet'))
+    trk_files  = sorted(Path(output_dir).glob(f'{time_prefix}_*_trk_dets.parquet'))
+
+    if not face_files:
+        raise FileNotFoundError(
+            f'No face_data parquet files for prefix {time_prefix} in {output_dir}'
+        )
+
+    face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
+    trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
+
+    face_data['confidence'] = face_data['confidence'].clip(0.0, 1.0)
+
+    distance_span = max_mismatch_distance - min_match_distance
+    face_data['dist_score'] = np.clip(
+        (max_mismatch_distance - face_data['distance']) / distance_span,
+        0.0, 1.0,
+    )
+
+    weight_values_sum = confidence_weight + distance_weight
+    face_data['score'] = (
+        confidence_weight * face_data['confidence'] +
+        distance_weight * face_data['dist_score']
+    ) / weight_values_sum
+
+    face_data = face_data.loc[face_data['score'] >= min_score].copy()
+    face_data = face_data[~face_data['identity'].isna() & (face_data['identity'] != '')]
+
+    if face_data.empty:
+        logger.warning('No valid face detections above score threshold.')
+        presence_df = pd.DataFrame(columns=[
+            'identity',
+            'n_tracks',
+            'max_score',
+            'posterior',
+            'present_flag',
+        ])
+        return presence_df, face_data, trk_dets
+
+    face_data['vote_prob'] = reliability_scale * face_data['score']
+    track_votes = (
+        face_data
+        .groupby(['identity', 'trk_id'], as_index=False)
+        .agg(
+            vote_prob=('vote_prob', 'max'),
+            max_score=('score', 'max')
+        )
+    )
+
+    records = []
+    log_prior = math.log(prior_presence) - math.log1p(-prior_presence)
+    log_beta = math.log(fp_rate)
+
+    for ident, grp in track_votes.groupby('identity'):
+        p_list = grp['vote_prob'].clip(0, 1).to_numpy()
+        n_tracks = len(p_list)
+
+        if n_tracks:
+            log_lik_absent  = n_tracks * log_beta       # Σ log β
+            fail_probs      = 1.0 - p_list
+            log_lik_present = math.log1p(-np.prod(fail_probs))
+            log_odds        = log_prior + (log_lik_present - log_lik_absent)
+            posterior       = 1.0 / (1.0 + math.exp(-log_odds))
+        else:
+            # zero detections → prior × recall miss-probability:
+            posterior = prior_presence * (1.0 - recall_est)
+
+        records.append({
+            'identity'     : ident,
+            'n_tracks'     : n_tracks,
+            'max_score'    : grp['max_score'].max() if n_tracks else 0.0,
+            'posterior'    : posterior,
+            'present_flag' : posterior >= 0.5,
+        })
+
+    presence_df = pd.DataFrame(records).sort_values('posterior', ascending=False)
+
+    presence_path = Path(output_dir) / f'{time_prefix}_presence_summary.parquet'
+    presence_df.to_parquet(presence_path)
+
+    return presence_df, face_data, trk_dets
 
 
 def wrap_up_segment(
