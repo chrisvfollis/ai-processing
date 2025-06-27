@@ -33,11 +33,11 @@ logger = log_utils.get_logger(__name__)
 def run_worker_pipeline(
         footage_record: tuple,
         model_cfg: dict,
+        id_strategy: str,
         device: torch.device,
         log_level: int = 0,
         credentials: tuple[str, ...] = None,
         save_all_data: bool = False,
-        identify: str = 'local',
 ) -> bool:
     file_dir_path = os.path.join(io_utils.get_project_root(), 'files/')
 
@@ -71,7 +71,7 @@ def run_worker_pipeline(
         tracking.filter_tracks()
         trk_detections, _ = tracking.format_track_data()
 
-        if identify == 'local':
+        if id_strategy == 'local':
             try:
                 active_trks, inactive_trks = identify_local_tracks(
                     face_data, active_trks, inactive_trks, trk_detections,
@@ -89,7 +89,7 @@ def run_worker_pipeline(
             io_utils.save_track_info(
                 time_prefix, cam_id, inactive_trks, tracking.fps
             )
-        elif identify == 'global':
+        elif id_strategy == 'global':
             if face_data is not None and not face_data.empty:
                 trk_detections_path = os.path.join(
                     file_dir_path, 'output/', f'{time_prefix}_{cam_id}_trk_dets.parquet'
@@ -140,13 +140,15 @@ def identify_local_tracks(
 # -----------------------------------------------------------------------------
 
 
-def process_queue_segment(footage_records: list[tuple], process_config: tuple):
+def queue_segment_multiprocess(footage_records: list[tuple], process_config: tuple):
+    logger.info('Starting processing run for queue block ...')
+
     footage_processing_tasks = [
         ((record,) + process_config) for record in footage_records
     ]
 
     with multiprocessing.Pool(processes=4) as pool:
-        time.sleep(1)   # ensure workers have enough time to start
+        time.sleep(1)       # give workers a moment to start
         initial_pids = {p.pid for p in pool._pool if p.is_alive()}
 
         async_results = pool.starmap_async(
@@ -290,6 +292,7 @@ def wrap_up_segment(
 def main(
         shop_id: str,
         model_configs: list[dict],
+        id_strategy: str,
         device: torch.device,
         log_level: int = 0,
         credentials: tuple[str] = None,
@@ -300,22 +303,27 @@ def main(
 ):
     log_utils.configure_logging(log_level=log_level)
 
-    process_cfg = (model_configs, device, log_level, credentials, save_all_data)
+    process_cfg = (
+        model_configs,
+        id_strategy,
+        device,
+        log_level,
+        credentials,
+        save_all_data,
+    )
     basic_args = {
-        'shop_id': shop_id,
-        'credentials': credentials,
-        'save_all_data': save_all_data,
+        'shop_id':        shop_id,
+        'credentials':    credentials,
+        'save_all_data':  save_all_data,
         'retain_footage': retain_footage,
     }
 
     dir_paths = io_utils.get_common_dirs()
-    target_dir_names = [
-        'output_dir',
-        'event_imgs_dir'
+    output_dir, event_imgs_dir = [
+        dir_paths[name] for name in ['output_dir', 'event_imgs_dir']
     ]
-    target_dirs = [dir_paths[name] for name in target_dir_names]
     
-    io_utils.clear_local_files(target_dirs=target_dirs)
+    io_utils.clear_local_files(target_dirs=[output_dir, event_imgs_dir])
     io_utils.clear_track_info('all')
 
     while True:
@@ -335,8 +343,19 @@ def main(
         )
         time_logger.start()
 
-        logger.info('Starting processing run for queue block ...')
-        process_queue_segment(queue_block_records, process_cfg)
+        queue_segment_multiprocess(queue_block_records, process_cfg)
+        if id_strategy == 'global':
+            present_identified_df, _, _ = global_identification(
+                time_prefix,
+                output_dir,
+                min_score=0.55,
+                reliability_scale=0.9,
+                fp_rate=0.02,
+                min_match_distance=0.3,
+                max_mismatch_distance=0.9,
+                confidence_weight=0.5,
+                distance_weight=0.5,
+            )
 
         stop_timing.set()
         time_logger.join()
@@ -354,6 +373,7 @@ if __name__ == '__main__':
     parser.add_argument('--save-all-data', action='store_true', default=False)
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
     parser.add_argument('--priority-cam', type=str)
+    parser.add_argument('--id-strategy', type=str, default='local')
 
     args = parser.parse_args()
 
@@ -371,25 +391,25 @@ if __name__ == '__main__':
     device = utils.get_default_device()
 
     yolox_cfg = {
-        'checkpoint': 'yolox_model_trt.pth',
+        'checkpoint':  'yolox_model_trt.pth',
         'num_classes': 1,
-        'depth': 1.33,
-        'width': 1.25,
-        'input_size': (800, 1440),
+        'depth':       1.33,
+        'width':       1.25,
+        'input_size':  (800, 1440),
         'conf_thresh': 0.05,
-        'nms_thresh': 0.7,
-        'fp16': True,
-        'use_trt': True,
+        'nms_thresh':  0.7,
+        'fp16':        True,
+        'use_trt':     True,
     }
     faces_cfg = {
         'facenet_cfg': {
             'checkpoint': 'facenet512_model_trt.pth',
-            'fp16': False,
-            'use_trt': True,
+            'fp16':       False,
+            'use_trt':    True,
         },
         'centerface_cfg': {
             'conf_thresh': 0.55,
-            'min_area': (32, 32),
+            'min_area':    (32, 32),
         },
         # 'clearface_cfg': {
         #     'checkpoint': '90000_G.pth',
@@ -410,15 +430,16 @@ if __name__ == '__main__':
     memory_monitor.start()
 
     run_config = {
-        'shop_id': shop_id,
-        'model_configs': model_cfgs,
-        'device': device,
-        'log_level': args.log_level,
-        'credentials': aws_credentials,
+        'shop_id':        shop_id,
+        'model_configs':  model_cfgs,
+        'id_strategy':    args.id_strategy,
+        'device':         device,
+        'log_level':      args.log_level,
+        'credentials':    aws_credentials,
         'retain_footage': args.retain_footage,
-        'save_all_data': args.save_all_data,
+        'save_all_data':  args.save_all_data,
         'starting_point': starting_point,
-        'priority_cam': args.priority_cam,
+        'priority_cam':   args.priority_cam,
     }
 
     main(**run_config)
