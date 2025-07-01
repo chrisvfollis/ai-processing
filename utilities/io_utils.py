@@ -440,7 +440,7 @@ def save_global_id_event_imgs(
 
     if event_imgs_df.empty:
         print('No event crops to save.')
-        return
+        return event_imgs_df
 
     video_paths = {
         cam_id: os.path.join(

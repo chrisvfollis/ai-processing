@@ -232,6 +232,8 @@ class TrackingPipeline:
         obs_records = []
         state_records = []
 
+        cam_id = int(self.cam_id)
+
         for trk_dict in (active_trks, inactive_trks):
             for trk_id, trk in trk_dict.items():
                 # observations (detections):
@@ -243,29 +245,30 @@ class TrackingPipeline:
                     if len(bbox) != 5:
                         logger.info(f'Detection: {bbox}')
                         continue
-
                     obs_records.append({
-                        'f': f_num,
-                        'trk_id': trk_id,
-                        'age': age,
-                        'box_idx': box_idx,
-                        'x': bbox[0],
-                        'y': bbox[1],
-                        'w': bbox[2] - bbox[0],
-                        'h': bbox[3] - bbox[1],
-                        'is_valid': 1 if valid else 0,
-                    })
+                        'cam_id'   : cam_id,
+                        'f'        : f_num,
+                        'trk_id'   : trk_id,
+                        'age'      : age,
+                        'box_idx'  : box_idx,
+                        'x'        : bbox[0],
+                        'y'        : bbox[1],
+                        'w'        : bbox[2] - bbox[0],
+                        'h'        : bbox[3] - bbox[1],
+                        'is_valid' : 1 if valid else 0,
 
+                    })
                 # kalman filter states:
                 for t, bbox in enumerate(trk.history):
                     bbox = bbox.flatten()
                     state_records.append({
-                        'trk_id': trk_id,
-                        't': t,
-                        'x': bbox[0],
-                        'y': bbox[1],
-                        'w': bbox[2] - bbox[0],
-                        'h': bbox[3] - bbox[1],
+                        'cam_id' : cam_id,
+                        'trk_id' : trk_id,
+                        't'      : t,
+                        'x'      : bbox[0],
+                        'y'      : bbox[1],
+                        'w'      : bbox[2] - bbox[0],
+                        'h'      : bbox[3] - bbox[1],
                     })
 
         obs_df = pd.DataFrame(obs_records)
