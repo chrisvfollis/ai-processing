@@ -347,7 +347,7 @@ def save_event_image(
 def extract_and_save_crops(
     event_imgs_df: pd.DataFrame,
     video_paths: dict[int, str],
-    output_dir: str,
+    credentials: tuple[str, str],
 ):
     for cam_id, cam_df in event_imgs_df.groupby('cam_id'):
         video_path = video_paths.get(cam_id)
@@ -374,14 +374,18 @@ def extract_and_save_crops(
             y2 = min(row['y'] + row['h'], img.shape[0])
             crop = img[y1:y2, x1:x2]
 
-            filename = row['image']
-            filepath = os.path.join(output_dir, filename)
-            cv2.imwrite(filepath, crop)
-
+            save_event_image(
+                img=crop,
+                object_key=row['image'],
+                credentials=credentials,
+            )
         container.close()
+    return
 
 
-def save_global_id_event_imgs(time_prefix, presence_df, face_data, trk_dets):
+def save_global_id_event_imgs(
+        time_prefix, presence_df, face_data, trk_dets, credentials
+):
     project_root = get_project_root()
 
     output = []
@@ -445,8 +449,7 @@ def save_global_id_event_imgs(time_prefix, presence_df, face_data, trk_dets):
         for cam_id in event_imgs_df['cam_id'].unique()
     }
 
-    event_imgs_dir = os.path.join(project_root, 'files/output/', 'event_imgs/')
-    extract_and_save_crops(event_imgs_df, video_paths, output_dir=event_imgs_dir)
+    extract_and_save_crops(event_imgs_df, video_paths, credentials)
 
     return
 
