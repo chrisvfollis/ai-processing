@@ -528,11 +528,12 @@ def build_database(db_name='data.db') -> None:
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS track_info (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            track_id TEXT, camera TEXT, time_prefix TEXT,
-            identity TEXT, id_method TEXT, id_cost FLOAT,
-            start_img TEXT, end_img TEXT, id_img TEXT,
-            start_time DATETIME, end_time DATETIME,
-            entry INTEGER, exit INTEGER
+            time_prefix TEXT,
+            identity TEXT,
+            start_img TEXT,
+            end_img TEXT,
+            start_time DATETIME,
+            end_time DATETIME
         );
     ''')
 
@@ -643,31 +644,27 @@ def get_designation(identity_uuid, db_name='data.db') -> str | None:
     return designation
 
 
-def save_track_info(time_prefix: str, cam_id: str, target_trks: dict,
-                    fps: int = 30, db_name='data.db') -> None:
-    db_path = os.path.join(get_project_root(), 'files/', db_name)
-    conn, cursor = conn_utils.sqlite_db_connect(db_path)
-
+def save_track_info(time_prefix: str, target_trks: dict, fps: int = 30,
+                    db_name='data.db') -> None:
+    conn, cursor = conn_utils.sqlite_db_connect(os.path.join(
+        get_project_root(), 'files/', db_name
+    ))
     columns = [
         'time_prefix',
-        'camera',
-        'track_id',
         'identity',
         'start_img',
         'end_img',
         'start_time',
         'end_time',
     ]
-
     query_columns = utils.query_columns_string(columns)
     param_placeholders = utils.query_param_placeholders(columns)
-
     query = f'''
         INSERT INTO track_info {query_columns}
         VALUES {param_placeholders}
     '''
    
-    for trk_id, trk in target_trks.items():
+    for trk in target_trks.values():
         identity = trk.identity or str(uuid.uuid4())
 
         start_img = trk.id_event_images[0]
@@ -681,8 +678,6 @@ def save_track_info(time_prefix: str, cam_id: str, target_trks: dict,
 
         values = (
             time_prefix,
-            cam_id,
-            trk_id,
             identity,
             start_img,
             end_img,
