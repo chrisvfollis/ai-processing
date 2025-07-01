@@ -28,6 +28,7 @@ setup(
         # Data Manipulation:
         'numpy',
         'pandas',
+        'pyarrow',
         'scipy',
         'openpyxl',
         'xlsxwriter',

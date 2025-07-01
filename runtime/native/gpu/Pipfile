@@ -35,6 +35,7 @@ torchreid = "*"
 
 numpy = "*"
 pandas = "*"
+pyarrow = "*"
 scipy = "*"
 openpyxl = "*"
 xlsxwriter = "*"
