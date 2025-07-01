@@ -356,9 +356,17 @@ def main(
                 confidence_weight=0.5,
                 distance_weight=0.5,
             )
-            
-
-
+            presence_df, filtered_faces, trk_dets = results
+            if save_all_data:
+                id_results_paths = [
+                    os.path.join(output_dir, f'{time_prefix}_{suffix}.csv')
+                    for suffix in [
+                        'presence_summary', 'filtered_faces', 'trk_dets'
+                    ]
+                ]
+                presence_df.to_csv(id_results_paths[0], index=False)
+                filtered_faces.to_csv(id_results_paths[1], index=False)
+                trk_dets.to_csv(id_results_paths[2], index=False)
 
         stop_timing.set()
         time_logger.join()
