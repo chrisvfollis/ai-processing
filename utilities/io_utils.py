@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import h5py
 import cv2
+import av
 import torch
 import boto3
 from botocore.exceptions import EndpointConnectionError, NoCredentialsError
@@ -341,6 +342,113 @@ def save_event_image(
         print(f'Unable to connect: {e}')
 
     return object_key
+
+
+def extract_and_save_crops(
+    event_imgs_df: pd.DataFrame,
+    video_paths: dict[int, str],
+    output_dir: str,
+):
+    for cam_id, cam_df in event_imgs_df.groupby('cam_id'):
+        video_path = video_paths.get(cam_id)
+        if not video_path or not os.path.exists(video_path):
+            continue
+
+        frame_crop_map = cam_df.set_index('f').to_dict(orient='index')
+
+        container = av.open(video_path)
+        stream = container.streams.video[0]
+        stream.thread_type = 'AUTO'
+
+        for frame in container.decode(stream):
+            f_idx = frame.pts
+            if f_idx not in frame_crop_map:
+                continue
+
+            img = frame.to_ndarray(format='bgr24')
+            row = frame_crop_map[f_idx]
+
+            x1 = max(0, row['x'])
+            y1 = max(0, row['y'])
+            x2 = min(row['x'] + row['w'], img.shape[1])
+            y2 = min(row['y'] + row['h'], img.shape[0])
+            crop = img[y1:y2, x1:x2]
+
+            filename = row['image']
+            filepath = os.path.join(output_dir, filename)
+            cv2.imwrite(filepath, crop)
+
+        container.close()
+
+
+def save_global_id_event_imgs(time_prefix, presence_df, face_data, trk_dets):
+    project_root = get_project_root()
+
+    output = []
+
+    present_idents = presence_df[presence_df['present_flag']]['identity'].values
+    face_data = face_data[face_data['identity'].isin(present_idents)]
+
+    for ident, id_faces in face_data.groupby('identity'):
+        f_min, f_max = id_faces['f'].min(), id_faces['f'].max()
+        if f_max - f_min < 2:
+            continue
+
+        f_split = f_min + (f_max - f_min) // 2
+
+        early_faces = id_faces[id_faces['f'] <= f_split]
+        late_faces  = id_faces[id_faces['f'] > f_split]
+        if early_faces.empty or late_faces.empty:
+            continue
+
+        best_early_face = early_faces.sort_values('distance').iloc[0]
+        best_late_face  = late_faces.sort_values('distance').iloc[0]
+
+        for event, face_row in zip(['entry', 'exit'], [best_early_face, best_late_face]):
+            cam        = face_row['cam_id']
+            fnum       = face_row['f']
+            x, y, w, h = face_row[['x', 'y', 'w', 'h']]
+            face_box   = (x, y, w, h)
+
+            candidates = trk_dets[(trk_dets['f'] == fnum) & (trk_dets['cam_id'] == cam)]
+
+            best_overlap, best_trk = 0.0, None
+            for _, trk_row in candidates.iterrows():
+                trk_box = (trk_row['x'], trk_row['y'], trk_row['w'], trk_row['h'])
+                overlap = utils.compute_overlap_ratio(face_box, trk_box)
+                if overlap > best_overlap:
+                    best_overlap, best_trk = overlap, trk_row
+
+            if best_trk is not None:
+                output.append({
+                    'identity': ident,
+                    'f': int(best_trk['f']),
+                    'cam_id': int(best_trk['cam_id']),
+                    'x': int(best_trk['x']),
+                    'y': int(best_trk['y']),
+                    'w': int(best_trk['w']),
+                    'h': int(best_trk['h']),
+                    'event': event,
+                    'image': f'{uuid.uuid4()}.jpg',
+                    'overlap_with_face': best_overlap,
+                })
+    event_imgs_df = pd.DataFrame(output)
+
+    if event_imgs_df.empty:
+        print('No event crops to save.')
+        return
+
+    video_paths = {
+        cam_id: os.path.join(
+            project_root, 'files/input', f'{time_prefix}_{cam_id}.mp4'
+        )
+        for cam_id in event_imgs_df['cam_id'].unique()
+    }
+
+    event_imgs_dir = os.path.join(project_root, 'files/output/', 'event_imgs/')
+    extract_and_save_crops(event_imgs_df, video_paths, output_dir=event_imgs_dir)
+
+    return
 
 
 def upload_file(

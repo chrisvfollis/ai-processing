@@ -152,23 +152,28 @@ def observability_thread(target, args=None, logger=None):
 
 
 def log_elapsed_time(start_time, stop_event, frequency, logger=None, timestamp=True):
-    while not stop_event.is_set():
-        elapsed = (time.time() - start_time) / 60
-        if logger:
-            logger.info(f'Elapsed time: {elapsed:.2f} minutes')
-        else:
-            if timestamp == True:
-                current_time = datetime.now().strftime('%H:%M:%S')
-                print(f'[{current_time}] Elapsed time: {elapsed:.2f} minutes')
-            else:
-                print(f'Elapsed time: {elapsed:.2f} minutes')
-        time.sleep(frequency)
+    check_interval = 5.0  # check every 5 seconds for stop_event
+    next_log_time = time.time() + frequency
 
-    total_elapsed =  (time.time() - start_time) / 60
+    while not stop_event.wait(timeout=check_interval):
+        now = time.time()
+        if now >= next_log_time:
+            elapsed = (now - start_time) / 60
+            if logger:
+                logger.info(f'Elapsed time: {elapsed:.2f} minutes')
+            else:
+                if timestamp:
+                    current_time = datetime.now().strftime('%H:%M:%S')
+                    print(f'[{current_time}] Elapsed time: {elapsed:.2f} minutes')
+                else:
+                    print(f'Elapsed time: {elapsed:.2f} minutes')
+            next_log_time = now + frequency  # schedule next log
+
+    total_elapsed = (time.time() - start_time) / 60
     if logger:
         logger.info(f'Total elapsed time: {total_elapsed:.2f} minutes')
     else:
-        if timestamp == True:
+        if timestamp:
             current_time = datetime.now().strftime('%H:%M:%S')
             print(f'[{current_time}] Total elapsed time: {total_elapsed:.2f} minutes')
         else:

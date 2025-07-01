@@ -129,6 +129,18 @@ def restrain_boxes(coordinates, img_dims=[1920, 1080]):
     return coordinates
 
 
+def compute_overlap_ratio(boxA, boxB):
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
+    yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+    
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    faceArea = boxA[2] * boxA[3]
+    
+    return interArea / (faceArea + 1e-6)
+
+
 def get_intersection(rectangle1, rectangle2, attr='area'):
     x1, y1, w1, h1 = rectangle1
     x2, y2, w2, h2 = rectangle2

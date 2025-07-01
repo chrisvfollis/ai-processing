@@ -289,6 +289,40 @@ def global_identification(
     return presence_df, face_data, trk_dets
 
 
+def best_trk_per_identity(presence_df, face_data, trk_dets):
+    output = []
+
+    present_idents = presence_df[presence_df['present_flag']]['identity'].values
+    face_data = face_data[face_data['identity'].isin(present_idents)]
+
+    best_faces = face_data.loc[face_data.groupby('identity')['distance'].idxmin()]
+
+    for _, face_row in best_faces.iterrows():
+        ident = face_row['identity']
+        cam = face_row['cam_id']
+        fnum = face_row['f']
+        face_box = (face_row['x'], face_row['y'], face_row['w'], face_row['h'])
+
+        candidates = trk_dets[(trk_dets['f'] == fnum) & (trk_dets['cam_id'] == cam)]
+
+        best_overlap, best_match = 0.0, None
+        for _, trk_row in candidates.iterrows():
+            trk_box = (trk_row['x'], trk_row['y'], trk_row['w'], trk_row['h'])
+            overlap = utils.compute_overlap_ratio(face_box, trk_box)
+            if overlap > best_overlap:
+                best_overlap, best_match = overlap, trk_row
+
+        if best_match is not None:
+            result = best_match.to_dict()
+            result['identity'] = ident
+            result['overlap_with_face'] = best_overlap
+            result['f'] = fnum
+            result['cam_id'] = cam
+            output.append(result)
+
+    return pd.DataFrame(output)
+
+
 def wrap_up_segment(
         segment_filenames: list,
         time_prefix: str,
@@ -374,7 +408,7 @@ def main(
             continue
         else:
             filenames = [row[2] for row in queue_block_records]
-            time_prefix, _ = utils.decode_vid_filename(filenames[0])
+            time_prefix, cam_id = utils.decode_vid_filename(filenames[0])
 
         time_logger, stop_timing = log_utils.observability_thread(
             target='elapsed_time', logger=logger
@@ -387,11 +421,11 @@ def main(
             results = global_identification(
                 time_prefix,
                 output_dir,
-                min_match_distance=0.35,
+                min_match_distance=0.25,
                 max_mismatch_distance=0.90,
-                confidence_weight=0.40,
+                confidence_weight=0.45,
                 distance_weight=0.55,
-                n_matches=2,
+                n_matches=3,
                 min_score=0.60,
                 reliability_scale=0.40,
                 fp_rate=0.20,
@@ -399,6 +433,7 @@ def main(
                 recall_est=0.65,
             )
             presence_df, filtered_faces, trk_dets = results
+            logger.info('Finished global identification')
             if save_all_data:
                 id_results_paths = [
                     os.path.join(output_dir, f'{time_prefix}_{suffix}.csv')
@@ -463,7 +498,7 @@ if __name__ == '__main__':
             'use_trt':    True,
         },
         'centerface_cfg': {
-            'conf_thresh': 0.55,
+            'conf_thresh': 0.50,
             'min_area':    (32, 32),
         },
         # 'clearface_cfg': {
