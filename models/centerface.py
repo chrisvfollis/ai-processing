@@ -13,7 +13,10 @@ import torch
 # internal dependencies
 from modules.data_structures import FacialAreaRegion
 from utilities import general_utils as utils
-from utilities import io_utils
+from utilities import io_utils, log_utils
+
+
+logger = log_utils.get_logger(__name__)
 
 
 class CenterFace:
@@ -26,7 +29,7 @@ class CenterFace:
             ignore_landmarks: bool = False,
             expand_margin: float = 0.25,
             save_data: bool = False,
-    ):
+        ):
         
         self.device = device or utils.get_default_device()
 
@@ -54,6 +57,107 @@ class CenterFace:
         if self.save_data:
             self.i = 0
             self.face_detections = {}
+
+    def detect_faces(
+            self,
+            imgs: np.ndarray | list[np.ndarray],
+            regions: list[Sequence] = None,
+            conf_thresh: float = None,
+            min_area: tuple[int] | int = None,
+        ) -> list[list[FacialAreaRegion]]:
+        if isinstance(imgs, np.ndarray):
+            imgs = [imgs]
+
+        conf_thresh = conf_thresh or self.conf_thresh
+        min_area = min_area or self.min_area
+        if isinstance(min_area, Iterable):
+            min_area = math.prod(min_area)
+
+        all_results = [[] for _ in range(len(imgs))]
+
+        for original_idx, img in enumerate(imgs):
+            h, w = img.shape[:2]
+            if h * w < min_area:
+                continue
+
+            region = regions[original_idx] if regions else None
+            heatmaps, scales_out, offsets, landmarks_out, scales_hw = self.inference(img)
+
+            scale_h, scale_w = scales_hw[0]
+            heatmap = heatmaps[0:1]
+            scale_out = scales_out[0:1]
+            offset = offsets[0:1]
+            lms_out = landmarks_out[0:1]
+
+            target_size = max(h, w)
+            model_input_shape = (
+                int(np.ceil(target_size / 32) * 32),
+                int(np.ceil(target_size / 32) * 32),
+            )
+
+            if not self.ignore_landmarks:
+                dets, lms = self.postprocess(
+                    heatmap, lms_out, offset, scale_out,
+                    model_input_shape, self.ignore_landmarks,
+                    conf_thresh, min_area, scale_h, scale_w
+                )
+            else:
+                dets = self.postprocess(
+                    heatmap, None, offset, scale_out,
+                    model_input_shape, self.ignore_landmarks,
+                    conf_thresh, min_area, scale_h, scale_w
+                )
+                lms = None
+
+            detected_faces = []
+            for i, box in enumerate(dets):
+                x1, y1, x2, y2 = map(int, box[:4])
+                if self.expand_margin:
+                    x1, y1, x2, y2 = utils.expand_bbox(
+                        x1, y1, x2, y2, w, h, margin=self.expand_margin
+                    )
+                score = float(box[4])
+                face_w = x2 - x1
+                face_h = y2 - y1
+
+                if region:
+                    x1, y1 = utils.apply_offset((x1, y1), region)
+                    x2, y2 = utils.apply_offset((x2, y2), region)
+
+                if lms is not None:
+                    lms_points = [
+                        tuple(map(int, lms[i][j:j+2]))
+                        for j in range(0, 9, 2)
+                    ]
+                    if region:
+                        lms_points = utils.apply_offset(lms_points, region)
+                    left_eye, right_eye, nose, mouth_right, mouth_left = lms_points
+                else:
+                    left_eye = right_eye = nose = mouth_right = mouth_left = None
+
+                face_region = FacialAreaRegion(
+                    x=x1,
+                    y=y1,
+                    w=face_w,
+                    h=face_h,
+                    left_eye=left_eye,
+                    right_eye=right_eye,
+                    nose=nose,
+                    mouth_right=mouth_right,
+                    mouth_left=mouth_left,
+                    confidence=score,
+                )
+                detected_faces.append(face_region)
+
+            if self.save_data:
+                self.face_detections.setdefault(self.i + original_idx, []).extend(detected_faces)
+
+            all_results[original_idx] = detected_faces
+
+        if self.save_data:
+            self.i += len(imgs)
+
+        return all_results
 
     def inference(self, img_data):
         if isinstance(img_data, np.ndarray):
@@ -213,107 +317,6 @@ class CenterFace:
     
         return keep
 
-    def detect_faces(
-            self,
-            imgs: np.ndarray | list[np.ndarray],
-            regions: list[Sequence] = None,
-            conf_thresh: float = None,
-            min_area: tuple[int] | int = None,
-    ) -> list[list[FacialAreaRegion]]:
-        if isinstance(imgs, np.ndarray):
-            imgs = [imgs]
-
-        conf_thresh = conf_thresh or self.conf_thresh
-        min_area = min_area or self.min_area
-        if isinstance(min_area, Iterable):
-            min_area = math.prod(min_area)
-
-        all_results = [[] for _ in range(len(imgs))]
-
-        for original_idx, img in enumerate(imgs):
-            h, w = img.shape[:2]
-            if h * w < min_area:
-                continue
-
-            region = regions[original_idx] if regions else None
-            heatmaps, scales_out, offsets, landmarks_out, scales_hw = self.inference(img)
-
-            scale_h, scale_w = scales_hw[0]
-            heatmap = heatmaps[0:1]
-            scale_out = scales_out[0:1]
-            offset = offsets[0:1]
-            lms_out = landmarks_out[0:1]
-
-            target_size = max(h, w)
-            model_input_shape = (
-                int(np.ceil(target_size / 32) * 32),
-                int(np.ceil(target_size / 32) * 32),
-            )
-
-            if not self.ignore_landmarks:
-                dets, lms = self.postprocess(
-                    heatmap, lms_out, offset, scale_out,
-                    model_input_shape, self.ignore_landmarks,
-                    conf_thresh, min_area, scale_h, scale_w
-                )
-            else:
-                dets = self.postprocess(
-                    heatmap, None, offset, scale_out,
-                    model_input_shape, self.ignore_landmarks,
-                    conf_thresh, min_area, scale_h, scale_w
-                )
-                lms = None
-
-            detected_faces = []
-            for i, box in enumerate(dets):
-                x1, y1, x2, y2 = map(int, box[:4])
-                if self.expand_margin:
-                    x1, y1, x2, y2 = utils.expand_bbox(
-                        x1, y1, x2, y2, w, h, margin=self.expand_margin
-                    )
-                score = float(box[4])
-                face_w = x2 - x1
-                face_h = y2 - y1
-
-                if region:
-                    x1, y1 = utils.apply_offset((x1, y1), region)
-                    x2, y2 = utils.apply_offset((x2, y2), region)
-
-                if lms is not None:
-                    lms_points = [
-                        tuple(map(int, lms[i][j:j+2]))
-                        for j in range(0, 9, 2)
-                    ]
-                    if region:
-                        lms_points = utils.apply_offset(lms_points, region)
-                    left_eye, right_eye, nose, mouth_right, mouth_left = lms_points
-                else:
-                    left_eye = right_eye = nose = mouth_right = mouth_left = None
-
-                face_region = FacialAreaRegion(
-                    x=x1,
-                    y=y1,
-                    w=face_w,
-                    h=face_h,
-                    left_eye=left_eye,
-                    right_eye=right_eye,
-                    nose=nose,
-                    mouth_right=mouth_right,
-                    mouth_left=mouth_left,
-                    confidence=score,
-                )
-                detected_faces.append(face_region)
-
-            if self.save_data:
-                self.face_detections.setdefault(self.i + original_idx, []).extend(detected_faces)
-
-            all_results[original_idx] = detected_faces
-
-        if self.save_data:
-            self.i += len(imgs)
-
-        return all_results
-
     def forward(self, x):
         heatmaps, scales_out, offsets, landmarks = self.model(x)
         return heatmaps
@@ -321,7 +324,7 @@ class CenterFace:
     def visualize_detections(
             self, image: np.ndarray, face_detections: list[FacialAreaRegion],
             output_path: str = None
-    ):
+        ):
         '''
         Visualizes detected faces and their landmarks on the input image.
 
@@ -367,7 +370,7 @@ class CenterFace:
     def visualize_heatmaps(
             self, image: np.ndarray, heatmaps: list[np.ndarray],
             regions: Sequence = None, alpha: float = 0.35
-    ) -> np.ndarray:
+        ) -> np.ndarray:
         '''
         Overlay the CenterFace heatmap on the original image.
 

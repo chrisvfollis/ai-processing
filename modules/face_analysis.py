@@ -73,11 +73,11 @@ class FaceAnalysis:
             refresh_database: bool = True,
             enhance: bool = True,
             normalize_face: bool = True,
-    ):
+        ):
         def __find_bulk_embeddings(
                 employees: set[str],
                 enhance: bool = True,
-        ) -> list[dict]:
+            ) -> list[dict]:
             representations: list[dict] = []
             employee_list = sorted(employees)
 
@@ -272,7 +272,7 @@ class FaceAnalysis:
             enhance: bool = True,
             color_face: str = 'rgb',
             normalize_face: bool = True,
-    ) -> list[list[dict]]:
+        ) -> list[list[dict]]:
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]
 
@@ -300,6 +300,7 @@ class FaceAnalysis:
             press_stopwatch(self, 'face_detection_time')
             if detector == 'centerface':
                 all_facial_areas = self.centerface.detect_faces(imgs)
+
             elif detector == 'retinaface':
                 all_facial_areas = [self.retinaface.detect_faces(imgs[0])]
             press_stopwatch(self, 'face_detection_time')
@@ -321,6 +322,7 @@ class FaceAnalysis:
                         facial_area, img, align=False
                     )
                     if (face_img is None) or (face_img.size == 0):
+                        logger.info('Invalid facial area image')
                         continue
         
                     if enhance:
@@ -347,7 +349,7 @@ class FaceAnalysis:
             img: np.ndarray,
             is_rgb=True,
             output_path=None
-    ):
+        ):
         # Start timing
         enhanced_face = self.clearface.forward(img, is_rgb=is_rgb)
         # End timing
@@ -363,7 +365,7 @@ class FaceAnalysis:
             facial_areas: list[dict],
             confidences: list[float],
             postprocess: bool = True,
-    ) -> list[dict]:
+        ) -> list[dict]:
         """
         Args:
             face_imgs (List[np.ndarray]): List of cropped face images (from
@@ -407,7 +409,7 @@ class FaceAnalysis:
             id_cutoff: Optional[float] = None,
             enhance: bool = True,
             refresh_database: bool = True,
-    ) -> list[list[pd.DataFrame]]:
+        ) -> list[list[pd.DataFrame]]:
         per_image_resp_objs = []
 
         id_cutoff = id_cutoff or self.id_cutoff
@@ -492,7 +494,7 @@ class FaceAnalysis:
             id_cutoff: Optional[float] = None,
             enhance: Optional[bool] = None,
             db_path: Optional[str] = None,
-    ) -> list[pd.DataFrame]:
+        ) -> list[pd.DataFrame]:
         def _postprocess_output(all_face_dfs):
             '''
             - Adds employee names, UUIDs, and designations to the dataframes.
@@ -587,7 +589,7 @@ class FaceAnalysis:
             self,
             face_data: dict[list[pd.DataFrame]],
             cam_id: int = None,
-    ) -> pd.DataFrame:
+        ) -> pd.DataFrame:
         merged_dfs = []
         for frame, dfs in face_data.items():
             for i, df in enumerate(dfs):

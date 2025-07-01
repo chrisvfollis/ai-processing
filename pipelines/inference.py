@@ -207,7 +207,7 @@ class InferencePipeline:
             )
 
             facial_areas = self.face_analysis.identify_faces(
-                img, regions, id_cutoff=0.75
+                img, regions, id_cutoff=0.80
             )
             face_data[f_num] = facial_areas
         

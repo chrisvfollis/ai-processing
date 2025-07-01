@@ -179,15 +179,16 @@ def global_identification(
         time_prefix: str,
         output_dir: str,
         # ----- feature-engineering knobs ----------------------------------
-        min_match_distance: float = 0.30,
+        min_match_distance: float = 0.35,
         max_mismatch_distance: float = 0.90,
-        confidence_weight: float = 0.50,
+        confidence_weight: float = 0.40,
         distance_weight: float = 0.50,
         # ----- fusion / filtering knobs -----------------------------------
-        min_score: float = 0.55,
-        reliability_scale: float = 0.90,      # α – scales score→success-prob
-        fp_rate: float = 0.02,                # β – per-detection false-pos rate
-        prior_presence: float = 0.10,         # π – prior P(identity present)
+        n_matches: int = 5,                   # max matches per face detection
+        min_score: float = 0.60,
+        reliability_scale: float = 0.65,      # α – scales score→success-prob
+        fp_rate: float = 0.10,                # β – per-detection false-pos rate
+        prior_presence: float = 0.05,         # π – prior P(identity present)
         recall_est: float = 0.65,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     face_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_faces.parquet'))
@@ -218,8 +219,14 @@ def global_identification(
     face_data = face_data.loc[face_data['score'] >= min_score].copy()
     face_data = face_data[~face_data['identity'].isna() & (face_data['identity'] != '')]
 
+    face_data = (
+        face_data.sort_values('distance', ascending=True)
+        .groupby(['x', 'y', 'w', 'h', 'f', 'cam_id'], group_keys=False)
+        .head(n_matches)
+    )
+
     if face_data.empty:
-        logger.warning('No valid face detections above score threshold.')
+        logger.info('No valid face detections above score threshold.')
         presence_df = pd.DataFrame(columns=[
             'identity',
             'name',
@@ -252,7 +259,7 @@ def global_identification(
         first_name, last_name = io_utils.lookup_name(ident)
         full_name = f'{first_name}_{last_name}'
 
-        p_list = np.clip(row['vote_prob'], 0, 1)
+        p_list = np.clip(row['vote_prob'], 0, 1)            
         n_p = len(p_list)
 
         if n_p:
@@ -376,16 +383,20 @@ def main(
 
         queue_segment_multiprocess(queue_block_records, process_cfg)
         if id_strategy == 'global':
+            logger.info('Running global identification...')
             results = global_identification(
                 time_prefix,
                 output_dir,
-                min_score=0.55,
-                reliability_scale=0.9,
-                fp_rate=0.02,
-                min_match_distance=0.3,
-                max_mismatch_distance=0.9,
-                confidence_weight=0.5,
-                distance_weight=0.5,
+                min_match_distance=0.35,
+                max_mismatch_distance=0.90,
+                confidence_weight=0.40,
+                distance_weight=0.55,
+                n_matches=2,
+                min_score=0.60,
+                reliability_scale=0.40,
+                fp_rate=0.20,
+                prior_presence=0.05,
+                recall_est=0.65,
             )
             presence_df, filtered_faces, trk_dets = results
             if save_all_data:
