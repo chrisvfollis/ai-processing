@@ -243,17 +243,23 @@ def get_latest_file(dir_path, base_name):
 
 def clear_local_files(
         target_file_prefix: Optional[str] = None,
-        target_file_extensions: Optional[list] = None,
+        target_extensions: Optional[list] = None,
         target_dirs: Optional[list[str]] = None,
+        skip_suffixes: Optional[list[str]] = [],
 ) -> int:
     if not target_dirs:
         dir_paths = get_common_dirs()
         target_dir_names = [
             'input_dir',
             'output_dir',
-            'event_imgs_dir'
+            'event_imgs_dir',
         ]
         target_dirs = [dir_paths[name] for name in target_dir_names]
+    
+    skip_suffixes += [
+        '_tracking_pipeline.pkl',
+        '_faces.csv',
+    ]
 
     target_paths = []
     for dir_path in target_dirs:
@@ -264,9 +270,12 @@ def clear_local_files(
         for filename in os.listdir(dir_path):
             file_path = os.path.join(dir_path, filename)
             if os.path.isfile(file_path):
-                if file_path.endswith('_tracking_pipeline.pkl'):
-                    continue
-                elif file_path.endswith('_faces.csv'):
+                skip = False
+                for suffix in skip_suffixes:
+                    if file_path.endswith(suffix):
+                        skip = True
+                        break
+                if skip:
                     continue
             else:
                 continue
@@ -274,9 +283,9 @@ def clear_local_files(
             if target_file_prefix:
                 if not filename.startswith(target_file_prefix):
                     continue
-            if target_file_extensions:
+            if target_extensions:
                 file_extension = utils.parse_filename(filename)[-1]
-                if file_extension not in target_file_extensions:
+                if file_extension not in target_extensions:
                     continue
 
             target_paths.append(file_path)

@@ -273,16 +273,25 @@ def wrap_up_segment(
     io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
     io_utils.clear_queue_block(shop_id, timestamp)
 
-    io_utils.clear_local_files(time_prefix)
-
-    if retain_footage == False:
-        object_keys = [f'{shop_id}/{filename}' for filename in segment_filenames]
-        io_utils.delete_s3_footage(object_keys, credentials)
-
+    io_utils.clear_local_files(time_prefix, target_extensions=[
+        '.hdf5',
+        '.jpg',
+        '.jpeg',
+        '.png',
+    ])
     if save_all_data == True:
         logger.info('Uploading data...')
         io_utils.upload_data(credentials)
 
+    if retain_footage == True:
+        io_utils.clear_local_files(time_prefix, skip_suffixes=['.mp4'])
+        return
+    else:
+        object_keys = [f'{shop_id}/{filename}' for filename in segment_filenames]
+        io_utils.delete_s3_footage(object_keys, credentials)
+
+    io_utils.clear_local_files(time_prefix)
+        
 
 # =============================================================================
 #                         - PRIMARY EXECUTION -
