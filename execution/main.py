@@ -289,40 +289,6 @@ def global_identification(
     return presence_df, face_data, trk_dets
 
 
-def best_trk_per_identity(presence_df, face_data, trk_dets):
-    output = []
-
-    present_idents = presence_df[presence_df['present_flag']]['identity'].values
-    face_data = face_data[face_data['identity'].isin(present_idents)]
-
-    best_faces = face_data.loc[face_data.groupby('identity')['distance'].idxmin()]
-
-    for _, face_row in best_faces.iterrows():
-        ident = face_row['identity']
-        cam = face_row['cam_id']
-        fnum = face_row['f']
-        face_box = (face_row['x'], face_row['y'], face_row['w'], face_row['h'])
-
-        candidates = trk_dets[(trk_dets['f'] == fnum) & (trk_dets['cam_id'] == cam)]
-
-        best_overlap, best_match = 0.0, None
-        for _, trk_row in candidates.iterrows():
-            trk_box = (trk_row['x'], trk_row['y'], trk_row['w'], trk_row['h'])
-            overlap = utils.compute_overlap_ratio(face_box, trk_box)
-            if overlap > best_overlap:
-                best_overlap, best_match = overlap, trk_row
-
-        if best_match is not None:
-            result = best_match.to_dict()
-            result['identity'] = ident
-            result['overlap_with_face'] = best_overlap
-            result['f'] = fnum
-            result['cam_id'] = cam
-            output.append(result)
-
-    return pd.DataFrame(output)
-
-
 def wrap_up_segment(
         segment_filenames: list,
         time_prefix: str,
@@ -334,7 +300,7 @@ def wrap_up_segment(
     timestamp = utils.frame_timestamp(time_prefix)
 
     io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
-    io_utils.clear_queue_block(shop_id, timestamp)
+    # io_utils.clear_queue_block(shop_id, timestamp)
 
     io_utils.clear_local_files(time_prefix, target_extensions=[
         '.hdf5',
