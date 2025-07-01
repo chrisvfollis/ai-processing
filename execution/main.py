@@ -48,6 +48,16 @@ def run_worker_pipeline(
     time_prefix, cam_id = utils.decode_vid_filename(filename)
 
     inference_cfg = {'model_cfg': model_cfg, 'device': device}
+    if id_strategy == 'local':
+        inference_cfg = inference_cfg | {
+            'id_freq': '2 Hz',
+            'use_features': True,
+        }
+    elif id_strategy == 'global':
+        inference_cfg = inference_cfg | {
+            'id_freq': 'fps',
+            'use_features': False,
+            }
     
     process_result = False
     try:
@@ -57,7 +67,7 @@ def run_worker_pipeline(
         ):
             if not io_utils.download_s3_footage(object_key, credentials):
                 raise S3DownloadError(f'Failed to download footage: {object_key}')
-        
+
         inference = InferencePipeline(filename, **inference_cfg)
         if inference.skim() == False:
             io_utils.delete_s3_footage(object_key, credentials)

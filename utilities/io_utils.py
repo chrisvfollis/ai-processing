@@ -256,10 +256,7 @@ def clear_local_files(
         ]
         target_dirs = [dir_paths[name] for name in target_dir_names]
     
-    skip_suffixes += [
-        '_tracking_pipeline.pkl',
-        '_faces.csv',
-    ]
+    skip_suffixes += ['_tracking_pipeline.pkl']
 
     target_paths = []
     for dir_path in target_dirs:
