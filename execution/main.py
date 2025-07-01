@@ -300,7 +300,7 @@ def wrap_up_segment(
     timestamp = utils.frame_timestamp(time_prefix)
 
     io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
-    # io_utils.clear_queue_block(shop_id, timestamp)
+    io_utils.clear_queue_block(shop_id, timestamp)
 
     io_utils.clear_local_files(time_prefix, target_extensions=[
         '.hdf5',
@@ -398,8 +398,12 @@ def main(
                 prior_presence=0.05,
                 recall_est=0.65,
             )
+            event_imgs_df = io_utils.save_global_id_event_imgs(
+                time_prefix, *results, credentials
+            )
             presence_df, filtered_faces, trk_dets = results
             logger.info('Finished global identification')
+
             if save_all_data:
                 id_results_paths = [
                     os.path.join(output_dir, f'{time_prefix}_{suffix}.csv')
@@ -411,7 +415,7 @@ def main(
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
             
-            io_utils.save_attendance_info(time_prefix, presence_df)
+            io_utils.save_attendance_info(time_prefix, presence_df, event_imgs_df)
 
         stop_timing.set()
         time_logger.join()

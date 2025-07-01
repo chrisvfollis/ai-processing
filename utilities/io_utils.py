@@ -451,7 +451,7 @@ def save_global_id_event_imgs(
 
     extract_and_save_crops(event_imgs_df, video_paths, credentials)
 
-    return
+    return event_imgs_df
 
 
 def upload_file(
@@ -809,6 +809,7 @@ def save_track_info(time_prefix: str, target_trks: dict, fps: int = 30,
 def save_attendance_info(
         time_prefix: str,
         presence_df: pd.DataFrame,
+        event_imgs_df: pd.DataFrame,
         segment_length: float = 5.0,
         db_name: str = 'data.db',
 ) -> None:
@@ -842,8 +843,16 @@ def save_attendance_info(
             continue
 
         identity = row['identity']
-        start_img = None
-        end_img = None
+
+        imgs = event_imgs_df[event_imgs_df['identity'] == identity]
+        if not imgs.empty:
+            entry_ = imgs[imgs['event'] == 'entry']
+            exit_ = imgs[imgs['event'] == 'exit']
+
+            start_img = entry_.iloc[0]['image'] if not entry_.empty else ''
+            end_img = exit_.iloc[0]['image'] if not exit_.empty else ''
+        else:
+            start_img = end_img = ''
 
         values = (
             time_prefix,
