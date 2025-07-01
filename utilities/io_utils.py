@@ -696,38 +696,34 @@ def save_track_info(time_prefix: str, cam_id: str, target_trks: dict,
 
 def save_attendance_info(
         time_prefix: str,
-        cam_id: str,
         presence_df: pd.DataFrame,
-        video_fps: int,
-        video_frame_count: int,
+        segment_length: float = 5.0,
         db_name: str = 'data.db',
 ) -> None:
-    db_path = os.path.join(get_project_root(), 'files/', db_name)
-    conn, cursor = conn_utils.sqlite_db_connect(db_path)
-
+    conn, cursor = conn_utils.sqlite_db_connect(os.path.join(
+        get_project_root(), 'files/', db_name
+    ))
     columns = [
         'time_prefix',
-        'camera',
-        'track_id',
         'identity',
         'start_img',
         'end_img',
         'start_time',
         'end_time',
     ]
-
     query_columns = utils.query_columns_string(columns)
     param_placeholders = utils.query_param_placeholders(columns)
-
     query = f'''
         INSERT INTO track_info {query_columns}
         VALUES {param_placeholders}
     '''
 
-    start_frame = 0
-    end_frame = video_frame_count - 1
-    start_time = utils.frame_timestamp(time_prefix, start_frame, video_fps)
-    end_time = utils.frame_timestamp(time_prefix, end_frame, video_fps)
+    total_seconds = 60 * segment_length
+    fps = 15
+    end_frame = fps * total_seconds
+
+    start_time = utils.frame_timestamp(time_prefix)
+    end_time = utils.frame_timestamp(time_prefix, end_frame, fps)
 
     for _, row in presence_df.iterrows():
         if not row['present_flag']:
@@ -739,8 +735,6 @@ def save_attendance_info(
 
         values = (
             time_prefix,
-            cam_id,
-            -1,
             identity,
             start_img,
             end_img,

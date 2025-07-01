@@ -367,6 +367,8 @@ def main(
                 presence_df.to_csv(id_results_paths[0], index=False)
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
+            
+            io_utils.save_attendance_info(time_prefix, presence_df)
 
         stop_timing.set()
         time_logger.join()
