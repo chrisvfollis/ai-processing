@@ -39,7 +39,10 @@ def run_worker_pipeline(
         credentials: tuple[str, ...] = None,
         save_all_data: bool = False,
 ) -> bool:
-    file_dir_path = os.path.join(io_utils.get_project_root(), 'files/')
+    project_root = io_utils.get_project_root()
+
+    input_dir = os.path.join(project_root, 'files/input/')
+    output_dir = os.path.join(project_root, 'files/output/')
 
     log_utils.configure_logging(log_level=log_level)
     io_utils.clear_memory()
@@ -57,14 +60,14 @@ def run_worker_pipeline(
         inference_cfg = inference_cfg | {
             'id_freq': 'fps',
             'use_features': False,
-            }
+        }
+
+    file_prefix = f'{time_prefix}_{cam_id}'
+    object_key = f'{shop_id}/{filename}'
     
     process_result = False
     try:
-        object_key = f'{shop_id}/{filename}'
-        if not os.path.exists(
-            os.path.join(file_dir_path, 'input/', filename)
-        ):
+        if not os.path.exists(os.path.join(input_dir, filename)):
             if not io_utils.download_s3_footage(object_key, credentials):
                 raise S3DownloadError(f'Failed to download footage: {object_key}')
 
@@ -90,7 +93,7 @@ def run_worker_pipeline(
                 if save_all_data:
                     if face_data is not None and not face_data.empty:
                         face_data.to_csv(os.path.join(
-                            file_dir_path, 'output/', f'{time_prefix}_{cam_id}_faces.csv'
+                            output_dir, f'{file_prefix}_faces.csv'
                         ))
                     tracking.generate_output_vid(face_data=face_data)
             except Exception:
@@ -100,16 +103,16 @@ def run_worker_pipeline(
                 time_prefix, cam_id, inactive_trks, tracking.fps
             )
         elif id_strategy == 'global':
-            if face_data is not None and not face_data.empty:
-                trk_detections_path = os.path.join(
-                    file_dir_path, 'output/', f'{time_prefix}_{cam_id}_trk_dets.parquet'
-                )
-                face_data_path = os.path.join(
-                    file_dir_path, 'output/', f'{time_prefix}_{cam_id}_faces.parquet'
-                )
-                face_data.to_parquet(face_data_path)
-                trk_detections.to_parquet(trk_detections_path)
-        
+            if (face_data is not None) and (not face_data.empty):
+                output_data = {
+                    'faces': face_data,
+                    'trk_dets': trk_detections,
+                }
+                for data_suffix, data in output_data.items():
+                    data.to_parquet(os.path.join(
+                        output_dir, f'{file_prefix}_{data_suffix}.parquet'
+                    ))
+
         inference.save_run_info()
         tracking.save_run_info()
 
@@ -219,7 +222,8 @@ def global_identification(
         logger.warning('No valid face detections above score threshold.')
         presence_df = pd.DataFrame(columns=[
             'identity',
-            'n_tracks',
+            'name',
+            'n_detected',
             'max_score',
             'posterior',
             'present_flag',
@@ -229,9 +233,9 @@ def global_identification(
     face_data['vote_prob'] = reliability_scale * face_data['score']
     track_votes = (
         face_data
-        .groupby(['identity', 'trk_id'], as_index=False)
+        .groupby(['identity'], as_index=False)
         .agg(
-            vote_prob=('vote_prob', 'max'),
+            vote_prob=('vote_prob', list),
             max_score=('score', 'max')
         )
     )
@@ -240,12 +244,19 @@ def global_identification(
     log_prior = math.log(prior_presence) - math.log1p(-prior_presence)
     log_beta = math.log(fp_rate)
 
-    for ident, grp in track_votes.groupby('identity'):
-        p_list = grp['vote_prob'].clip(0, 1).to_numpy()
-        n_tracks = len(p_list)
+    n_id_dets = face_data.groupby('identity')['f'].nunique()
 
-        if n_tracks:
-            log_lik_absent  = n_tracks * log_beta       # Σ log β
+    for _, row in track_votes.iterrows():
+        ident = row['identity']
+
+        first_name, last_name = io_utils.lookup_name(ident)
+        full_name = f'{first_name}_{last_name}'
+
+        p_list = np.clip(row['vote_prob'], 0, 1)
+        n_p = len(p_list)
+
+        if n_p:
+            log_lik_absent  = n_p * log_beta       # Σ log β
             fail_probs      = 1.0 - p_list
             log_lik_present = math.log1p(-np.prod(fail_probs))
             log_odds        = log_prior + (log_lik_present - log_lik_absent)
@@ -253,11 +264,12 @@ def global_identification(
         else:
             # zero detections → prior × recall miss-probability:
             posterior = prior_presence * (1.0 - recall_est)
-
+        
         records.append({
             'identity'     : ident,
-            'n_tracks'     : n_tracks,
-            'max_score'    : grp['max_score'].max() if n_tracks else 0.0,
+            'name'         : full_name,
+            'n_detected'   : n_id_dets.get(ident, 0),
+            'max_score'    : row['max_score'] if n_p else 0.0,
             'posterior'    : posterior,
             'present_flag' : posterior >= 0.5,
         })
