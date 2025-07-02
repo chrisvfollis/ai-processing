@@ -66,6 +66,7 @@ __pycache__/
 *.hdf5
 *.h5
 # *.xz
+*.parquet
 
 # STRUCTURED DATA - TABULAR:
 *.db

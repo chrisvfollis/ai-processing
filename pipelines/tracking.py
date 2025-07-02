@@ -256,7 +256,6 @@ class TrackingPipeline:
                         'w'        : bbox[2] - bbox[0],
                         'h'        : bbox[3] - bbox[1],
                         'is_valid' : 1 if valid else 0,
-
                     })
                 # kalman filter states:
                 for t, bbox in enumerate(trk.history):

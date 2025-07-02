@@ -47,50 +47,51 @@ def cleanup_semaphores(logger):
     - POSIX-named semaphores from /dev/shm/
     - SysV IPC semaphores using ipcs -s 
     '''
-
     try:
-        posix_semaphores = [f for f in os.listdir('/dev/shm/')
-                            if f.startswith('sem.')]
-
+        posix_semaphores = [
+            file for file in os.listdir('/dev/shm/')
+            if file.startswith('sem.')
+        ]
         if posix_semaphores:
             for sem in posix_semaphores:
                 sem_path = f'/dev/shm/{sem}'
-
                 if any(
                     sem in p.open_files() for p in
                     psutil.process_iter(['open_files'])
                 ):
                     logger.info(f'Skipping active semaphore: {sem_path}')
                     continue
-    
                 try:
                     os.unlink(sem_path)
                     logger.info(f'Removed unused POSIX semaphore: {sem_path}')
                 except FileNotFoundError:
-                    logger.error(f'Skipped: {sem_path} already removed.')
+                    logger.info(f'Skipping {sem_path} (already removed)')
                 except Exception as e:
                     logger.error(f'Error removing {sem_path}: {e}')
         else:
-            logger.info('No unused POSIX semaphores found.')
+            logger.info('No unused POSIX semaphores found')
 
     except Exception as e:
         logger.error(f'Error checking POSIX semaphores: {e}')
-
 
     user = getpass.getuser()
     try:
         output = subprocess.check_output(['ipcs', '-s']).decode('utf-8')
 
-        sysv_semaphores = [
-            line.split()[1] for line in output.split('\n') if user in line
-        ]
+        lines = output.strip().split('\n')
+        removed = 0
 
-        if sysv_semaphores:
-            for sem_id in sysv_semaphores:
+        for line in lines[3:]:  # skip headers
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            sem_id, owner = parts[1], parts[2]
+            if owner == user:
                 os.system(f'ipcrm -s {sem_id}')
-                logger.info(f'Removing unused SysV semaphore: {sem_id}')
-        else:
-            logger.info('No unused SysV semaphores found.')
+                logger.info(f'Removed unused SysV semaphore: {sem_id}')
+                removed += 1
+        if removed == 0:
+            logger.info('No unused SysV semaphores found')
 
     except Exception as e:
         logger.error(f'Error checking SysV semaphores: {e}')
@@ -320,28 +321,31 @@ def save_event_image(
         bucket_name: str = 'timemanager-event-imgs',
         event_imgs_dir: str = None,
 ) -> str | None:
-
     if img is None:
+        print('Event image is NoneType')
         return None
+    
+    object_key = object_key or f'{uuid.uuid4()}.jpg'
 
     credentials = credentials or conn_utils.get_aws_credentials()
-    
     event_imgs_dir = event_imgs_dir or os.path.join(
         get_project_root(), 'files/output/', 'event_imgs/'
     )
-    object_key = object_key or f'{uuid.uuid4()}.jpg'
     file_path = os.path.join(event_imgs_dir, object_key)
 
     cv2.imwrite(file_path, img)
+
     try:
         s3_client = conn_utils.s3_connect(region, credentials)
         s3_client.upload_file(file_path, bucket_name, object_key)
 
         remove_files(file_path, missing_ok=True)
+
+        return object_key
     except (EndpointConnectionError, NoCredentialsError) as e:
         print(f'Unable to connect: {e}')
-
-    return object_key
+    except Exception as e:
+        print(f'Unexpected error during upload: {e}')
 
 
 def extract_and_save_crops(
@@ -352,33 +356,36 @@ def extract_and_save_crops(
     for cam_id, cam_df in event_imgs_df.groupby('cam_id'):
         video_path = video_paths.get(cam_id)
         if not video_path or not os.path.exists(video_path):
+            print(f'Video path does not exist: {video_path}')
             continue
 
-        frame_crop_map = cam_df.set_index('f').to_dict(orient='index')
+        frame_crop_map = {}
+        for _, row in cam_df.iterrows():
+            f = row['f']
+            frame_crop_map.setdefault(f, []).append(row)
 
         container = av.open(video_path)
         stream = container.streams.video[0]
         stream.thread_type = 'AUTO'
 
-        for frame in container.decode(stream):
-            f_idx = frame.pts
-            if f_idx not in frame_crop_map:
+        for idx, frame in enumerate(container.decode(stream)):
+            if idx not in frame_crop_map:
                 continue
 
             img = frame.to_ndarray(format='bgr24')
-            row = frame_crop_map[f_idx]
+            for row in frame_crop_map[idx]:
+                print('Cropping/saving...')
+                x1 = max(0, row['x'])
+                y1 = max(0, row['y'])
+                x2 = min(row['x'] + row['w'], img.shape[1])
+                y2 = min(row['y'] + row['h'], img.shape[0])
+                crop = img[y1:y2, x1:x2]
 
-            x1 = max(0, row['x'])
-            y1 = max(0, row['y'])
-            x2 = min(row['x'] + row['w'], img.shape[1])
-            y2 = min(row['y'] + row['h'], img.shape[0])
-            crop = img[y1:y2, x1:x2]
-
-            save_event_image(
-                img=crop,
-                object_key=row['image'],
-                credentials=credentials,
-            )
+                save_event_image(
+                    img=crop,
+                    object_key=row['image'],
+                    credentials=credentials,
+                )
         container.close()
     return
 
@@ -388,22 +395,39 @@ def save_global_id_event_imgs(
 ):
     project_root = get_project_root()
 
+    print(f'Track detections: {len(trk_dets)} rows')
+
     output = []
 
     present_idents = presence_df[presence_df['present_flag']]['identity'].values
-    face_data = face_data[face_data['identity'].isin(present_idents)]
+    face_data = face_data[face_data['identity'].isin(present_idents)].copy()
 
+    face_data['cam_id'] = face_data['cam_id'].astype(int)
+    trk_dets['cam_id'] = trk_dets['cam_id'].astype(int)
+
+    print(f'{len(face_data.groupby("identity"))} identities')
+    
     for ident, id_faces in face_data.groupby('identity'):
         f_min, f_max = id_faces['f'].min(), id_faces['f'].max()
-        if f_max - f_min < 2:
-            continue
-
+        
         f_split = f_min + (f_max - f_min) // 2
 
         early_faces = id_faces[id_faces['f'] <= f_split]
         late_faces  = id_faces[id_faces['f'] > f_split]
-        if early_faces.empty or late_faces.empty:
+
+        if early_faces.empty:
+            early_faces = id_faces[id_faces['f'] == f_min]
+        if late_faces.empty:
+            late_faces = id_faces[id_faces['f'] == f_max]
+
+        if early_faces.empty and late_faces.empty:
+            print('Both early and late faces empty')
             continue
+
+        if early_faces.empty:
+            early_faces = late_faces
+        if late_faces.empty:
+            late_faces = early_faces
 
         best_early_face = early_faces.sort_values('distance').iloc[0]
         best_late_face  = late_faces.sort_values('distance').iloc[0]
@@ -415,6 +439,9 @@ def save_global_id_event_imgs(
             face_box   = (x, y, w, h)
 
             candidates = trk_dets[(trk_dets['f'] == fnum) & (trk_dets['cam_id'] == cam)]
+            if candidates.empty:
+                print(f'No candidates for {ident} at frame {fnum} on cam {cam}')
+                continue
 
             best_overlap, best_trk = 0.0, None
             for _, trk_row in candidates.iterrows():
@@ -422,25 +449,37 @@ def save_global_id_event_imgs(
                 overlap = utils.compute_overlap_ratio(face_box, trk_box)
                 if overlap > best_overlap:
                     best_overlap, best_trk = overlap, trk_row
+            print(f'{ident} [{event}] → max_overlap={best_overlap:.2f}, trk_found={best_trk is not None}, frame={fnum}, cam={cam}, candidates={len(candidates)}')
 
             if best_trk is not None:
                 output.append({
-                    'identity': ident,
-                    'f': int(best_trk['f']),
-                    'cam_id': int(best_trk['cam_id']),
-                    'x': int(best_trk['x']),
-                    'y': int(best_trk['y']),
-                    'w': int(best_trk['w']),
-                    'h': int(best_trk['h']),
-                    'event': event,
-                    'image': f'{uuid.uuid4()}.jpg',
-                    'overlap_with_face': best_overlap,
+                    'identity'      : ident,
+                    'f'             : int(best_trk['f']),
+                    'cam_id'        : int(best_trk['cam_id']),
+                    'x'             : int(best_trk['x']),
+                    'y'             : int(best_trk['y']),
+                    'w'             : int(best_trk['w']),
+                    'h'             : int(best_trk['h']),
+                    'event'         : event,
+                    'image'         : f'{uuid.uuid4()}.jpg',
+                    'overlap_ratio' : best_overlap,
                 })
     event_imgs_df = pd.DataFrame(output)
 
     if event_imgs_df.empty:
         print('No event crops to save.')
-        return event_imgs_df
+        return pd.DataFrame(columns=[
+            'identity',
+            'f',
+            'cam_id',
+            'x',
+            'y',
+            'w',
+            'h',
+            'event',
+            'image',
+            'overlap_ratio',
+        ])
 
     video_paths = {
         cam_id: os.path.join(
@@ -448,8 +487,9 @@ def save_global_id_event_imgs(
         )
         for cam_id in event_imgs_df['cam_id'].unique()
     }
-
     extract_and_save_crops(event_imgs_df, video_paths, credentials)
+
+    print(f'Generated {len(event_imgs_df)} global ID crops across {len(video_paths)} cameras')
 
     return event_imgs_df
 
