@@ -71,7 +71,7 @@ class InferencePipeline:
         self.frame_diag = video_info[1]
         self.fps = video_info[2]
         self.f_total = video_info[3]
-        # self.f_total = 2000
+        # self.f_total = 1500
 
         self.f_num = 0
 
@@ -209,9 +209,9 @@ class InferencePipeline:
                     continue
 
             if high_conf_dets:
-                img_h, img_w = img.shape[:2]
+                # img_h, img_w = img.shape[:2]
                 regions = utils.cluster_bboxes_into_regions(
-                    high_conf_dets, img_h, img_w, margin=15
+                    high_conf_dets, 2160, 3840, margin=15
                 )
                 for x, y, w, h in regions:
                     self.region_log.append({

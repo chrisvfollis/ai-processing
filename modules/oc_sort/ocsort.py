@@ -43,16 +43,9 @@ class OCSort:
             asso_func="iou",
             inertia=0.2,
             use_byte=False,
-            img_dims=(2160, 3840),
-            input_dims=(800, 1440),
             aspect_ratio_thresh=1.6,
             min_box_area=100,
     ):
-        # PIXEL SPACE TRANSLATION:
-        img_h, img_w = img_dims
-        input_h, input_w = input_dims
-        self.scale = min(input_h / img_h, input_w / img_w)
-
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
@@ -146,7 +139,6 @@ class OCSort:
             scores = output_results[:, 4] * output_results[:, 5]
             bboxes = output_results[:, :4]
 
-        bboxes /= self.scale
         dets = np.concatenate((bboxes, np.expand_dims(scores, axis=-1)), axis=1)
 
         inds_low = scores > 0.1

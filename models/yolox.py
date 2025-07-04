@@ -183,7 +183,7 @@ class YoloX:
             img_data = [img_data]
 
         img_data = [img.copy() for img in img_data]
-        img_tensor = self.preprocess(
+        img_tensor, orig_shapes = self.preprocess(
             img_data, self.input_size, self.rgb_means, self.std
         )
         if self.fp16:
@@ -202,51 +202,46 @@ class YoloX:
                 conf_thresh,
                 nms_thresh,
                 num_classes,
+                orig_shapes,
             )
             
         return outputs
 
     def preprocess(self, images, input_size, mean, std, swap=(2, 0, 1)):
-        '''
-        Rescales, pads, and normalizes input images. The image's aspect ratio
-        is preserved through its rescaling, such that it fits within a canvas of
-        shape `input_size` which is used to pad it.
-        '''
         press_stopwatch(self, 'preprocess_time')
         preprocessed_images = []
+        original_shapes = []
 
         for image in images:
-            if len(image.shape) == 3:
-                padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
-            else:
-                padded_img = np.ones(input_size) * 114.0
-            img = np.array(image)
-            r = min(input_size[0] / img.shape[0], input_size[1] / img.shape[1])
+            orig_h, orig_w = image.shape[:2]
+            original_shapes.append((orig_h, orig_w))
+
+            padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
+            r = min(input_size[0] / orig_h, input_size[1] / orig_w)
             resized_img = cv2.resize(
-                img,
-                (int(img.shape[1] * r), int(img.shape[0] * r)),
+                image,
+                (int(orig_w * r), int(orig_h * r)),
                 interpolation=cv2.INTER_LINEAR,
             ).astype(np.float32)
-            padded_img[: int(img.shape[0] * r), : int(img.shape[1] * r)] = resized_img
+            padded_img[:int(orig_h * r), :int(orig_w * r)] = resized_img
 
-            padded_img = padded_img[:, :, ::-1]     # converts BGR to RGB
-            padded_img /= 255.0
+            padded_img = padded_img[:, :, ::-1] / 255.0  # BGR to RGB + normalize
             if mean is not None:
                 padded_img -= mean
             if std is not None:
                 padded_img /= std
+
             padded_img = padded_img.transpose(swap)
             padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
-
             preprocessed_images.append(padded_img)
 
         preprocessed_images = np.stack(preprocessed_images, axis=0)
         preprocessed_images = torch.from_numpy(preprocessed_images).to(self.device)
 
         press_stopwatch(self, 'preprocess_time')
-        return preprocessed_images
+        return preprocessed_images, original_shapes
 
-    def postprocess(self, prediction, conf_thresh, nms_thresh, num_classes):
+    def postprocess(self, prediction, conf_thresh, nms_thresh, num_classes, orig_shapes):
         press_stopwatch(self, 'postprocess_time')
         box_corner = prediction.new(prediction.shape)
         box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
@@ -282,14 +277,29 @@ class YoloX:
             )
 
             detections = detections[nms_out_index]
-
-            if output[i] is None:
-                output[i] = detections
-            else:
-                output[i] = torch.cat((output[i], detections))
+            detections = detections.clone().cpu().numpy()
+            detections = self._scale_coords(detections, orig_shapes[i], self.input_size)
+            output[i] = torch.from_numpy(detections).to(self.device)
 
         press_stopwatch(self, 'postprocess_time')
         return output
+
+    def _scale_coords(self, dets, orig_shape, input_size):
+        in_h, in_w = input_size
+        orig_h, orig_w = orig_shape
+        r = min(in_h / orig_h, in_w / orig_w)
+        dw = (in_w - r * orig_w) / 2
+        dh = (in_h - r * orig_h) / 2
+
+        dets[:, 0] = (dets[:, 0] - dw) / r
+        dets[:, 1] = (dets[:, 1] - dh) / r
+        dets[:, 2] = (dets[:, 2] - dw) / r
+        dets[:, 3] = (dets[:, 3] - dh) / r
+
+        dets[:, [0, 2]] = dets[:, [0, 2]].clip(0, orig_w)
+        dets[:, [1, 3]] = dets[:, [1, 3]].clip(0, orig_h)
+
+        return dets
 
 
 # =============================================================================

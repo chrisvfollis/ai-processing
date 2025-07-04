@@ -376,34 +376,23 @@ def is_grayscale(frame, threshold=10):
 
 
 def cluster_bboxes_into_regions(
-        bboxes: list,
-        img_height: int,
-        img_width: int,
-        max_width: int = 1920,
-        max_height: int = 1440,
-        min_width: int = 320,
-        min_height: int = 256,
-        margin: int = 15,
+    bboxes: list,
+    img_height: int,
+    img_width: int,
+    max_width: int = 1920,
+    max_height: int = 1440,
+    min_width: int = 320,
+    min_height: int = 256,
+    margin: int = 15,
 ) -> list[tuple]:
     '''
-    Clusters bounding boxes into the minimum number of non-overlapping image regions.
-    
-    Args:
-        bboxes (list): A list of bounding boxes in the format (x, y, w, h, c)
-            where x, y are top-left.
-        img_height (int): Height of the original image.
-        img_width (int): Width of the original image.
-        max_width (int): Maximum allowable width for a region.
-        max_height (int): Maximum allowable height for a region.
-        margin (int): Number of pixels to expand around each region.
+    Clusters bounding boxes into the minimum number of non-overlapping image
+    regions, within bounded dimensions and aspect ratios for optimal CenterFace
+    detection performance.
 
-    Returns (list): A list of region coordinates in the format (x1, y1, w, h)
-        representing the cropped regions.
+    Returns a list of region coordinates (x1, y1, w, h).
     '''
-    
     bbox_coords = np.array([xywh_xyxy(box, out='xyxy') for box in bboxes])
-
-    # sort bounding boxes from top to bottom, then left to right:
     bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]
 
     regions = []
@@ -412,38 +401,28 @@ def cluster_bboxes_into_regions(
     for i, (x1, y1, x2, y2) in enumerate(bbox_coords):
         if i in used:
             continue
+        used.add(i)
 
         region_x1, region_y1 = x1, y1
         region_x2, region_y2 = x2, y2
         region_bboxes = [(x1, y1, x2, y2)]
 
-        # try to expand region while keeping it within max limits:
         for j, (bx1, by1, bx2, by2) in enumerate(bbox_coords[i+1:], start=i+1):
             if j in used:
                 continue
 
             new_x1, new_y1 = min(region_x1, bx1), min(region_y1, by1)
             new_x2, new_y2 = max(region_x2, bx2), max(region_y2, by2)
-  
-            if (
-                (new_x2 - new_x1) > max_width or
-                (new_y2 - new_y1) > max_height
-            ):
-                continue
 
             for rx1, ry1, rx2, ry2 in region_bboxes:
-                if not (
-                    (new_x1 <= rx1) and (new_y1 <= ry1) and
-                    (new_x2 >= rx2) and (new_y2 >= ry2)
-                    ):
-                    break  # one bbox would be split, so skip this expansion
+                if not ((new_x1 <= rx1) and (new_y1 <= ry1) and (new_x2 >= rx2) and (new_y2 >= ry2)):
+                    break
             else:
                 region_x1, region_y1 = new_x1, new_y1
                 region_x2, region_y2 = new_x2, new_y2
-                region_bboxes.append((bx1, by1, bx2, by2)) # expand the region
+                region_bboxes.append((bx1, by1, bx2, by2))
                 used.add(j)
 
-        # apply margin, clipped to image bounds:
         region_x1 = max(0, region_x1 - margin)
         region_y1 = max(0, region_y1 - margin)
         region_x2 = min(img_width, region_x2 + margin)
@@ -452,43 +431,38 @@ def cluster_bboxes_into_regions(
         region_w = region_x2 - region_x1
         region_h = region_y2 - region_y1
 
-        # ensure minimum width and height
-        if region_w < min_width:
-            extra_w = min_width - region_w
-            shift = extra_w // 2
-            region_x1 = max(0, region_x1 - shift)
-            region_x2 = min(img_width, region_x2 + (extra_w - shift))
-            region_w = region_x2 - region_x1
+        region_w = max(region_w, min_width)
+        region_h = max(region_h, min_height)
 
-        if region_h < min_height:
-            extra_h = min_height - region_h
-            shift = extra_h // 2
-            region_y1 = max(0, region_y1 - shift)
-            region_y2 = min(img_height, region_y2 + (extra_h - shift))
-            region_h = region_y2 - region_y1
-
-        # enforce aspect ratio constraints
-        aspect_ratio = region_w / region_h
-
+        # adjust for target aspect ratio
+        ar = region_w / region_h
         target_ar_min = 0.75
         target_ar_max = 1.33
+        if ar < target_ar_min:
+            region_w = int(region_h * target_ar_min)
+        elif ar > target_ar_max:
+            region_h = int(region_w / target_ar_max)
 
-        if aspect_ratio < target_ar_min:
-            target_width = int(region_h * target_ar_min)
-            extra_w = target_width - region_w
-            shift = extra_w // 2
-            region_x1 = max(0, region_x1 - shift)
-            region_x2 = min(img_width, region_x2 + (extra_w - shift))
-            region_w = region_x2 - region_x1
-        elif aspect_ratio > target_ar_max:
-            target_height = int(region_w / target_ar_max)
-            extra_h = target_height - region_h
-            shift = extra_h // 2
-            region_y1 = max(0, region_y1 - shift)
-            region_y2 = min(img_height, region_y2 + (extra_h - shift))
-            region_h = region_y2 - region_y1
+        # clip to max size
+        region_w = min(region_w, max_width)
+        region_h = min(region_h, max_height)
 
-        regions.append((region_x1, region_y1, region_w, region_h))
+        # re-center while respecting image boundaries
+        cx = (region_x1 + region_x2) / 2
+        cy = (region_y1 + region_y2) / 2
+        region_x1 = int(max(0, cx - region_w / 2))
+        region_y1 = int(max(0, cy - region_h / 2))
+        region_x2 = int(min(img_width, region_x1 + region_w))
+        region_y2 = int(min(img_height, region_y1 + region_h))
+        region_x1 = int(max(0, region_x2 - region_w))
+        region_y1 = int(max(0, region_y2 - region_h))
+
+        regions.append((
+            region_x1,
+            region_y1,
+            region_x2 - region_x1,
+            region_y2 - region_y1,
+        ))
 
     return regions
 

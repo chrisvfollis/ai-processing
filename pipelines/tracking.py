@@ -22,7 +22,6 @@ class TrackingPipeline:
             self,
             video_file: str,
             detections: dict,
-            input_dims: tuple[int] = (800, 1440),
             aspect_ratio_thresh: float = 1.6,
             min_box_area: int = 100,
             det_thresh: float = 0.6,
@@ -80,8 +79,6 @@ class TrackingPipeline:
             asso_func=asso_func,
             inertia=inertia,
             use_byte=use_byte,
-            img_dims=self.resolution[::-1],
-            input_dims=input_dims,
             aspect_ratio_thresh=aspect_ratio_thresh,
             min_box_area=min_box_area,
         )
@@ -311,7 +308,7 @@ class TrackingPipeline:
             'module': [
                 *['software'] * 2,
                 *['video'] * 2,
-                *['tracker'] * 5
+                *['tracker'] * 4
             ],
             'parameter': [
                 'git_commit_hash',          # Software
@@ -320,8 +317,7 @@ class TrackingPipeline:
                 'resolution',               # Video
                 'fps',
 
-                'input_dims',               # Tracker
-                'iou_threshold',
+                'iou_threshold',            # Tracker
                 'min_box_area',
                 'aspect_ratio_thresh',
                 'min_lifespan_filter'
@@ -333,7 +329,6 @@ class TrackingPipeline:
                 f'{self.resolution[0]}x{self.resolution[1]}',
                 f'{self.fps}',
 
-                self.ocsort.scale,
                 self.ocsort.iou_threshold,
                 self.ocsort.min_box_area,
                 self.ocsort.aspect_ratio_thresh,
@@ -461,8 +456,7 @@ class TrackingPipeline:
 
             if all_detections == True:
                 for det in self.detections.get(global_f_num, []):
-                    scaled_det = det[:4] * (1.0 / self.ocsort.scale)
-                    x1, y1, x2, y2 = map(int, scaled_det)
+                    x1, y1, x2, y2 = map(int, det[:4])
                     cv2.rectangle(
                         frame,
                         (x1 - 2, y1 -2),
