@@ -384,6 +384,8 @@ def cluster_bboxes_into_regions(
         img_width: int,
         max_width: int = 1920,
         max_height: int = 1080,
+        min_width: int = 320,
+        min_height: int = 192,
         margin: int = 15,
 ) -> list[tuple]:
     '''
@@ -452,6 +454,21 @@ def cluster_bboxes_into_regions(
 
         region_w = region_x2 - region_x1
         region_h = region_y2 - region_y1
+
+        # ensure minimum width and height
+        if region_w < min_width:
+            extra_w = min_width - region_w
+            shift = extra_w // 2
+            region_x1 = max(0, region_x1 - shift)
+            region_x2 = min(img_width, region_x2 + (extra_w - shift))
+            region_w = region_x2 - region_x1
+
+        if region_h < min_height:
+            extra_h = min_height - region_h
+            shift = extra_h // 2
+            region_y1 = max(0, region_y1 - shift)
+            region_y2 = min(img_height, region_y2 + (extra_h - shift))
+            region_h = region_y2 - region_y1
         
         regions.append((region_x1, region_y1, region_w, region_h))
 

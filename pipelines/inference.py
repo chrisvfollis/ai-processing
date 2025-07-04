@@ -190,10 +190,16 @@ class InferencePipeline:
             detections = yolo_output[idx]
             if detections is None or len(detections) == 0:
                 continue
-            else:
-                detections = [
-                    utils.xywh_xyxy(d, out='xywh') for d in detections
-                ]
+
+            raw_detections = detections
+            detections = [
+                utils.xywh_xyxy(d, out='xywh') for d in detections
+            ]
+            high_conf_dets = [
+                converted for converted, raw in zip(detections, raw_detections)
+                if raw[4] >= 0.20
+            ]
+
             if self.use_features:
                 try:
                     self.osnet.extraction_batch(img, detections, f_num)
@@ -201,14 +207,15 @@ class InferencePipeline:
                     print(e)
                     continue
 
-            img_h, img_w = img.shape[:2]
-            regions = utils.cluster_bboxes_into_regions(
-                detections, img_h, img_w, margin=15
-            )
-            facial_areas = self.face_analysis.identify_faces(
-                img, regions, id_cutoff=0.80
-            )
-            face_data[f_num] = facial_areas
+            if high_conf_dets:
+                img_h, img_w = img.shape[:2]
+                regions = utils.cluster_bboxes_into_regions(
+                    high_conf_dets, img_h, img_w, margin=15
+                )
+                facial_areas = self.face_analysis.identify_faces(
+                    img, regions, id_cutoff=0.80
+                )
+                face_data[f_num] = facial_areas
         
         person_detections = {}
         for idx, detections in enumerate(yolo_output):

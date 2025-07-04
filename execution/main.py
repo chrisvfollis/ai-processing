@@ -404,19 +404,26 @@ def main(
                 confidence_weight=0.45,
                 distance_weight=0.55,
                 n_matches=3,
-                min_score=0.60,
+                min_score=0.55,
                 reliability_scale=0.40,
                 fp_rate=0.20,
                 prior_presence=0.05,
                 recall_est=0.65,
             )
-            event_imgs_df = io_utils.save_global_id_event_imgs(
-                time_prefix, *results, credentials
-            )
             presence_df, filtered_faces, trk_dets = results
             logger.info('Finished global identification')
 
-            io_utils.save_attendance_info(time_prefix, presence_df, event_imgs_df)
+            if 'identity' in presence_df.columns and (
+                presence_df['identity'].notna().any()
+            ):
+                event_imgs_df = io_utils.save_global_id_event_imgs(
+                    time_prefix, presence_df, filtered_faces, trk_dets, credentials
+                )
+                io_utils.save_attendance_info(time_prefix, presence_df, event_imgs_df)
+            else:
+                logger.warning(
+                    'Skipping event image generation — no valid identities found'
+                )
 
             if save_all_data:
                 id_results_paths = [
@@ -434,7 +441,9 @@ def main(
                     if not filename.endswith('.mp4'):
                         continue
                     input_path = os.path.join(input_dir, filename)
-                    output_path = os.path.join(output_dir, f'{Path(filename).stem}_annotated.mp4')
+                    output_path = os.path.join(
+                        output_dir, 'videos/', f'{Path(filename).stem}_annotated.mp4'
+                    )
                     try:
                         video.visualize_global_id_output(
                             input_path=input_path,
