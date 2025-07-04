@@ -20,6 +20,7 @@ from utilities import io_utils, log_utils, conn_utils
 from utilities.io_utils import S3DownloadError
 from utilities import general_utils as utils
 from pipelines import InferencePipeline, TrackingPipeline, IdentificationPipeline
+from modules.visualize import video
 
 
 logger = log_utils.get_logger(__name__)
