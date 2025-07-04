@@ -396,19 +396,18 @@ def cluster_bboxes_into_regions(
     bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]
 
     regions = []
-    used = set()
+    final_used = set()
 
     for i, (x1, y1, x2, y2) in enumerate(bbox_coords):
-        if i in used:
+        if i in final_used:
             continue
-        used.add(i)
 
-        region_x1, region_y1 = x1, y1
-        region_x2, region_y2 = x2, y2
+        current_used = set([i])
         region_bboxes = [(x1, y1, x2, y2)]
+        region_x1, region_y1, region_x2, region_y2 = x1, y1, x2, y2
 
         for j, (bx1, by1, bx2, by2) in enumerate(bbox_coords[i+1:], start=i+1):
-            if j in used:
+            if j in final_used or j in current_used:
                 continue
 
             new_x1, new_y1 = min(region_x1, bx1), min(region_y1, by1)
@@ -418,10 +417,12 @@ def cluster_bboxes_into_regions(
                 if not ((new_x1 <= rx1) and (new_y1 <= ry1) and (new_x2 >= rx2) and (new_y2 >= ry2)):
                     break
             else:
-                region_x1, region_y1 = new_x1, new_y1
-                region_x2, region_y2 = new_x2, new_y2
+                region_x1 = new_x1
+                region_y1 = new_y1
+                region_x2 = new_x2
+                region_y2 = new_y2
                 region_bboxes.append((bx1, by1, bx2, by2))
-                used.add(j)
+                current_used.add(j)
 
         region_x1 = max(0, region_x1 - margin)
         region_y1 = max(0, region_y1 - margin)
@@ -456,6 +457,12 @@ def cluster_bboxes_into_regions(
         region_y2 = int(min(img_height, region_y1 + region_h))
         region_x1 = int(max(0, region_x2 - region_w))
         region_y1 = int(max(0, region_y2 - region_h))
+
+        for k in current_used:
+            cx = (bbox_coords[k][0] + bbox_coords[k][2]) / 2
+            cy = (bbox_coords[k][1] + bbox_coords[k][3]) / 2
+            if (region_x1 <= cx <= region_x2) and (region_y1 <= cy <= region_y2):
+                final_used.add(k)
 
         regions.append((
             region_x1,
