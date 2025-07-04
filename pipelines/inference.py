@@ -205,7 +205,6 @@ class InferencePipeline:
             regions = utils.cluster_bboxes_into_regions(
                 detections, img_h, img_w, margin=15
             )
-
             facial_areas = self.face_analysis.identify_faces(
                 img, regions, id_cutoff=0.80
             )

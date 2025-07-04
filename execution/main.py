@@ -320,7 +320,7 @@ def wrap_up_segment(
         io_utils.delete_s3_footage(object_keys, credentials)
 
     io_utils.clear_local_files(time_prefix)
-        
+
 
 # =============================================================================
 #                         - PRIMARY EXECUTION -
@@ -360,7 +360,7 @@ def main(
     output_dir, event_imgs_dir = [
         dir_paths[name] for name in ['output_dir', 'event_imgs_dir']
     ]
-    
+
     io_utils.clear_local_files(target_dirs=[output_dir, event_imgs_dir])
     io_utils.clear_track_info('all')
 
