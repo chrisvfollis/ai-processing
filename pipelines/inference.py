@@ -71,7 +71,7 @@ class InferencePipeline:
         self.frame_diag = video_info[1]
         self.fps = video_info[2]
         self.f_total = video_info[3]
-        # self.f_total = 1500
+        # self.f_total = 1200
 
         self.f_num = 0
 

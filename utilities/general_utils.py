@@ -383,8 +383,9 @@ def cluster_bboxes_into_regions(
     max_height: int = 1440,
     min_width: int = 320,
     min_height: int = 256,
-    margin: int = 15,
-) -> list[tuple]:
+    margin: int = 5,
+    nms_thresh: float = 0.80,
+) -> list[tuple[int, int, int, int]]:
     '''
     Clusters bounding boxes into the minimum number of non-overlapping image
     regions, within bounded dimensions and aspect ratios for optimal CenterFace
@@ -471,7 +472,44 @@ def cluster_bboxes_into_regions(
             region_y2 - region_y1,
         ))
 
-    return regions
+    return region_box_nms(regions, nms_thresh)
+
+
+def region_box_nms(
+    regions: list[tuple],
+    iou_thresh: float = 0.85,
+) -> list[tuple[int, int, int, int]]:
+    '''
+    Suppresses overlapping regions using a form of NMS based on area instead of
+    confidence (keeps the largest overlapping region). 
+    '''
+    if not regions:
+        return []
+
+    boxes = np.array([[x, y, x + w, y + h] for x, y, w, h in regions])
+    areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    order = np.argsort(-areas)
+
+    keep = []
+    while order.size > 0:
+        i = order[0]
+        keep.append(i)
+
+        xx1 = np.maximum(boxes[i, 0], boxes[order[1:], 0])
+        yy1 = np.maximum(boxes[i, 1], boxes[order[1:], 1])
+        xx2 = np.minimum(boxes[i, 2], boxes[order[1:], 2])
+        yy2 = np.minimum(boxes[i, 3], boxes[order[1:], 3])
+
+        inter_w = np.maximum(0.0, xx2 - xx1)
+        inter_h = np.maximum(0.0, yy2 - yy1)
+        inter_area = inter_w * inter_h
+
+        iou = inter_area / (areas[i] + areas[order[1:]] - inter_area)
+        inds_to_keep = np.where(iou < iou_thresh)[0]
+
+        order = order[inds_to_keep + 1]
+
+    return [regions[i] for i in keep]
 
 
 def filter_sparse_rows(cost_matrix):
