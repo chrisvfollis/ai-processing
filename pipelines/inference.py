@@ -71,7 +71,7 @@ class InferencePipeline:
         self.frame_diag = video_info[1]
         self.fps = video_info[2]
         self.f_total = video_info[3]
-        # self.f_total = 1500
+        # self.f_total = 2000
 
         self.f_num = 0
 
@@ -197,9 +197,8 @@ class InferencePipeline:
             ]
             high_conf_dets = [
                 converted for converted, raw in zip(detections, raw_detections)
-                if raw[4] >= 0.15   # threshold for detections to qualify in regions
+                if raw[4] >= 0.075   # threshold for detections to qualify in regions
             ]
-
             if self.use_features:
                 try:
                     self.osnet.extraction_batch(img, detections, f_num)
