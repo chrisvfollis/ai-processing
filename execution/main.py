@@ -191,6 +191,16 @@ def global_identification(
         prior_presence: float = 0.05,         # π – prior P(identity present)
         recall_est: float = 0.65,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+
+    presence_df = pd.DataFrame(columns=[
+        'identity',
+        'name',
+        'n_detected',
+        'max_score',
+        'posterior',
+        'present_flag',
+    ])
+
     face_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_faces.parquet'))
     trk_files  = sorted(Path(output_dir).glob(f'{time_prefix}_*_trk_dets.parquet'))
 
@@ -227,14 +237,6 @@ def global_identification(
 
     if face_data.empty:
         logger.info('No valid face detections above score threshold.')
-        presence_df = pd.DataFrame(columns=[
-            'identity',
-            'name',
-            'n_detected',
-            'max_score',
-            'posterior',
-            'present_flag',
-        ])
         return presence_df, face_data, trk_dets
 
     face_data['vote_prob'] = reliability_scale * face_data['score']
@@ -246,6 +248,11 @@ def global_identification(
             max_score=('score', 'max')
         )
     )
+    if track_votes.empty:
+        logger.info(
+            'No track votes could be formed — skipping presence estimation'
+        )
+        return presence_df, face_data, trk_dets
 
     records = []
     log_prior = math.log(prior_presence) - math.log1p(-prior_presence)
@@ -280,6 +287,10 @@ def global_identification(
             'posterior'    : posterior,
             'present_flag' : posterior >= 0.5,
         })
+
+    if not records:
+        logger.info('No valid face detections above score threshold.')
+        return presence_df, face_data, trk_dets
 
     presence_df = pd.DataFrame(records).sort_values('posterior', ascending=False)
 
