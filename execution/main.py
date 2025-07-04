@@ -362,10 +362,10 @@ def main(
         save_all_data,
     )
     basic_args = {
-        'shop_id':        shop_id,
-        'credentials':    credentials,
-        'save_all_data':  save_all_data,
-        'retain_footage': retain_footage,
+        'shop_id'        : shop_id,
+        'credentials'    : credentials,
+        'save_all_data'  : save_all_data,
+        'retain_footage' : retain_footage,
     }
 
     dir_paths = io_utils.get_common_dirs()
@@ -435,32 +435,28 @@ def main(
                 presence_df.to_csv(id_results_paths[0], index=False)
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
-            
+
+                raw_faces, raw_trks = io_utils.load_raw_detection_data(time_prefix, output_dir)
                 for filename in filenames:
                     if not filename.endswith('.mp4'):
                         continue
 
-                    time_prefix, cam_id = utils.decode_vid_filename(filename)
+                    _, cam_id = utils.decode_vid_filename(filename)
 
-                    face_data = filtered_faces.loc[filtered_faces['cam_id'] == int(cam_id)]
-                    detection_data = trk_dets.loc[trk_dets['cam_id'] == int(cam_id)]
+                    face_data = raw_faces.loc[raw_faces['cam_id'] == cam_id]
+                    detection_data = raw_trks.loc[raw_trks['cam_id'] == cam_id]
 
                     if face_data.empty and detection_data.empty:
                         continue
 
-                    input_path = os.path.join(input_dir, filename)
-                    output_path = os.path.join(
-                        output_dir, 'videos/', f'{time_prefix}_{cam_id}_annotated.mp4'
-                    )
                     try:
                         logger.info('Rendering video annotations...')
                         video.visualize_global_id_output(
-                            input_path=input_path,
-                            output_path=output_path,
+                            filename,
                             face_df=face_data,
                             trk_df=detection_data,
                         )
-                        logger.info(f'Annotated video saved: {output_path}')
+                        logger.info(f'Annotated video saved')
                     except Exception as e:
                         logger.exception(f'Failed to render annotated video for {filename}: {e}')
 
@@ -497,25 +493,25 @@ if __name__ == '__main__':
     device = utils.get_default_device()
 
     yolox_cfg = {
-        'checkpoint':  'yolox_model_trt.pth',
-        'num_classes': 1,
-        'depth':       1.33,
-        'width':       1.25,
-        'input_size':  (800, 1440),
-        'conf_thresh': 0.05,
-        'nms_thresh':  0.7,
-        'fp16':        True,
-        'use_trt':     True,
+        'checkpoint'  : 'yolox_model_trt.pth',
+        'num_classes' : 1,
+        'depth'       : 1.33,
+        'width'       : 1.25,
+        'input_size'  : (800, 1440),
+        'conf_thresh' : 0.05,
+        'nms_thresh'  : 0.7,
+        'fp16'        : True,
+        'use_trt'     : True,
     }
     faces_cfg = {
         'facenet_cfg': {
-            'checkpoint': 'facenet512_model_trt.pth',
-            'fp16':       False,
-            'use_trt':    True,
+            'checkpoint' : 'facenet512_model_trt.pth',
+            'fp16'       : False,
+            'use_trt'    : True,
         },
         'centerface_cfg': {
-            'conf_thresh': 0.50,
-            'min_area':    (32, 32),
+            'conf_thresh' : 0.40,
+            'min_area'    : (16, 16),
         },
         # 'clearface_cfg': {
         #     'checkpoint': '90000_G.pth',
@@ -535,16 +531,16 @@ if __name__ == '__main__':
     memory_monitor.start()
 
     run_config = {
-        'shop_id':        shop_id,
-        'model_configs':  model_cfgs,
-        'id_strategy':    args.id_strategy,
-        'device':         device,
-        'log_level':      args.log_level,
-        'credentials':    aws_credentials,
-        'retain_footage': args.retain_footage,
-        'save_all_data':  args.save_all_data,
-        'starting_point': starting_point,
-        'priority_cam':   args.priority_cam,
+        'shop_id'        : shop_id,
+        'model_configs'  : model_cfgs,
+        'id_strategy'    : args.id_strategy,
+        'device'         : device,
+        'log_level'      : args.log_level,
+        'credentials'    : aws_credentials,
+        'retain_footage' : args.retain_footage,
+        'save_all_data'  : args.save_all_data,
+        'starting_point' : starting_point,
+        'priority_cam'   : args.priority_cam,
     }
 
     main(**run_config)

@@ -1,5 +1,6 @@
 # standard dependencies
-pass
+from pathlib import Path
+import os
 
 # 3rd-party dependencies
 import av
@@ -7,18 +8,32 @@ import cv2
 import pandas as pd
 
 # internal dependencies
-pass
+import utilities.general_utils as utils
+from utilities import io_utils
 
 
-def visualize_global_id_output(input_path, output_path, face_df, trk_df):
+def visualize_global_id_output(video_file, face_df, trk_df):
+    project_root = io_utils.get_project_root()
+
+    input_dir = os.path.join(project_root, 'files/input/')
+    output_dir = os.path.join(project_root, 'files/output/')
+
+    time_prefix, cam_id = utils.decode_vid_filename(video_file)
+
+    input_path = os.path.join(input_dir, video_file)
+    output_path = os.path.join(
+        output_dir, 'videos/', f'{time_prefix}_{cam_id}_annotated.mp4'
+    )
+
     container = av.open(input_path)
     stream = container.streams.video[0]
     fps = float(stream.average_rate)
-    width = stream.codec_context.width
-    height = stream.codec_context.height
+
+    target_width = 960
+    target_height = 540
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    writer = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
 
     frame_num = 0
     for frame in container.decode(stream):
@@ -35,10 +50,11 @@ def visualize_global_id_output(input_path, output_path, face_df, trk_df):
             ident = row.name if pd.notna(row.name) else '?'
             label = str(ident)[:12]
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(img, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+            cv2.putText(img, label, (x, y - 25), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
 
-        cv2.putText(img, f'Frame {frame_num}', (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 1)
+        cv2.putText(img, f'Frame {frame_num}', (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
 
+        img = cv2.resize(img, (target_width, target_height))
         writer.write(img)
         frame_num += 1
 

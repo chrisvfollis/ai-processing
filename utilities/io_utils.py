@@ -10,6 +10,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional
 import errno
+from pathlib import Path
+
 
 # 3rd-party dependencies
 import numpy as np
@@ -538,6 +540,19 @@ def upload_data(credentials, max_workers=8):
 
     except (EndpointConnectionError, NoCredentialsError) as e:
         print(f'S3 client error: {e}')
+
+
+def load_raw_detection_data(time_prefix, output_dir):
+    face_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_faces.parquet'))
+    trk_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_trk_dets.parquet'))
+
+    face_dfs = [pd.read_parquet(f) for f in face_files]
+    trk_dfs = [pd.read_parquet(f) for f in trk_files]
+
+    raw_faces = pd.concat(face_dfs, ignore_index=True)
+    raw_trks = pd.concat(trk_dfs, ignore_index=True)
+
+    return raw_faces, raw_trks
 
 
 # =============================================================================
