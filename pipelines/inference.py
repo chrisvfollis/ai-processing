@@ -197,7 +197,7 @@ class InferencePipeline:
             ]
             high_conf_dets = [
                 converted for converted, raw in zip(detections, raw_detections)
-                if raw[4] >= 0.20
+                if raw[4] >= 0.15   # threshold for detections to qualify in regions
             ]
 
             if self.use_features:

@@ -36,7 +36,7 @@ def visualize_global_id_output(input_path, output_path, face_df, trk_df):
         faces = face_df[face_df['f'] == frame_num]
         for _, row in faces.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
-            ident = row.identity if pd.notna(row.identity) else '?'
+            ident = row.name if pd.notna(row.name) else '?'
             label = str(ident)[:12]
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(img, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)

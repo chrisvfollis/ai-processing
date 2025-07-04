@@ -436,15 +436,14 @@ def main(
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
             
-                logger.info('Rendering annotated videos...')
                 for filename in filenames:
                     if not filename.endswith('.mp4'):
                         continue
 
                     time_prefix, cam_id = utils.decode_vid_filename(filename)
 
-                    face_data = filtered_faces.loc[filtered_faces['cam_id'] == cam_id]
-                    detection_data = trk_dets.loc[trk_dets['cam_id'] == cam_id]
+                    face_data = filtered_faces.loc[filtered_faces['cam_id'] == int(cam_id)]
+                    detection_data = trk_dets.loc[trk_dets['cam_id'] == int(cam_id)]
 
                     if face_data.empty and detection_data.empty:
                         continue
@@ -454,6 +453,7 @@ def main(
                         output_dir, 'videos/', f'{time_prefix}_{cam_id}_annotated.mp4'
                     )
                     try:
+                        logger.info('Rendering video annotations...')
                         video.visualize_global_id_output(
                             input_path=input_path,
                             output_path=output_path,

@@ -239,14 +239,11 @@ def frame_timestamp(clip_timestamp, f_num=0, fps=15):
     return clip_timestamp + timedelta(seconds=seconds)
 
 
-def decode_vid_filename(video_file):
-    if not video_file.endswith('.mp4'):
-        return video_file
-    
+def decode_vid_filename(video_file) -> tuple[str, int]:
     sections = video_file.rsplit('_', 1)
 
     time_prefix = sections[0]
-    cam_id = sections[1].split('.')[0]
+    cam_id = int(sections[1].split('.')[0])
 
     return time_prefix, cam_id
 
@@ -694,7 +691,7 @@ def query_columns_string(columns: list | tuple) -> str:
     return f"({', '.join(columns)})"
 
 
-def create_track_df(time_prefix: str) -> pd.DataFrame:
+def create_track_df(time_prefix: str) -> pd.DataFrame | None:
     results = io_utils.get_track_info(time_prefix, designation='tracked_employee')
     if (not results) or (len(results) == 0):
         print('No tracked_employee tracks found')

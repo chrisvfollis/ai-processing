@@ -1179,6 +1179,12 @@ def post_event_data(
     webapp_api = APIClient(var_prefix='WEBAPP_API')
 
     track_data_df = utils.create_track_df(time_prefix)
+    if track_data_df is None or track_data_df.empty:
+        if logger is None:
+            print('No tracks found to post')
+        else:
+            logger.info('No tracks found to post')
+        return successful_post
     track_data_df = utils.merge_track_records(track_data_df)
 
     event_data = {
