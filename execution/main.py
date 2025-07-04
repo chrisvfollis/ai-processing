@@ -369,8 +369,8 @@ def main(
     }
 
     dir_paths = io_utils.get_common_dirs()
-    output_dir, event_imgs_dir = [
-        dir_paths[name] for name in ['output_dir', 'event_imgs_dir']
+    input_dir, output_dir, event_imgs_dir = [
+        dir_paths[name] for name in ['input_dir', 'output_dir', 'event_imgs_dir']
     ]
 
     io_utils.clear_local_files(target_dirs=[output_dir, event_imgs_dir])
@@ -416,6 +416,8 @@ def main(
             presence_df, filtered_faces, trk_dets = results
             logger.info('Finished global identification')
 
+            io_utils.save_attendance_info(time_prefix, presence_df, event_imgs_df)
+
             if save_all_data:
                 id_results_paths = [
                     os.path.join(output_dir, f'{time_prefix}_{suffix}.csv')
@@ -427,7 +429,22 @@ def main(
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
             
-            io_utils.save_attendance_info(time_prefix, presence_df, event_imgs_df)
+                logger.info('Rendering annotated videos...')
+                for filename in filenames:
+                    if not filename.endswith('.mp4'):
+                        continue
+                    input_path = os.path.join(input_dir, filename)
+                    output_path = os.path.join(output_dir, f'{Path(filename).stem}_annotated.mp4')
+                    try:
+                        video.visualize_global_id_output(
+                            input_path=input_path,
+                            output_path=output_path,
+                            face_df=filtered_faces,
+                            trk_df=trk_dets,
+                        )
+                        logger.info(f'Annotated video saved: {output_path}')
+                    except Exception as e:
+                        logger.exception(f'Failed to render annotated video for {filename}: {e}')
 
         stop_timing.set()
         time_logger.join()
@@ -446,7 +463,6 @@ if __name__ == '__main__':
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
     parser.add_argument('--priority-cam', type=str)
     parser.add_argument('--id-strategy', type=str, default='local')
-
     args = parser.parse_args()
 
     log_utils.configure_logging(log_level=args.log_level)
@@ -488,7 +504,6 @@ if __name__ == '__main__':
         # }
     }
     osnet_cfg = {}
-
     model_cfgs = {
         'yolox': yolox_cfg,
         'faces': faces_cfg,

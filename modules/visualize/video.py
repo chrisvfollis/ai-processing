@@ -10,7 +10,7 @@ import pandas as pd
 pass
 
 
-def global_id_output(input_path, output_path, face_df, trk_df):
+def visualize_global_id_output(input_path, output_path, face_df, trk_df):
     container = av.open(input_path)
     stream = container.streams.video[0]
     fps = stream.average_rate
