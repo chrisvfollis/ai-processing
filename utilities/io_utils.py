@@ -545,14 +545,17 @@ def upload_data(credentials, max_workers=8):
 def load_raw_detection_data(time_prefix, output_dir):
     face_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_faces.parquet'))
     trk_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_trk_dets.parquet'))
+    region_log_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_region_log.parquet'))
 
     face_dfs = [pd.read_parquet(f) for f in face_files]
     trk_dfs = [pd.read_parquet(f) for f in trk_files]
+    region_dfs = [pd.read_parquet(f) for f in region_log_files]
 
     raw_faces = pd.concat(face_dfs, ignore_index=True)
     raw_trks = pd.concat(trk_dfs, ignore_index=True)
+    raw_regions = pd.concat(region_dfs, ignore_index=True)
 
-    return raw_faces, raw_trks
+    return raw_faces, raw_trks, raw_regions
 
 
 # =============================================================================

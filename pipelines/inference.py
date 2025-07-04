@@ -100,6 +100,8 @@ class InferencePipeline:
         self.person_detections = {}
         self.face_data = {}
 
+        self.region_log = {}
+
         # TIMING ATTRIBUTES:
         self.primary_run_time = 0
         self.read_time = 0
@@ -211,6 +213,15 @@ class InferencePipeline:
                 regions = utils.cluster_bboxes_into_regions(
                     high_conf_dets, img_h, img_w, margin=15
                 )
+                for x, y, w, h in regions:
+                    self.region_log.append({
+                        'f': f_num,
+                        'x': int(x),
+                        'y': int(y),
+                        'w': int(w),
+                        'h': int(h),
+                        'cam_id': int(self.cam_id),
+                    })
                 facial_areas = self.face_analysis.identify_faces(
                     img, regions, id_cutoff=0.99
                 )

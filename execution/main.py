@@ -108,6 +108,7 @@ def run_worker_pipeline(
                 output_data = {
                     'faces': face_data,
                     'trk_dets': trk_detections,
+                    'region_log': inference.region_log,
                 }
                 for data_suffix, data in output_data.items():
                     data.to_parquet(os.path.join(
@@ -436,7 +437,7 @@ def main(
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
 
-                raw_faces, raw_trks = io_utils.load_raw_detection_data(time_prefix, output_dir)
+                raw_faces, raw_trks, raw_regions = io_utils.load_raw_detection_data(time_prefix, output_dir)
                 for filename in filenames:
                     if not filename.endswith('.mp4'):
                         continue
@@ -445,6 +446,7 @@ def main(
 
                     face_data = raw_faces.loc[raw_faces['cam_id'] == cam_id]
                     detection_data = raw_trks.loc[raw_trks['cam_id'] == cam_id]
+                    region_data = raw_regions.loc[raw_regions['cam_id'] == cam_id]
 
                     if face_data.empty and detection_data.empty:
                         continue
@@ -455,6 +457,7 @@ def main(
                             filename,
                             face_df=face_data,
                             trk_df=detection_data,
+                            region_df=region_data,
                         )
                         logger.info(f'Annotated video saved')
                     except Exception as e:
