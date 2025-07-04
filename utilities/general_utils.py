@@ -380,9 +380,9 @@ def cluster_bboxes_into_regions(
         img_height: int,
         img_width: int,
         max_width: int = 1920,
-        max_height: int = 1080,
+        max_height: int = 1440,
         min_width: int = 320,
-        min_height: int = 192,
+        min_height: int = 256,
         margin: int = 15,
 ) -> list[tuple]:
     '''
@@ -466,7 +466,28 @@ def cluster_bboxes_into_regions(
             region_y1 = max(0, region_y1 - shift)
             region_y2 = min(img_height, region_y2 + (extra_h - shift))
             region_h = region_y2 - region_y1
-        
+
+        # enforce aspect ratio constraints
+        aspect_ratio = region_w / region_h
+
+        target_ar_min = 0.75
+        target_ar_max = 1.33
+
+        if aspect_ratio < target_ar_min:
+            target_width = int(region_h * target_ar_min)
+            extra_w = target_width - region_w
+            shift = extra_w // 2
+            region_x1 = max(0, region_x1 - shift)
+            region_x2 = min(img_width, region_x2 + (extra_w - shift))
+            region_w = region_x2 - region_x1
+        elif aspect_ratio > target_ar_max:
+            target_height = int(region_w / target_ar_max)
+            extra_h = target_height - region_h
+            shift = extra_h // 2
+            region_y1 = max(0, region_y1 - shift)
+            region_y2 = min(img_height, region_y2 + (extra_h - shift))
+            region_h = region_y2 - region_y1
+
         regions.append((region_x1, region_y1, region_w, region_h))
 
     return regions

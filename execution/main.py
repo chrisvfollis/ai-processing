@@ -108,7 +108,7 @@ def run_worker_pipeline(
                 output_data = {
                     'faces': face_data,
                     'trk_dets': trk_detections,
-                    'region_log': inference.region_log,
+                    'region_log': pd.DataFrame(inference.region_log),
                 }
                 for data_suffix, data in output_data.items():
                     data.to_parquet(os.path.join(

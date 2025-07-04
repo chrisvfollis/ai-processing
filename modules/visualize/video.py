@@ -12,7 +12,7 @@ import utilities.general_utils as utils
 from utilities import io_utils
 
 
-def visualize_global_id_output(video_file, face_df, trk_df, regions_df):
+def visualize_global_id_output(video_file, face_df, trk_df, region_df):
     project_root = io_utils.get_project_root()
 
     input_dir = os.path.join(project_root, 'files/input/')
@@ -39,7 +39,7 @@ def visualize_global_id_output(video_file, face_df, trk_df, regions_df):
     for frame in container.decode(stream):
         img = frame.to_ndarray(format='bgr24')
 
-        regions = regions_df[regions_df['f'] == frame_num]
+        regions = region_df[region_df['f'] == frame_num]
         for _, row in regions.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), 2)

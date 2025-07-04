@@ -100,7 +100,7 @@ class InferencePipeline:
         self.person_detections = {}
         self.face_data = {}
 
-        self.region_log = {}
+        self.region_log = []
 
         # TIMING ATTRIBUTES:
         self.primary_run_time = 0
@@ -199,7 +199,7 @@ class InferencePipeline:
             ]
             high_conf_dets = [
                 converted for converted, raw in zip(detections, raw_detections)
-                if raw[4] >= 0.075   # threshold for detections to qualify in regions
+                if raw[4] >= 0.05   # threshold for detections to qualify in regions
             ]
             if self.use_features:
                 try:
