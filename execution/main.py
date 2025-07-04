@@ -386,7 +386,7 @@ def main(
             continue
         else:
             filenames = [row[2] for row in queue_block_records]
-            time_prefix, cam_id = utils.decode_vid_filename(filenames[0])
+            time_prefix, _ = utils.decode_vid_filename(filenames[0])
 
         time_logger, stop_timing = log_utils.observability_thread(
             target='elapsed_time', logger=logger
@@ -440,16 +440,25 @@ def main(
                 for filename in filenames:
                     if not filename.endswith('.mp4'):
                         continue
+
+                    time_prefix, cam_id = utils.decode_vid_filename(filename)
+
+                    face_data = filtered_faces.loc[filtered_faces['cam_id'] == cam_id]
+                    detection_data = trk_dets.loc[trk_dets['cam_id'] == cam_id]
+
+                    if face_data.empty and detection_data.empty:
+                        continue
+
                     input_path = os.path.join(input_dir, filename)
                     output_path = os.path.join(
-                        output_dir, 'videos/', f'{Path(filename).stem}_annotated.mp4'
+                        output_dir, 'videos/', f'{time_prefix}_{cam_id}_annotated.mp4'
                     )
                     try:
                         video.visualize_global_id_output(
                             input_path=input_path,
                             output_path=output_path,
-                            face_df=filtered_faces,
-                            trk_df=trk_dets,
+                            face_df=face_data,
+                            trk_df=detection_data,
                         )
                         logger.info(f'Annotated video saved: {output_path}')
                     except Exception as e:
