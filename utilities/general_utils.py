@@ -477,7 +477,7 @@ def cluster_bboxes_into_regions(
 
 def region_box_nms(
     regions: list[tuple],
-    iou_thresh: float = 0.85,
+    nms_thresh: float = 0.80,
 ) -> list[tuple[int, int, int, int]]:
     '''
     Suppresses overlapping regions using a form of NMS based on area instead of
@@ -505,7 +505,7 @@ def region_box_nms(
         inter_area = inter_w * inter_h
 
         iou = inter_area / (areas[i] + areas[order[1:]] - inter_area)
-        inds_to_keep = np.where(iou < iou_thresh)[0]
+        inds_to_keep = np.where(iou < nms_thresh)[0]
 
         order = order[inds_to_keep + 1]
 

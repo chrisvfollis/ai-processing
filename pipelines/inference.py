@@ -199,7 +199,7 @@ class InferencePipeline:
             ]
             high_conf_dets = [
                 converted for converted, raw in zip(detections, raw_detections)
-                if raw[4] >= 0.05   # threshold for detections to qualify in regions
+                if raw[4] >= 0.10   # threshold for detections to qualify in regions
             ]
             if self.use_features:
                 try:
@@ -209,9 +209,9 @@ class InferencePipeline:
                     continue
 
             if high_conf_dets:
-                # img_h, img_w = img.shape[:2]
+                img_h, img_w = img.shape[:2]
                 regions = utils.cluster_bboxes_into_regions(
-                    high_conf_dets, 2160, 3840, margin=15
+                    high_conf_dets, img_h, img_w
                 )
                 for x, y, w, h in regions:
                     self.region_log.append({
@@ -223,7 +223,7 @@ class InferencePipeline:
                         'cam_id': int(self.cam_id),
                     })
                 facial_areas = self.face_analysis.identify_faces(
-                    img, regions, id_cutoff=0.99
+                    img, regions, id_cutoff=0.90
                 )
                 face_data[f_num] = facial_areas
         

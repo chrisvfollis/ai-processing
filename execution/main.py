@@ -186,7 +186,7 @@ def global_identification(
         confidence_weight: float = 0.40,
         distance_weight: float = 0.50,
         # ----- fusion / filtering knobs -----------------------------------
-        n_matches: int = 5,                   # max matches per face detection
+        n_matches: int = 2,                   # max matches per face detection
         min_score: float = 0.60,
         reliability_scale: float = 0.65,      # α – scales score→success-prob
         fp_rate: float = 0.10,                # β – per-detection false-pos rate
@@ -404,9 +404,9 @@ def main(
                 max_mismatch_distance=0.90,
                 confidence_weight=0.45,
                 distance_weight=0.55,
-                n_matches=3,
+                n_matches=2,
                 min_score=0.55,
-                reliability_scale=0.40,
+                reliability_scale=0.25,
                 fp_rate=0.20,
                 prior_presence=0.05,
                 recall_est=0.65,
