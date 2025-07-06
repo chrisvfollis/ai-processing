@@ -186,24 +186,26 @@ def global_identification(
     confidence_weight: float = 0.40,
     distance_weight: float = 0.50,
     # ----- fusion / filtering knobs -----------------------------------
-    n_matches: int = 2,                   # max matches per face detection
+    n_matches: int = 1,                   # max matches per face detection
     min_score: float = 0.60,
     reliability_scale: float = 0.65,      # α – scales score→success-prob
     fp_rate: float = 0.10,                # β – per-detection false-pos rate
     prior_presence: float = 0.05,         # π – prior P(identity present)
     recall_est: float = 0.65,
+    max_score_thresh: float = 0.75,
+    penalty_adj: tuple[float, float] = (0.50, 1.25),
     # ----- temporal weighting knobs -----------------------------------
     decay_window: float = 0.5,                      # seconds
+    boost_range: tuple[float, float] = (1.5, 5.0),  # seconds (range)
     max_decay: float = 0.5,
-    boost_range: tuple[float, float] = (1.5, 5.0),  # seconds range
     max_boost: float = 0.3,
     boost_per_neighbor: float = 0.05,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     def _apply_temporal_weighting(
         face_data: pd.DataFrame,
         decay_window: float,
-        max_decay: float,
         boost_range: tuple[float, float],
+        max_decay: float,
         max_boost: float,
         boost_per_neighbor: float,
     ) -> pd.DataFrame:
@@ -299,8 +301,8 @@ def global_identification(
     face_data = _apply_temporal_weighting(
         face_data,
         decay_window,
-        max_decay,
         boost_range,
+        max_decay,
         max_boost,
         boost_per_neighbor,
     )
@@ -322,7 +324,6 @@ def global_identification(
 
     records = []
     log_prior = math.log(prior_presence) - math.log1p(-prior_presence)
-    log_beta = math.log(fp_rate)
 
     n_id_dets = face_data.groupby('identity')['f'].nunique()
 
@@ -336,12 +337,20 @@ def global_identification(
         n_p = len(p_list)
 
         if n_p:
+            max_score = row['max_score']
+
             vote_support = sum(p_list)
             penalty = n_p * fp_rate
+
+            if max_score >= max_score_thresh:
+                penalty *= min(penalty_adj)
+            else:
+                penalty *= max(penalty_adj)
 
             log_odds = log_prior + (vote_support - penalty)
             posterior = 1.0 / (1.0 + math.exp(-log_odds))
         else:
+            max_score = 0.0
             # zero detections → prior × recall miss-probability:
             posterior = prior_presence * (1.0 - recall_est)
         
@@ -349,7 +358,7 @@ def global_identification(
             'identity'     : ident,
             'name'         : full_name,
             'n_detected'   : n_id_dets.get(ident, 0),
-            'max_score'    : row['max_score'] if n_p else 0.0,
+            'max_score'    : max_score,
             'posterior'    : posterior,
             'present_flag' : posterior >= 0.5,
         })
@@ -469,14 +478,16 @@ def main(
                 confidence_weight     = 0.45,
                 distance_weight       = 0.55,
                 n_matches             = 1,
-                min_score             = 0.55,
+                min_score             = 0.50,
                 reliability_scale     = 0.70,
                 fp_rate               = 0.15,
                 prior_presence        = 0.05,
                 recall_est            = 0.65,
-                decay_window          = 1.5,
+                max_score_thresh      = 0.75,
+                penalty_adj           = (0.5, 1.25),
+                decay_window          = 0.8,
+                boost_range           = (3.0, 5.0),
                 max_decay             = 0.8,
-                boost_range           = (3.0, 10.0),
                 max_boost             = 0.7,
                 boost_per_neighbor    = 0.05,
             )
