@@ -588,16 +588,18 @@ class FaceAnalysis:
     def consolidate_face_data(
             self,
             face_data: dict[list[pd.DataFrame]],
+            fps: int | float,
             cam_id: int = None,
         ) -> pd.DataFrame:
         merged_dfs = []
-        for frame, dfs in face_data.items():
+        for f_num, dfs in face_data.items():
             for i, df in enumerate(dfs):
                 if df.empty:
                     continue
                 df = df.copy()
                 df['cam_id'] = cam_id
-                df['f'] = frame
+                df['f'] = f_num
+                df['s'] = f_num / fps
                 df['face_idx'] = i
                 merged_dfs.append(df)
 

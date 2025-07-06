@@ -245,6 +245,7 @@ class TrackingPipeline:
                     obs_records.append({
                         'cam_id'   : cam_id,
                         'f'        : f_num,
+                        's'        : f_num / self.fps,
                         'trk_id'   : trk_id,
                         'age'      : age,
                         'box_idx'  : box_idx,

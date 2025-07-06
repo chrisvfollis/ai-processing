@@ -404,7 +404,7 @@ def main(
                 max_mismatch_distance=0.90,
                 confidence_weight=0.45,
                 distance_weight=0.55,
-                n_matches=2,
+                n_matches=1,
                 min_score=0.55,
                 reliability_scale=0.25,
                 fp_rate=0.20,

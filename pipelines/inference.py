@@ -169,7 +169,7 @@ class InferencePipeline:
         self._cleanup()
 
         self.face_data = self.face_analysis.consolidate_face_data(
-            self.face_data, cam_id=self.cam_id
+            self.face_data, self.fps, self.cam_id
         )
         if (self.face_data is None) or (self.face_data.empty):
             logger.info(f'No face data from inference run')
