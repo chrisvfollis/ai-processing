@@ -178,21 +178,47 @@ def queue_segment_multiprocess(footage_records: list[tuple], process_config: tup
 
 
 def global_identification(
-        time_prefix: str,
-        output_dir: str,
-        # ----- feature-engineering knobs ----------------------------------
-        min_match_distance: float = 0.35,
-        max_mismatch_distance: float = 0.90,
-        confidence_weight: float = 0.40,
-        distance_weight: float = 0.50,
-        # ----- fusion / filtering knobs -----------------------------------
-        n_matches: int = 2,                   # max matches per face detection
-        min_score: float = 0.60,
-        reliability_scale: float = 0.65,      # α – scales score→success-prob
-        fp_rate: float = 0.10,                # β – per-detection false-pos rate
-        prior_presence: float = 0.05,         # π – prior P(identity present)
-        recall_est: float = 0.65,
+    time_prefix: str,
+    output_dir: str,
+    # ----- feature-engineering knobs ----------------------------------
+    min_match_distance: float = 0.35,
+    max_mismatch_distance: float = 0.90,
+    confidence_weight: float = 0.40,
+    distance_weight: float = 0.50,
+    # ----- fusion / filtering knobs -----------------------------------
+    n_matches: int = 2,                   # max matches per face detection
+    min_score: float = 0.60,
+    reliability_scale: float = 0.65,      # α – scales score→success-prob
+    fp_rate: float = 0.10,                # β – per-detection false-pos rate
+    prior_presence: float = 0.05,         # π – prior P(identity present)
+    recall_est: float = 0.65,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def _apply_temporal_weighting(face_data: pd.DataFrame) -> pd.DataFrame:
+        weighted_votes = []
+
+        for _, group in face_data.groupby('identity'):
+            times = group['s'].values
+            scores = group['vote_prob'].values
+
+            if len(times) == 1:
+                weighted_scores = scores * 0.5  # default decay for singleton
+            else:
+                time_diffs = np.abs(np.subtract.outer(times, times))
+                short_term_penalty = np.exp(-np.square(time_diffs) / 0.5**2).sum(axis=1)
+                short_term_penalty /= short_term_penalty.max() if short_term_penalty.max() > 0 else 1.0
+
+                spread = np.ptp(times)
+                dispersion_boost = 1.0 - np.exp(-spread / 5.0)
+
+                temporal_weights = (1.0 - 0.5 * short_term_penalty) * (0.5 + 0.5 * dispersion_boost)
+                weighted_scores = scores * temporal_weights
+
+            weighted_votes.extend(zip(group.index, weighted_scores))
+
+        weighted_votes.sort()
+        face_data.loc[[i for i, _ in weighted_votes], 'vote_prob'] = [v for _, v in weighted_votes]
+
+        return face_data
 
     presence_df = pd.DataFrame(columns=[
         'identity',
@@ -236,12 +262,14 @@ def global_identification(
         .groupby(['x', 'y', 'w', 'h', 'f', 'cam_id'], group_keys=False)
         .head(n_matches)
     )
-
+    
     if face_data.empty:
         logger.info('No valid face detections above score threshold.')
         return presence_df, face_data, trk_dets
 
     face_data['vote_prob'] = reliability_scale * face_data['score']
+    face_data = _apply_temporal_weighting(face_data)
+
     track_votes = (
         face_data
         .groupby(['identity'], as_index=False)
