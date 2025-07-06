@@ -228,7 +228,7 @@ def global_identification(
                 # decay:
                 decay_factors = np.exp(-np.square(diffs) / decay_window**2)
                 local_clump_penalty = decay_factors.sum() - 1  # exclude self
-                decay_weight = 1.0 - min(max_decay, 0.2 * local_clump_penalty)
+                decay_weight = 1.0 - min(max_decay, 0.4 * local_clump_penalty)
 
                 # boost:
                 in_boost_range = (diffs >= boost_range[0]) & (diffs <= boost_range[1])
@@ -241,7 +241,8 @@ def global_identification(
             weighted_votes.extend(zip(idxs, weighted_scores))
 
         weighted_votes.sort()
-        face_data.loc[[i for i, _ in weighted_votes], 'vote_prob'] = [v for _, v in weighted_votes]
+        for idx, new_val in weighted_votes:
+            face_data.at[idx, 'vote_prob'] = new_val
 
         return face_data
 
@@ -293,6 +294,8 @@ def global_identification(
         return presence_df, face_data, trk_dets
 
     face_data['vote_prob'] = reliability_scale * face_data['score']
+
+    logger.info(f'Summary of vote_prob BEFORE temporal weighting: {face_data["vote_prob"].describe()}')
     face_data = _apply_temporal_weighting(
         face_data,
         decay_window,
@@ -301,6 +304,7 @@ def global_identification(
         max_boost,
         boost_per_neighbor,
     )
+    logger.info(f'Summary of vote_prob AFTER temporal weighting: {face_data["vote_prob"].describe()}')
 
     track_votes = (
         face_data
@@ -332,11 +336,11 @@ def global_identification(
         n_p = len(p_list)
 
         if n_p:
-            log_lik_absent  = n_p * log_beta       # Σ log β
-            fail_probs      = 1.0 - p_list
-            log_lik_present = math.log1p(-np.prod(fail_probs))
-            log_odds        = log_prior + (log_lik_present - log_lik_absent)
-            posterior       = 1.0 / (1.0 + math.exp(-log_odds))
+            vote_support = sum(p_list)
+            penalty = n_p * fp_rate
+
+            log_odds = log_prior + (vote_support - penalty)
+            posterior = 1.0 / (1.0 + math.exp(-log_odds))
         else:
             # zero detections → prior × recall miss-probability:
             posterior = prior_presence * (1.0 - recall_est)
@@ -466,14 +470,14 @@ def main(
                 distance_weight       = 0.55,
                 n_matches             = 1,
                 min_score             = 0.55,
-                reliability_scale     = 0.25,
-                fp_rate               = 0.20,
+                reliability_scale     = 0.70,
+                fp_rate               = 0.15,
                 prior_presence        = 0.05,
                 recall_est            = 0.65,
-                decay_window          = 0.5,
-                max_decay             = 0.5,
-                boost_range           = (1.5, 5.0),
-                max_boost             = 0.3,
+                decay_window          = 1.5,
+                max_decay             = 0.8,
+                boost_range           = (3.0, 10.0),
+                max_boost             = 0.7,
                 boost_per_neighbor    = 0.05,
             )
             presence_df, filtered_faces, trk_dets = results
