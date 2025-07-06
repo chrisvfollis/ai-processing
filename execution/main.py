@@ -192,28 +192,53 @@ def global_identification(
     fp_rate: float = 0.10,                # β – per-detection false-pos rate
     prior_presence: float = 0.05,         # π – prior P(identity present)
     recall_est: float = 0.65,
+    # ----- temporal weighting knobs -----------------------------------
+    decay_window: float = 0.5,                      # seconds
+    max_decay: float = 0.5,
+    boost_range: tuple[float, float] = (1.5, 5.0),  # seconds range
+    max_boost: float = 0.3,
+    boost_per_neighbor: float = 0.05,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    def _apply_temporal_weighting(face_data: pd.DataFrame) -> pd.DataFrame:
+    def _apply_temporal_weighting(
+        face_data: pd.DataFrame,
+        decay_window: float,
+        max_decay: float,
+        boost_range: tuple[float, float],
+        max_boost: float,
+        boost_per_neighbor: float,
+    ) -> pd.DataFrame:
+        '''
+        Applies temporal weighting to reduce the influence of clustered detections
+        and boost support from moderately spaced detections.
+        '''
         weighted_votes = []
 
-        for _, group in face_data.groupby('identity'):
+        for (_, cam_id), group in face_data.groupby(['identity', 'cam_id']):
             times = group['s'].values
             scores = group['vote_prob'].values
+            idxs = group.index
 
-            if len(times) == 1:
-                weighted_scores = scores * 0.5  # default decay for singleton
-            else:
-                time_diffs = np.abs(np.subtract.outer(times, times))
-                short_term_penalty = np.exp(-np.square(time_diffs) / 0.5**2).sum(axis=1)
-                short_term_penalty /= short_term_penalty.max() if short_term_penalty.max() > 0 else 1.0
+            n = len(times)
+            weighted_scores = np.zeros(n)
 
-                spread = np.ptp(times)
-                dispersion_boost = 1.0 - np.exp(-spread / 5.0)
+            for i in range(n):
+                t_i = times[i]
+                diffs = np.abs(times - t_i)
 
-                temporal_weights = (1.0 - 0.5 * short_term_penalty) * (0.5 + 0.5 * dispersion_boost)
-                weighted_scores = scores * temporal_weights
+                # decay:
+                decay_factors = np.exp(-np.square(diffs) / decay_window**2)
+                local_clump_penalty = decay_factors.sum() - 1  # exclude self
+                decay_weight = 1.0 - min(max_decay, 0.2 * local_clump_penalty)
 
-            weighted_votes.extend(zip(group.index, weighted_scores))
+                # boost:
+                in_boost_range = (diffs >= boost_range[0]) & (diffs <= boost_range[1])
+                boost_neighbors = in_boost_range.sum()
+                boost_weight = 1.0 + min(max_boost, boost_per_neighbor * boost_neighbors)
+
+                temporal_weight = decay_weight * boost_weight
+                weighted_scores[i] = scores[i] * temporal_weight
+
+            weighted_votes.extend(zip(idxs, weighted_scores))
 
         weighted_votes.sort()
         face_data.loc[[i for i, _ in weighted_votes], 'vote_prob'] = [v for _, v in weighted_votes]
@@ -268,7 +293,14 @@ def global_identification(
         return presence_df, face_data, trk_dets
 
     face_data['vote_prob'] = reliability_scale * face_data['score']
-    face_data = _apply_temporal_weighting(face_data)
+    face_data = _apply_temporal_weighting(
+        face_data,
+        decay_window,
+        max_decay,
+        boost_range,
+        max_boost,
+        boost_per_neighbor,
+    )
 
     track_votes = (
         face_data
@@ -428,16 +460,21 @@ def main(
             results = global_identification(
                 time_prefix,
                 output_dir,
-                min_match_distance=0.25,
-                max_mismatch_distance=0.90,
-                confidence_weight=0.45,
-                distance_weight=0.55,
-                n_matches=1,
-                min_score=0.55,
-                reliability_scale=0.25,
-                fp_rate=0.20,
-                prior_presence=0.05,
-                recall_est=0.65,
+                min_match_distance    = 0.25,
+                max_mismatch_distance = 0.90,
+                confidence_weight     = 0.45,
+                distance_weight       = 0.55,
+                n_matches             = 1,
+                min_score             = 0.55,
+                reliability_scale     = 0.25,
+                fp_rate               = 0.20,
+                prior_presence        = 0.05,
+                recall_est            = 0.65,
+                decay_window          = 0.5,
+                max_decay             = 0.5,
+                boost_range           = (1.5, 5.0),
+                max_boost             = 0.3,
+                boost_per_neighbor    = 0.05,
             )
             presence_df, filtered_faces, trk_dets = results
             logger.info('Finished global identification')
