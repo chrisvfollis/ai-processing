@@ -146,7 +146,6 @@ def queue_segment_multiprocess(footage_records: list[tuple], process_config: tup
     with multiprocessing.Pool(processes=4) as pool:
         time.sleep(1)       # give workers a moment to start
         initial_pids = {p.pid for p in pool._pool if p.is_alive()}
-
         async_results = pool.starmap_async(
             run_worker_pipeline, footage_processing_tasks
         )
@@ -197,16 +196,16 @@ def wrap_up_segment(
 
 
 def main(
-        shop_id: str,
-        model_configs: list[dict],
-        id_strategy: str,
-        device: torch.device,
-        log_level: int = 0,
-        credentials: tuple[str] = None,
-        save_all_data: bool = False,
-        retain_footage: bool = False,
-        starting_point: Optional[datetime] = None,
-        priority_cam: Optional[int] = None,
+    shop_id: str,
+    model_configs: list[dict],
+    id_strategy: str,
+    device: torch.device,
+    log_level: int = 0,
+    credentials: tuple[str] = None,
+    save_all_data: bool = False,
+    retain_footage: bool = False,
+    starting_point: Optional[datetime] = None,
+    priority_cam: Optional[int] = None,
 ):
     log_utils.configure_logging(log_level=log_level)
 

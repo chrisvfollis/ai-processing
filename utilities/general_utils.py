@@ -472,64 +472,6 @@ def cluster_bboxes_into_regions(
             region_y2 - region_y1,
         ))
 
-    covered = np.zeros(len(bbox_coords), dtype=bool)
-    for i, (x1, y1, x2, y2) in enumerate(bbox_coords):
-        for rx, ry, rw, rh in regions:
-            rx2, ry2 = rx + rw, ry + rh
-            if (x1 >= rx and y1 >= ry and x2 <= rx2 and y2 <= ry2):
-                covered[i] = True
-                break
-
-    # adjust regions to cover uncovered boxes
-    uncovered_idxs = [i for i, flag in enumerate(covered) if not flag]
-    for i in uncovered_idxs:
-        ux1, uy1, ux2, uy2 = bbox_coords[i]
-        best_idx = None
-        best_iou = 0
-
-        for j, (rx, ry, rw, rh) in enumerate(regions):
-            rx2, ry2 = rx + rw, ry + rh
-            ix1, iy1 = max(rx, ux1), max(ry, uy1)
-            ix2, iy2 = min(rx2, ux2), min(ry2, uy2)
-            iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
-            inter_area = iw * ih
-            union_area = (rw * rh) + ((ux2 - ux1) * (uy2 - uy1)) - inter_area
-            iou = inter_area / union_area if union_area > 0 else 0
-
-            if iou > best_iou:
-                best_iou = iou
-                best_idx = j
-
-        # expand best region to include the uncovered box
-        if best_idx is not None:
-            rx, ry, rw, rh = regions[best_idx]
-            rx2, ry2 = rx + rw, ry + rh
-
-            new_x1 = min(rx, ux1)
-            new_y1 = min(ry, uy1)
-            new_x2 = max(rx2, ux2)
-            new_y2 = max(ry2, uy2)
-
-            # clamp to image boundaries
-            new_x1 = max(0, new_x1)
-            new_y1 = max(0, new_y1)
-            new_x2 = min(img_width, new_x2)
-            new_y2 = min(img_height, new_y2)
-
-            regions[best_idx] = (
-                new_x1,
-                new_y1,
-                new_x2 - new_x1,
-                new_y2 - new_y1
-            )
-        else:
-            # if no suitable region, add a new minimal region around the box
-            rx1 = max(0, ux1 - margin)
-            ry1 = max(0, uy1 - margin)
-            rx2 = min(img_width, ux2 + margin)
-            ry2 = min(img_height, uy2 + margin)
-            regions.append((rx1, ry1, rx2 - rx1, ry2 - ry1))
-
     return region_box_nms(regions, nms_thresh)
 
 
