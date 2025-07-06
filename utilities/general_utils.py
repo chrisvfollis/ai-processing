@@ -472,6 +472,32 @@ def cluster_bboxes_into_regions(
             region_y2 - region_y1,
         ))
 
+    
+    covered = np.zeros(len(bbox_coords), dtype=bool)
+    for i, (x1, y1, x2, y2) in enumerate(bbox_coords):
+        for rx, ry, rw, rh in regions:
+            rx2, ry2 = rx + rw, ry + rh
+            if (x1 >= rx and y1 >= ry and x2 <= rx2 and y2 <= ry2):
+                covered[i] = True
+                break
+
+    # re-cluster any partially uncovered boxes
+    uncovered_boxes = [bbox_coords[i] for i, flag in enumerate(covered) if not flag]
+    if uncovered_boxes:
+        uncovered_xywh = [xywh_xyxy(box, out='xywh') for box in uncovered_boxes]
+        more_regions = cluster_bboxes_into_regions(
+            uncovered_xywh,
+            img_height,
+            img_width,
+            max_width=max_width,
+            max_height=max_height,
+            min_width=min_width,
+            min_height=min_height,
+            margin=margin,
+            nms_thresh=nms_thresh
+        )
+        regions.extend(more_regions)
+
     return region_box_nms(regions, nms_thresh)
 
 

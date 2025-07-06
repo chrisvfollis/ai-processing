@@ -19,7 +19,7 @@ import torch.multiprocessing as multiprocessing
 from utilities import io_utils, log_utils, conn_utils
 from utilities.io_utils import S3DownloadError
 from utilities import general_utils as utils
-from pipelines import InferencePipeline, TrackingPipeline, IdentificationPipeline
+from pipelines import InferencePipeline, TrackingPipeline
 from modules.visualize import video
 from modules.identification import identify
 
