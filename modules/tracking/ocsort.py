@@ -8,7 +8,7 @@ import numpy as np
 import torch
 
 # internal dependencies
-from modules.oc_sort import association
+from modules.tracking import association
 from .kalmanfilter import KalmanFilterNew as KalmanFilter
 import utilities.general_utils as utils
 
