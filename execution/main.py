@@ -30,13 +30,13 @@ logger = log_utils.get_logger(__name__)
 
 
 def run_worker_pipeline(
-        footage_record: tuple,
-        model_cfg: dict,
-        id_strategy: str,
-        device: torch.device,
-        log_level: int = 0,
-        credentials: tuple[str, ...] = None,
-        save_all_data: bool = False,
+    footage_record: tuple,
+    model_cfg: dict,
+    id_strategy: str,
+    device: torch.device,
+    log_level: int = 0,
+    credentials: tuple[str, ...] = None,
+    save_all_data: bool = False,
 ) -> bool:
     project_root = io_utils.get_project_root()
 
@@ -57,7 +57,7 @@ def run_worker_pipeline(
         }
     elif id_strategy == 'global':
         inference_cfg = inference_cfg | {
-            'id_freq': 'fps',
+            'id_freq': '5 Hz',
             'use_features': False,
         }
 
@@ -155,12 +155,12 @@ def queue_segment_multiprocess(footage_records: list[tuple], process_config: tup
 
 
 def wrap_up_segment(
-        segment_filenames: list,
-        time_prefix: str,
-        shop_id: str,
-        credentials: tuple[str],
-        retain_footage: bool,
-        save_all_data: bool,
+    segment_filenames: list,
+    time_prefix: str,
+    shop_id: str,
+    credentials: tuple[str],
+    retain_footage: bool,
+    save_all_data: bool,
 ):
     timestamp = utils.frame_timestamp(time_prefix)
 
@@ -259,12 +259,12 @@ def main(
                 n_matches             = 1,
                 min_score             = 0.50,
                 reliability_scale     = 0.70,
-                fp_rate               = 0.15,
+                fp_rate               = 0.20,
                 prior_presence        = 0.05,
                 recall_est            = 0.65,
                 max_score_thresh      = 0.75,
                 penalty_adj           = (0.5, 1.25),
-                decay_window          = 0.8,
+                decay_window          = 0.9,
                 boost_range           = (3.0, 5.0),
                 max_decay             = 0.8,
                 max_boost             = 0.7,
