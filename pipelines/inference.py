@@ -18,7 +18,7 @@ import numpy as np
 
 # internal dependencies
 from models import YoloX, OSNet
-from modules.face_analysis import FaceAnalysis
+from modules.identification.face_analysis import FaceAnalysis
 from utilities import general_utils as utils
 from utilities import io_utils, log_utils
 

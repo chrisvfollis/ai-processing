@@ -13,8 +13,9 @@ import torch
 import torch.nn.functional as F
 
 # internal dependencies
-from modules.data_structures import DetectedFace, FacialAreaRegion
-from utilities import io_utils, face_utils, image_utils, log_utils
+from modules.identification.data_structures import DetectedFace, FacialAreaRegion
+from modules.identification import face_utils
+from utilities import io_utils, image_utils, log_utils
 from utilities.log_utils import press_stopwatch
 from utilities import general_utils as utils
 

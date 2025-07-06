@@ -7,7 +7,7 @@ import cv2
 
 # internal dependencies
 from utilities import general_utils as utils
-from modules.face_analysis import FacialAreaRegion
+from modules.identification.data_structures import FacialAreaRegion
 
 
 def adjust_and_extract(

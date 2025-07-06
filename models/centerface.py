@@ -11,7 +11,7 @@ import cv2
 import torch
 
 # internal dependencies
-from modules.data_structures import FacialAreaRegion
+from modules.identification.data_structures import FacialAreaRegion
 from utilities import general_utils as utils
 from utilities import io_utils, log_utils
 

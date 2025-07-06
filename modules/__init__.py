@@ -1,4 +1,4 @@
-from .face_analysis import FaceAnalysis
+from .identification.face_analysis import FaceAnalysis
 from .oc_sort.ocsort import OCSort, KalmanBoxTracker
 
 __all__ = [

@@ -15,7 +15,7 @@ import torchvision.models as models
 # internal dependencies
 from utilities import io_utils, log_utils
 from utilities import general_utils as utils
-from modules.data_structures import FacialAreaRegion
+from modules.identification.data_structures import FacialAreaRegion
 
 
 logger = log_utils.get_logger(__name__)
