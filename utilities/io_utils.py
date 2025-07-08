@@ -571,11 +571,14 @@ def parquet_to_csv(input_path: str = '~/Downloads', remove=True):
     else:
         parquet_paths = [input_path]
         for p in parquet_paths:
-            df = pd.read_parquet(p)
-            output_path = p.split('.')[0] + '.csv'
-            df.to_csv(output_path)
-            if remove:
-                os.remove(p)
+            try:
+                df = pd.read_parquet(p)
+                output_path = p.split('.')[0] + '.csv'
+                df.to_csv(output_path)
+                if remove:
+                    os.remove(p)
+            except Exception as e:
+                print(f'Error converting {p}: {e}')
 
 
 # =============================================================================
