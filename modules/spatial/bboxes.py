@@ -170,6 +170,11 @@ def apply_offset(
         return (x1, y1)
 
 
+# =============================================================================
+#                              - REGIONS -
+# -----------------------------------------------------------------------------
+
+
 def cluster_into_regions(
     bboxes: list,
     img_height: int,
@@ -202,14 +207,20 @@ def cluster_into_regions(
 
         current_used = set([i])
         region_bboxes = [(x1, y1, x2, y2)]
-        region_x1, region_y1, region_x2, region_y2 = x1, y1, x2, y2
+
+        region_x1 = x1
+        region_y1 = y2
+        region_x2 = x2
+        region_y2 = y2
 
         for j, (bx1, by1, bx2, by2) in enumerate(bbox_coords[i+1:], start=i+1):
             if j in final_used or j in current_used:
                 continue
 
-            new_x1, new_y1 = min(region_x1, bx1), min(region_y1, by1)
-            new_x2, new_y2 = max(region_x2, bx2), max(region_y2, by2)
+            new_x1 = min(region_x1, bx1)
+            new_y1 = min(region_y1, by1)
+            new_x2 = max(region_x2, bx2)
+            new_y2 = max(region_y2, by2)
 
             for rx1, ry1, rx2, ry2 in region_bboxes:
                 if not ((new_x1 <= rx1) and (new_y1 <= ry1) and (new_x2 >= rx2) and (new_y2 >= ry2)):

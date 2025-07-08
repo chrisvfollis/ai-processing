@@ -306,21 +306,21 @@ def main(
                         continue
 
                     _, cam_id = utils.decode_vid_filename(filename)
-                    raw_people = raw_people.loc[raw_people['cam_id'] == cam_id]
+                    person_dets_data = raw_people.loc[raw_people['cam_id'] == cam_id]
                     face_data = raw_faces.loc[raw_faces['cam_id'] == cam_id]
-                    detection_data = raw_trks.loc[raw_trks['cam_id'] == cam_id]
+                    trk_dets_data = raw_trks.loc[raw_trks['cam_id'] == cam_id]
                     region_data = raw_regions.loc[raw_regions['cam_id'] == cam_id]
 
-                    if face_data.empty and detection_data.empty:
+                    if face_data.empty and trk_dets_data.empty:
                         continue
 
                     try:
                         logger.info('Rendering video annotations...')
                         render.video.global_id_output(
                             filename,
-                            person_df=raw_people,
+                            person_df=person_dets_data,
                             face_df=face_data,
-                            trk_df=detection_data,
+                            trk_df=trk_dets_data,
                             region_df=region_data,
                             f_cutoff=f_cutoff,
                         )

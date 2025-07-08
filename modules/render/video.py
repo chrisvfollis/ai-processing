@@ -5,9 +5,9 @@ import os
 # 3rd-party dependencies
 import av
 import cv2
-import pandas as pd
 
 # internal dependencies
+from modules.render import annotate
 import utilities.general_utils as utils
 from utilities import io_utils
 
@@ -38,7 +38,7 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
     
-    fontscale_small = 2
+    fontscale_small = 1
     fontscale_large = 3
     thickness = 2
 
@@ -51,16 +51,21 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff
         people = person_df[person_df['f'] == f_num]
         for _, row in people.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
-            confidence = float(row.c)
+            det_conf = str(row.c)
+
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 0), 3)
             cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 255), 2)
-            cv2.putText(
+
+            annotate.text_with_shadow(
                 img,
-                str(confidence),
-                (int(x + w/2), int(y + h/2)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                fontscale_small,
-                (255, 255, 255),
-                thickness,
+                text=det_conf,
+                xy_org=(int(x + w/2), int(y + h/2)),
+                font=cv2.FONT_HERSHEY_SIMPLEX,
+                fontscale=fontscale_small,
+                color=(255, 255, 255),
+                thickness=thickness,
+                shadow_color=(0, 0, 0),
+                offset=(-2, -2),
             )
 
         tracks = trk_df[trk_df['f'] == f_num]
@@ -80,11 +85,11 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff
 
         cv2.putText(
             img,
-            f'frame {f_num}',
+            str(f_num),
             (int(img_w/2), int(img_h/2)),
             cv2.FONT_HERSHEY_SIMPLEX,
             fontscale_large,
-            (50, 50, 200),
+            (75, 25, 255),
             thickness
         )
 
