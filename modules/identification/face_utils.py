@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 
 # internal dependencies
-from utilities import general_utils as utils
+from modules.spatial import bboxes
 from modules.identification.data_structures import FacialAreaRegion
 
 
@@ -172,7 +172,7 @@ def extract_sub_image(img: np.ndarray, detection: FacialAreaRegion):
     and adds black pixels if necessary.
     '''
     x, y, w, h = detection.x, detection.y, detection.w, detection.h
-    x1, y1, x2, y2 = utils.xywh_xyxy((x, y, w, h))
+    x1, y1, x2, y2 = bboxes.xywh_xyxy((x, y, w, h))
 
     relative_x = int(0.5 * w)
     relative_y = int(0.5 * h)

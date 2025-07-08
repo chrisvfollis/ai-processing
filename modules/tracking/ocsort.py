@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 # internal dependencies
+from modules.spatial import bboxes
 from modules.tracking import association
 from .kalmanfilter import KalmanFilterNew as KalmanFilter
 import utilities.general_utils as utils
@@ -329,7 +330,7 @@ class KalmanBoxTracker:
         self.kf.Q[-1, -1] *= 0.01
         self.kf.Q[4:, 4:] *= 0.01
 
-        self.kf.x[:4] = utils.convert_bbox_to_z(bbox)
+        self.kf.x[:4] = bboxes.convert_bbox_to_z(bbox)
         self.time_since_update = 0
         self.id = KalmanBoxTracker.next_id
         KalmanBoxTracker.next_id += 1
@@ -384,7 +385,7 @@ class KalmanBoxTracker:
         self.history = []
         self.hits += 1
         self.hit_streak += 1
-        self.kf.update(utils.convert_bbox_to_z(bbox))            
+        self.kf.update(bboxes.convert_bbox_to_z(bbox))            
 
     def predict(self):
         """
@@ -398,7 +399,7 @@ class KalmanBoxTracker:
         if(self.time_since_update > 0):
             self.hit_streak = 0
         self.time_since_update += 1
-        self.history.append(utils.convert_x_to_bbox(self.kf.x))
+        self.history.append(bboxes.convert_x_to_bbox(self.kf.x))
         return self.history[-1]
 
     def _speed_direction(self, bbox1, bbox2):
@@ -412,10 +413,10 @@ class KalmanBoxTracker:
         """
         Returns the current bounding box estimate.
         """
-        return utils.convert_x_to_bbox(self.kf.x)
+        return bboxes.convert_x_to_bbox(self.kf.x)
 
     def validate(self, bbox) -> bool:
-        _, _, w, h = utils.xywh_xyxy(bbox[:4], out='xywh')
+        _, _, w, h = bboxes.xywh_xyxy(bbox[:4], out='xywh')
 
         valid_ratio = (w / h) <= self.aspect_ratio_thresh
         valid_area = math.prod([w, h]) > self.min_box_area

@@ -13,9 +13,9 @@ import torchvision.models._utils as _utils
 import torchvision.models as models
 
 # internal dependencies
-from utilities import io_utils, log_utils
-from utilities import general_utils as utils
 from modules.identification.data_structures import FacialAreaRegion
+from modules.spatial import bboxes
+from utilities import io_utils, log_utils
 
 
 logger = log_utils.get_logger(__name__)
@@ -279,7 +279,7 @@ class RetinaFace:
         for det in detections:
             x1, y1, x2, y2 = det[0:4]
             if self.expand_margin:
-                x1, y1, x2, y2 = utils.expand_bbox_asym(
+                x1, y1, x2, y2 = bboxes.expand_bbox_asym(
                     x1, y1, x2, y2, img_w, img_h, top=0.01, bottom=0.175,
                     left=0.05, right=0.05
                 )

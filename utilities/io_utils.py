@@ -27,6 +27,7 @@ import requests
 import psutil
 
 # internal dependencies
+from modules.spatial import bboxes
 from utilities import general_utils as utils
 from utilities import conn_utils
 from utilities.conn_utils import APIClient
@@ -448,7 +449,7 @@ def save_global_id_event_imgs(
             best_overlap, best_trk = 0.0, None
             for _, trk_row in candidates.iterrows():
                 trk_box = (trk_row['x'], trk_row['y'], trk_row['w'], trk_row['h'])
-                overlap = utils.compute_overlap_ratio(face_box, trk_box)
+                overlap = bboxes.compute_overlap_ratio(face_box, trk_box)
                 if overlap > best_overlap:
                     best_overlap, best_trk = overlap, trk_row
             print(f'{ident} [{event}] → max_overlap={best_overlap:.2f}, trk_found={best_trk is not None}, frame={fnum}, cam={cam}, candidates={len(candidates)}')

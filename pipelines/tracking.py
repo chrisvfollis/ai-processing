@@ -9,9 +9,10 @@ import pandas as pd
 import cv2
 
 # internal dependencies
+from modules import OCSort, KalmanBoxTracker
+from modules.spatial import bboxes
 from utilities import io_utils, log_utils
 from utilities import general_utils as utils
-from modules import OCSort, KalmanBoxTracker
 
 
 logger = log_utils.get_logger(__name__)
@@ -167,7 +168,7 @@ class TrackingPipeline:
             online_boxes = []
             online_ids = []
             for t in online_targets:
-                trk_id, box = t[4], utils.xywh_xyxy(t[:4], out='xywh')
+                trk_id, box = t[4], bboxes.xywh_xyxy(t[:4], out='xywh')
 
                 valid_ratio = (box[2] / box[3]) <= self.ocsort.aspect_ratio_thresh
                 valid_area = math.prod(box[2:4]) > self.ocsort.min_box_area

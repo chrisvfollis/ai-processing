@@ -11,6 +11,7 @@ import torch
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # internal dependencies
+from modules.spatial import bboxes
 import utilities.general_utils as utils
 from utilities import io_utils, log_utils
 from models import YoloX
@@ -123,7 +124,7 @@ def run_demo(predictor, tracker, args):
             online_boxes = []
             online_ids = []
             for t in online_targets:
-                trk_id, box = t[4], utils.xywh_xyxy(t[:4], out='xywh')
+                trk_id, box = t[4], bboxes.xywh_xyxy(t[:4], out='xywh')
 
                 valid_ratio = (box[2] / box[3]) <= args.aspect_ratio_thresh
                 valid_area = math.prod(box[2:4]) > args.min_box_area

@@ -19,6 +19,7 @@ import numpy as np
 # internal dependencies
 from models import YoloX, OSNet
 from modules.identification.face_analysis import FaceAnalysis
+from modules.spatial import bboxes
 from utilities import general_utils as utils
 from utilities import io_utils, log_utils
 
@@ -195,7 +196,7 @@ class InferencePipeline:
 
             raw_detections = detections
             detections = [
-                utils.xywh_xyxy(d, out='xywh') for d in detections
+                bboxes.xywh_xyxy(d, out='xywh') for d in detections
             ]
             high_conf_dets = [
                 converted for converted, raw in zip(detections, raw_detections)
@@ -210,7 +211,7 @@ class InferencePipeline:
 
             if high_conf_dets:
                 img_h, img_w = img.shape[:2]
-                regions = utils.cluster_bboxes_into_regions(
+                regions = bboxes.cluster_into_regions(
                     high_conf_dets, img_h, img_w
                 )
                 for x, y, w, h in regions:

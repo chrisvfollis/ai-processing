@@ -12,6 +12,7 @@ import torch
 
 # internal dependencies
 from modules.identification.data_structures import FacialAreaRegion
+from modules.spatial import bboxes
 from utilities import general_utils as utils
 from utilities import io_utils, log_utils
 
@@ -113,7 +114,7 @@ class CenterFace:
             for i, box in enumerate(dets):
                 x1, y1, x2, y2 = map(int, box[:4])
                 if self.expand_margin:
-                    x1, y1, x2, y2 = utils.expand_bbox(
+                    x1, y1, x2, y2 = bboxes.expand_bbox(
                         x1, y1, x2, y2, w, h, margin=self.expand_margin
                     )
                 score = float(box[4])
@@ -121,8 +122,8 @@ class CenterFace:
                 face_h = y2 - y1
 
                 if region:
-                    x1, y1 = utils.apply_offset((x1, y1), region)
-                    x2, y2 = utils.apply_offset((x2, y2), region)
+                    x1, y1 = bboxes.apply_offset((x1, y1), region)
+                    x2, y2 = bboxes.apply_offset((x2, y2), region)
 
                 if lms is not None:
                     lms_points = [
@@ -130,7 +131,7 @@ class CenterFace:
                         for j in range(0, 9, 2)
                     ]
                     if region:
-                        lms_points = utils.apply_offset(lms_points, region)
+                        lms_points = bboxes.apply_offset(lms_points, region)
                     left_eye, right_eye, nose, mouth_right, mouth_left = lms_points
                 else:
                     left_eye = right_eye = nose = mouth_right = mouth_left = None
@@ -341,7 +342,7 @@ class CenterFace:
         blue, green, red, yellow, white = _bgr_color_tuples()
 
         for face in face_detections:
-            x1, y1, x2, y2 = utils.xywh_xyxy([face.x, face.y, face.w, face.h])
+            x1, y1, x2, y2 = bboxes.xywh_xyxy([face.x, face.y, face.w, face.h])
             cv2.rectangle(image, (x1, y1), (x2, y2), green, 2)
 
             cv2.putText(

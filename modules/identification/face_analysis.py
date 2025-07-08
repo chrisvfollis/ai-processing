@@ -15,6 +15,7 @@ import torch.nn.functional as F
 # internal dependencies
 from modules.identification.data_structures import DetectedFace, FacialAreaRegion
 from modules.identification import face_utils
+from modules.spatial import bboxes
 from utilities import io_utils, image_utils, log_utils
 from utilities.log_utils import press_stopwatch
 from utilities import general_utils as utils
@@ -550,7 +551,7 @@ class FaceAnalysis:
             batch_imgs = []
             kept_regions = []
             for region in regions:
-                crop = utils.crop_region(img, region)
+                crop = bboxes.crop_region(img, region)
 
                 if crop is None or crop.size == 0:
                     continue
@@ -572,7 +573,7 @@ class FaceAnalysis:
             for df in region_dfs:
                 if not df.empty:
                     df[['x', 'y']] = df.apply(
-                        lambda row: utils.apply_offset(
+                        lambda row: bboxes.apply_offset(
                             (row['x'], row['y']), region
                         ),
                         axis=1,
@@ -651,7 +652,7 @@ class FaceAnalysis:
             best_match = face_df.loc[face_df['distance'].idxmin()]
 
             x, y, w, h = best_match[['x', 'y', 'w', 'h']]
-            x1, y1, x2, y2 = utils.xywh_xyxy([x, y, w, h])
+            x1, y1, x2, y2 = bboxes.xywh_xyxy([x, y, w, h])
 
             cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
 
