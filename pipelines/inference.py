@@ -122,6 +122,7 @@ class InferencePipeline:
                     'y': int(y),
                     'w': int(w),
                     'h': int(h),
+                    'c': round(float(detection[4]), 2),
                     'cam_id': int(self.cam_id)
                 })
         return pd.DataFrame(person_dets)

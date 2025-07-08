@@ -27,13 +27,20 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff
 
     container = av.open(input_path)
     stream = container.streams.video[0]
+
     fps = float(stream.average_rate)
+    img_w = stream.codec_context.width
+    img_h = stream.codec_context.height
 
     target_width = 960
     target_height = 540
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
+    
+    fontscale_small = 2
+    fontscale_large = 3
+    thickness = 2
 
     f_num = 0
     for frame in container.decode(stream):
@@ -44,27 +51,42 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff
         people = person_df[person_df['f'] == f_num]
         for _, row in people.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
+            confidence = float(row.c)
             cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 255), 2)
+            cv2.putText(
+                img,
+                str(confidence),
+                (int(x + w/2), int(y + h/2)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                fontscale_small,
+                (255, 255, 255),
+                thickness,
+            )
 
         tracks = trk_df[trk_df['f'] == f_num]
         for _, row in tracks.iterrows():
             x1, y1, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
-            cv2.rectangle(img, (x1, y1), (x1 + w, y1 + h), (255, 255, 0), 2)
+            cv2.rectangle(img, (x1, y1), (x1 + w, y1 + h), (255, 255, 0), thickness)
 
         faces = face_df[face_df['f'] == f_num]
         for _, row in faces.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
-            ident = row.name if pd.notna(row.name) else '?'
-            label = str(ident)[:12]
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(img, label, (x, y - 25), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), thickness)
 
         regions = region_df[region_df['f'] == f_num]
         for _, row in regions.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), 2)
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), thickness)
 
-        cv2.putText(img, f'Frame {f_num}', (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
+        cv2.putText(
+            img,
+            f'frame {f_num}',
+            (int(img_w/2), int(img_h/2)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            fontscale_large,
+            (50, 50, 200),
+            thickness
+        )
 
         img = cv2.resize(img, (target_width, target_height))
         writer.write(img)
