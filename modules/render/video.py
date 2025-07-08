@@ -12,7 +12,7 @@ import utilities.general_utils as utils
 from utilities import io_utils
 
 
-def visualize_global_id_output(video_file, face_df, trk_df, region_df):
+def global_id_output(video_file, face_df, trk_df, region_df):
     project_root = io_utils.get_project_root()
 
     input_dir = os.path.join(project_root, 'files/input/')

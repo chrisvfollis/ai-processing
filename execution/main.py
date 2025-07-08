@@ -17,8 +17,8 @@ from utilities import io_utils, log_utils, conn_utils
 from utilities.io_utils import S3DownloadError
 from utilities import general_utils as utils
 from pipelines import InferencePipeline, TrackingPipeline
-from modules.visualize import video
 from modules.identification import identify
+from modules import render
 
 
 logger = log_utils.get_logger(__name__)
@@ -312,7 +312,7 @@ def main(
 
                     try:
                         logger.info('Rendering video annotations...')
-                        video.visualize_global_id_output(
+                        render.video.global_id_output(
                             filename,
                             face_df=face_data,
                             trk_df=detection_data,
