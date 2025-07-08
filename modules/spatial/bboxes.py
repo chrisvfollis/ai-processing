@@ -237,7 +237,7 @@ def cluster_into_regions(
                 if new_y2 > img_height:
                     continue
         
-            if  (new_w > max_width) and (new_h > max_height):
+            if (new_w > max_width) and (new_h > max_height):
                 continue
             else:
                 region_x1 = new_x1
@@ -255,13 +255,20 @@ def cluster_into_regions(
         region_w = max(region_w, min_width)
         region_h = max(region_h, min_height)
 
-        adjust_w = (region_x1 + region_w) - img_width
-        adjust_h = (region_y1 + region_h) - img_height
+        new_x2 = region_x1 + region_w
+        new_y2 = region_y1 + region_h
 
-        if adjust_w > 0:
-            region_x1 -= adjust_w
-        if adjust_h > 0:
-            region_y1 -= adjust_h
+        adjust_x = new_x2 - img_width
+        adjust_y = new_y2 - img_height
+
+        if adjust_x > 0:
+            region_x1 -= adjust_x
+        else:
+            region_x2 = new_x2
+        if adjust_y > 0:
+            region_y1 -= adjust_y
+        else:
+            region_y2 = new_y2
 
         regions.append((
             region_x1,
