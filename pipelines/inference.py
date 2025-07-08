@@ -2,6 +2,7 @@
 import os
 import pickle
 import gc
+from typing import Optional
 import warnings
 
 warnings.filterwarnings(
@@ -72,7 +73,6 @@ class InferencePipeline:
         self.frame_diag = video_info[1]
         self.fps = video_info[2]
         self.f_total = video_info[3]
-        # self.f_total = 1200
 
         self.f_num = 0
 
@@ -81,9 +81,6 @@ class InferencePipeline:
         # PARAMETERS:
         self.track_stride = track_stride
 
-        self.prog_interval = (
-            ((self.f_total // 4) // self.track_stride) * self.track_stride
-        )
         self.effective_fps = self.fps // self.track_stride
         self.aligned_1s_interval = self.effective_fps * self.track_stride
 
@@ -129,7 +126,8 @@ class InferencePipeline:
                 })
         return pd.DataFrame(person_dets)
 
-    def skim(self):
+    def skim(self, f_cutoff: Optional[int] = None):
+        f_cutoff = f_cutoff or self.f_total
         logger.info(f'Skimming...')
         log_utils.press_stopwatch(self, 'skim_time')
 
@@ -138,7 +136,7 @@ class InferencePipeline:
 
         prev_frame, f_num = (-1, 0)
         result = False
-        while f_num < self.f_total:
+        while f_num < f_cutoff:
             cap.set(cv2.CAP_PROP_POS_FRAMES, f_num)
 
             current_frame = cap.get(cv2.CAP_PROP_POS_FRAMES)
@@ -166,13 +164,17 @@ class InferencePipeline:
         log_utils.press_stopwatch(self, 'skim_time')
         return result
 
-    def run(self, batch_size: int = 20):
+    def run(self, batch_size: int = 20, f_cutoff: Optional[int] = None):
+        f_cutoff = f_cutoff or self.f_total
+        self.prog_interval = (
+            ((f_cutoff // 4) // self.track_stride) * self.track_stride
+        )
         self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
 
-        while self.f_num < self.f_total:
-            frame_batch, log_progress = self._collect_frames(batch_size)
+        while self.f_num < f_cutoff:
+            frame_batch, log_progress = self._collect_frames(batch_size, f_cutoff)
             results = self.process_batch(frame_batch)
 
             self.person_detections = self.person_detections | results[0]
@@ -258,7 +260,7 @@ class InferencePipeline:
 
         return person_detections, face_data
 
-    def _collect_frames(self, batch_size: int = 20):
+    def _collect_frames(self, batch_size: int, f_cutoff: int):
         if not hasattr(self, 'av_container'):
             self.av_container = av.open(self.video_path)
             self.av_stream = self.av_container.streams.video[0]
@@ -274,7 +276,7 @@ class InferencePipeline:
 
         log_utils.press_stopwatch(self, 'read_time')
 
-        while len(frames) < batch_size and self.f_num < self.f_total:
+        while len(frames) < batch_size and self.f_num < f_cutoff:
             try:
                 frame = next(self._av_frame_iter)
             except StopIteration:
@@ -296,7 +298,7 @@ class InferencePipeline:
 
             if self.f_num % self.prog_interval == 0:
                 log_progress_update = True
-                self.progress = utils.calculate_progress(self.f_num, self.f_total)
+                self.progress = utils.calculate_progress(self.f_num, f_cutoff)
 
             self.f_num += 1
             self._av_next_pts += 1  # advance expected pts

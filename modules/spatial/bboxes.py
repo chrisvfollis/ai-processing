@@ -176,8 +176,10 @@ def cluster_into_regions(
     img_width: int,
     max_width: int = 1920,
     max_height: int = 1440,
-    min_width: int = 320,
-    min_height: int = 256,
+    # min_width: int = 320,
+    # min_height: int = 256,
+    min_width: int = 512,
+    min_height: int = 384,
     margin: int = 5,
     nms_thresh: float = 0.80,
 ) -> list[tuple[int, int, int, int]]:

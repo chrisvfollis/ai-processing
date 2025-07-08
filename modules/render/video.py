@@ -1,5 +1,5 @@
 # standard dependencies
-from pathlib import Path
+from typing import Optional
 import os
 
 # 3rd-party dependencies
@@ -12,7 +12,7 @@ import utilities.general_utils as utils
 from utilities import io_utils
 
 
-def global_id_output(video_file, person_df, face_df, trk_df, region_df):
+def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff: Optional[int] = None):
     project_root = io_utils.get_project_root()
 
     input_dir = os.path.join(project_root, 'files/input/')
@@ -35,21 +35,23 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))
 
-    frame_num = 0
+    f_num = 0
     for frame in container.decode(stream):
+        if f_cutoff and (f_num >= f_cutoff):
+            break
         img = frame.to_ndarray(format='bgr24')
 
-        people = person_df[person_df['f'] == frame_num]
+        people = person_df[person_df['f'] == f_num]
         for _, row in people.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
             cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 255), 2)
 
-        tracks = trk_df[trk_df['f'] == frame_num]
+        tracks = trk_df[trk_df['f'] == f_num]
         for _, row in tracks.iterrows():
             x1, y1, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
             cv2.rectangle(img, (x1, y1), (x1 + w, y1 + h), (255, 255, 0), 2)
 
-        faces = face_df[face_df['f'] == frame_num]
+        faces = face_df[face_df['f'] == f_num]
         for _, row in faces.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
             ident = row.name if pd.notna(row.name) else '?'
@@ -57,16 +59,16 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df):
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(img, label, (x, y - 25), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
 
-        regions = region_df[region_df['f'] == frame_num]
+        regions = region_df[region_df['f'] == f_num]
         for _, row in regions.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), 2)
 
-        cv2.putText(img, f'Frame {frame_num}', (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
+        cv2.putText(img, f'Frame {f_num}', (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
 
         img = cv2.resize(img, (target_width, target_height))
         writer.write(img)
-        frame_num += 1
+        f_num += 1
 
     writer.release()
     container.close()

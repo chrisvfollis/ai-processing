@@ -37,6 +37,7 @@ def run_worker_pipeline(
     log_level: int = 0,
     credentials: tuple[str, ...] = None,
     save_all_data: bool = False,
+    f_cutoff: Optional[int] = None,
 ) -> bool:
     project_root = io_utils.get_project_root()
 
@@ -71,11 +72,11 @@ def run_worker_pipeline(
                 raise S3DownloadError(f'Failed to download footage: {object_key}')
 
         inference = InferencePipeline(filename, **inference_cfg)
-        if inference.skim() == False:
+        if inference.skim(f_cutoff) == False:
             io_utils.delete_s3_footage(object_key, credentials)
             return process_result
         
-        person_detections, face_data = inference.run()
+        person_detections, face_data = inference.run(f_cutoff=f_cutoff)
 
         tracking = TrackingPipeline(filename, person_detections)
 
@@ -204,6 +205,7 @@ def main(
     retain_footage: bool = False,
     starting_point: Optional[datetime] = None,
     priority_cam: Optional[int] = None,
+    f_cutoff: Optional[int] = None,
 ):
     log_utils.configure_logging(log_level=log_level)
 
@@ -214,6 +216,7 @@ def main(
         log_level,
         credentials,
         save_all_data,
+        f_cutoff,
     )
     basic_args = {
         'shop_id'        : shop_id,
@@ -319,6 +322,7 @@ def main(
                             face_df=face_data,
                             trk_df=detection_data,
                             region_df=region_data,
+                            f_cutoff=f_cutoff,
                         )
                         logger.info(f'Annotated video saved')
                     except Exception as e:
@@ -341,6 +345,7 @@ if __name__ == '__main__':
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
     parser.add_argument('--priority-cam', type=str)
     parser.add_argument('--id-strategy', type=str, default='local')
+    parser.add_argument('--f-cutoff', type=int, default=None)
     args = parser.parse_args()
 
     log_utils.configure_logging(log_level=args.log_level)
@@ -405,6 +410,7 @@ if __name__ == '__main__':
         'save_all_data'  : args.save_all_data,
         'starting_point' : starting_point,
         'priority_cam'   : args.priority_cam,
+        'f_cutoff'       : args.f_cutoff,
     }
 
     main(**run_config)
