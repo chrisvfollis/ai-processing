@@ -561,12 +561,17 @@ class FaceAnalysis:
             press_stopwatch(self, 'identification_pipeline_time')
             return []
 
-        per_image_face_dfs = self.find(
-            imgs=batch_imgs,
-            id_cutoff=id_cutoff,
-            enhance=enhance,
-            db_path=db_path,
-        )
+        per_image_face_dfs = []
+        batch_size = 2
+        for i in range(0, len(batch_imgs), batch_size):
+            batch_imgs_chunk = batch_imgs[i:i+batch_size]
+            result = self.find(
+                imgs=batch_imgs_chunk,
+                id_cutoff=id_cutoff,
+                enhance=enhance,
+                db_path=db_path,
+            )
+            per_image_face_dfs.extend(result)
 
         all_face_dfs = []
         for region_dfs, region in zip(per_image_face_dfs, kept_regions):

@@ -182,6 +182,7 @@ class InferencePipeline:
             self.face_data = self.face_data | results[1]
 
             del frame_batch
+            io_utils.clear_memory()
 
             if log_progress == True:
                 logger.progress(f'inference —> {self.progress}%')

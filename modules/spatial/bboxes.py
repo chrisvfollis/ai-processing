@@ -190,7 +190,7 @@ def cluster_into_regions(
     regions, within bounded dimensions and aspect ratios for optimal CenterFace
     detection performance.
 
-    Returns a list of region coordinates (x1, y1, w, h).
+    Returns a list of (x, y, w, h) region coordinate tuples.
     '''
     bbox_coords = np.array([xywh_xyxy(box, out='xyxy') for box in bboxes])
     bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]
