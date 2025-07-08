@@ -32,8 +32,8 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff
     img_w = stream.codec_context.width
     img_h = stream.codec_context.height
 
-    target_width = 960
-    target_height = 540
+    target_width = 1280
+    target_height = 720
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     writer = cv2.VideoWriter(output_path, fourcc, fps, (target_width, target_height))

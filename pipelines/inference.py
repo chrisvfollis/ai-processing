@@ -117,13 +117,13 @@ class InferencePipeline:
                     continue
                 x, y, w, h = bboxes.xywh_xyxy(detection, out='xywh')
                 person_dets.append({
-                    'f': f,
+                    'f': int(f),
                     'x': int(x),
                     'y': int(y),
                     'w': int(w),
                     'h': int(h),
                     'c': round(float(detection[4]), 2),
-                    'cam_id': int(self.cam_id)
+                    'cam_id': int(self.cam_id),
                 })
         return pd.DataFrame(person_dets)
 
@@ -237,7 +237,7 @@ class InferencePipeline:
                 )
                 for x, y, w, h in regions:
                     self.region_log.append({
-                        'f': f_num,
+                        'f': int(f_num),
                         'x': int(x),
                         'y': int(y),
                         'w': int(w),

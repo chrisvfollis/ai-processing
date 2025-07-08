@@ -562,6 +562,22 @@ def load_raw_detection_data(time_prefix, output_dir):
     return raw_people, raw_faces, raw_trks, raw_regions
 
 
+def parquet_to_csv(input_path: str = '~/Downloads', remove=True):
+    if os.path.isdir(input_path):
+        parquet_filenames = [
+            f for f in os.listdir(input_path) if f.endswith('.parquet')
+        ]
+        parquet_paths = [os.path.join(input_path, f) for f in parquet_filenames]
+    else:
+        parquet_paths = [input_path]
+        for p in parquet_paths:
+            df = pd.read_parquet(p)
+            output_path = p.split('.')[0] + '.csv'
+            df.to_csv(output_path)
+            if remove:
+                os.remove(p)
+
+
 # =============================================================================
 #                           - REMOTE FILES -
 # -----------------------------------------------------------------------------
