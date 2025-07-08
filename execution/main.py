@@ -104,6 +104,7 @@ def run_worker_pipeline(
         elif id_strategy == 'global':
             if (face_data is not None) and (not face_data.empty):
                 output_data = {
+                    'person_dets': inference.person_detection_df,
                     'faces': face_data,
                     'trk_dets': trk_detections,
                     'region_log': pd.DataFrame(inference.region_log),

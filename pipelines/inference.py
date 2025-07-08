@@ -111,6 +111,24 @@ class InferencePipeline:
 
         log_utils.press_stopwatch(self, 'init_time')
 
+    @property
+    def person_detection_df(self):
+        person_dets = []
+        for f, detections in self.person_detections.items():
+            for detection in detections:
+                if detections is None:
+                    continue
+                x, y, w, h = bboxes.xywh_xyxy(detection, out='xywh')
+                person_dets.append({
+                    'f': f,
+                    'x': int(x),
+                    'y': int(y),
+                    'w': int(w),
+                    'h': int(h),
+                    'cam_id': int(self.cam_id)
+                })
+        return pd.DataFrame(person_dets)
+
     def skim(self):
         logger.info(f'Skimming...')
         log_utils.press_stopwatch(self, 'skim_time')
