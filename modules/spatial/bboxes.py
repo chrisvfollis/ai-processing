@@ -181,11 +181,8 @@ def cluster_into_regions(
     img_width: int,
     max_width: int = 1920,
     max_height: int = 1440,
-    # min_width: int = 320,
-    # min_height: int = 256,
-    min_width: int = 512,
-    min_height: int = 384,
-    margin: int = 5,
+    min_width: int = 608,
+    min_height: int = 448,
     nms_thresh: float = 0.80,
 ) -> list[tuple[int, int, int, int]]:
     '''
@@ -199,79 +196,72 @@ def cluster_into_regions(
     bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]
 
     regions = []
-    final_used = set()
+    used = set()
 
     for i, (x1, y1, x2, y2) in enumerate(bbox_coords):
-        if i in final_used:
+        if i in used:
             continue
 
-        current_used = set([i])
+        used.add(i)
         region_bboxes = [(x1, y1, x2, y2)]
 
         region_x1 = x1
-        region_y1 = y2
+        region_y1 = y1
         region_x2 = x2
         region_y2 = y2
 
         for j, (bx1, by1, bx2, by2) in enumerate(bbox_coords[i+1:], start=i+1):
-            if j in final_used or j in current_used:
+            if j in used:
                 continue
-
+            
             new_x1 = min(region_x1, bx1)
             new_y1 = min(region_y1, by1)
             new_x2 = max(region_x2, bx2)
             new_y2 = max(region_y2, by2)
 
-            for rx1, ry1, rx2, ry2 in region_bboxes:
-                if not ((new_x1 <= rx1) and (new_y1 <= ry1) and (new_x2 >= rx2) and (new_y2 >= ry2)):
-                    break
+            new_w = new_x2 - new_x1
+            new_h = new_y2 - new_y1
+            
+            ar = new_w / new_h
+            target_ar_min = 0.75
+            target_ar_max = 1.33
+
+            if ar < target_ar_min:
+                new_w = int(new_h * target_ar_min)
+                new_x2 = new_x1 + new_w
+                if new_x2 > img_width:
+                    continue
+            elif ar > target_ar_max:
+                new_h = int(new_w / target_ar_max)
+                new_y2 = new_y1 + new_h
+                if new_y2 > img_height:
+                    continue
+        
+            if  (new_w > max_width) and (new_h > max_height):
+                continue
             else:
                 region_x1 = new_x1
                 region_y1 = new_y1
                 region_x2 = new_x2
                 region_y2 = new_y2
-                region_bboxes.append((bx1, by1, bx2, by2))
-                current_used.add(j)
 
-        region_x1 = max(0, region_x1 - margin)
-        region_y1 = max(0, region_y1 - margin)
-        region_x2 = min(img_width, region_x2 + margin)
-        region_y2 = min(img_height, region_y2 + margin)
+                region_bboxes.append((bx1, by1, bx2, by2))
+                used.add(j)
 
         region_w = region_x2 - region_x1
         region_h = region_y2 - region_y1
 
+        # ensure minimum size
         region_w = max(region_w, min_width)
         region_h = max(region_h, min_height)
 
-        # adjust for target aspect ratio
-        ar = region_w / region_h
-        target_ar_min = 0.75
-        target_ar_max = 1.33
-        if ar < target_ar_min:
-            region_w = int(region_h * target_ar_min)
-        elif ar > target_ar_max:
-            region_h = int(region_w / target_ar_max)
+        adjust_w = (region_x1 + region_w) - img_width
+        adjust_h = (region_y1 + region_h) - img_height
 
-        # clip to max size
-        region_w = min(region_w, max_width)
-        region_h = min(region_h, max_height)
-
-        # re-center while respecting image boundaries
-        cx = (region_x1 + region_x2) / 2
-        cy = (region_y1 + region_y2) / 2
-        region_x1 = int(max(0, cx - region_w / 2))
-        region_y1 = int(max(0, cy - region_h / 2))
-        region_x2 = int(min(img_width, region_x1 + region_w))
-        region_y2 = int(min(img_height, region_y1 + region_h))
-        region_x1 = int(max(0, region_x2 - region_w))
-        region_y1 = int(max(0, region_y2 - region_h))
-
-        for k in current_used:
-            cx = (bbox_coords[k][0] + bbox_coords[k][2]) / 2
-            cy = (bbox_coords[k][1] + bbox_coords[k][3]) / 2
-            if (region_x1 <= cx <= region_x2) and (region_y1 <= cy <= region_y2):
-                final_used.add(k)
+        if adjust_w > 0:
+            region_x1 -= adjust_w
+        if adjust_h > 0:
+            region_y1 -= adjust_h
 
         regions.append((
             region_x1,
