@@ -183,6 +183,7 @@ def cluster_into_regions(
     max_height: int = 1440,
     min_width: int = 608,
     min_height: int = 448,
+    margin: int = 5,
     nms_thresh: float = 0.80,
 ) -> list[tuple[int, int, int, int]]:
     '''
@@ -269,6 +270,12 @@ def cluster_into_regions(
             region_y1 -= adjust_y
         else:
             region_y2 = new_y2
+        
+        # apply margin
+        region_x1 = max(0, region_x1 - margin)
+        region_y1 = max(0, region_y1 - margin)
+        region_x2 = min(img_width, region_x2 + margin)
+        region_y2 = min(img_height, region_y2 + margin)
 
         regions.append((
             region_x1,
