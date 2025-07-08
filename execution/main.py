@@ -297,13 +297,13 @@ def main(
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
 
-                raw_faces, raw_trks, raw_regions = io_utils.load_raw_detection_data(time_prefix, output_dir)
+                raw_people, raw_faces, raw_trks, raw_regions = io_utils.load_raw_detection_data(time_prefix, output_dir)
                 for filename in filenames:
                     if not filename.endswith('.mp4'):
                         continue
 
                     _, cam_id = utils.decode_vid_filename(filename)
-
+                    raw_people = raw_people.loc[raw_people['cam_id'] == cam_id]
                     face_data = raw_faces.loc[raw_faces['cam_id'] == cam_id]
                     detection_data = raw_trks.loc[raw_trks['cam_id'] == cam_id]
                     region_data = raw_regions.loc[raw_regions['cam_id'] == cam_id]
@@ -315,6 +315,7 @@ def main(
                         logger.info('Rendering video annotations...')
                         render.video.global_id_output(
                             filename,
+                            person_df=raw_people,
                             face_df=face_data,
                             trk_df=detection_data,
                             region_df=region_data,

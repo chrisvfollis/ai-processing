@@ -12,7 +12,7 @@ import utilities.general_utils as utils
 from utilities import io_utils
 
 
-def global_id_output(video_file, face_df, trk_df, region_df):
+def global_id_output(video_file, person_df, face_df, trk_df, region_df):
     project_root = io_utils.get_project_root()
 
     input_dir = os.path.join(project_root, 'files/input/')
@@ -39,10 +39,10 @@ def global_id_output(video_file, face_df, trk_df, region_df):
     for frame in container.decode(stream):
         img = frame.to_ndarray(format='bgr24')
 
-        regions = region_df[region_df['f'] == frame_num]
-        for _, row in regions.iterrows():
+        people = person_df[person_df['f'] == frame_num]
+        for _, row in people.iterrows():
             x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), 2)
+            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 255), 2)
 
         tracks = trk_df[trk_df['f'] == frame_num]
         for _, row in tracks.iterrows():
@@ -56,6 +56,11 @@ def global_id_output(video_file, face_df, trk_df, region_df):
             label = str(ident)[:12]
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
             cv2.putText(img, label, (x, y - 25), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
+
+        regions = region_df[region_df['f'] == frame_num]
+        for _, row in regions.iterrows():
+            x, y, w, h = int(row.x), int(row.y), int(row.w), int(row.h)
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 255), 2)
 
         cv2.putText(img, f'Frame {frame_num}', (25, 50), cv2.FONT_HERSHEY_SIMPLEX, 3, (255, 255, 255), 2)
 
