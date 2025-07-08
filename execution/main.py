@@ -103,17 +103,18 @@ def run_worker_pipeline(
                 time_prefix, cam_id, inactive_trks, tracking.fps
             )
         elif id_strategy == 'global':
+            output_data = {
+                'person_dets': inference.person_detection_df,
+                'trk_dets': trk_detections,
+                'region_log': pd.DataFrame(inference.region_log),
+            }
             if (face_data is not None) and (not face_data.empty):
-                output_data = {
-                    'person_dets': inference.person_detection_df,
-                    'faces': face_data,
-                    'trk_dets': trk_detections,
-                    'region_log': pd.DataFrame(inference.region_log),
-                }
-                for data_suffix, data in output_data.items():
-                    data.to_parquet(os.path.join(
-                        output_dir, f'{file_prefix}_{data_suffix}.parquet'
-                    ))
+                output_data['faces'] = face_data
+
+            for data_suffix, data in output_data.items():
+                data.to_parquet(os.path.join(
+                    output_dir, f'{file_prefix}_{data_suffix}.parquet'
+                ))
 
         inference.save_run_info()
         tracking.save_run_info()

@@ -193,6 +193,9 @@ def cluster_into_regions(
 
     Returns a list of (x, y, w, h) region coordinate tuples.
     '''
+    target_ar_min = 0.75
+    target_ar_max = 1.33
+
     bbox_coords = np.array([xywh_xyxy(box, out='xyxy') for box in bboxes])
     bbox_coords = bbox_coords[np.lexsort((bbox_coords[:, 0], bbox_coords[:, 1]))]
 
@@ -224,9 +227,6 @@ def cluster_into_regions(
             new_h = new_y2 - new_y1
             
             ar = new_w / new_h
-            target_ar_min = 0.75
-            target_ar_max = 1.33
-
             if ar < target_ar_min:
                 new_w = int(new_h * target_ar_min)
                 new_x2 = new_x1 + new_w
@@ -252,6 +252,11 @@ def cluster_into_regions(
         region_w = region_x2 - region_x1
         region_h = region_y2 - region_y1
 
+        if len(region_bboxes) == 1:
+            ar = region_w / region_h
+            if ar < target_ar_max:
+                region_w = int(region_h * target_ar_max)
+
         # ensure minimum size
         region_w = max(region_w, min_width)
         region_h = max(region_h, min_height)
@@ -272,10 +277,12 @@ def cluster_into_regions(
             region_y2 = new_y2
         
         # apply margin
-        region_x1 = max(0, region_x1 - margin)
-        region_y1 = max(0, region_y1 - margin)
-        region_x2 = min(img_width, region_x2 + margin)
-        region_y2 = min(img_height, region_y2 + margin)
+        pixel_margin = margin * 10 if len(region_bboxes) == 1 else margin
+
+        region_x1 = max(0, region_x1 - pixel_margin)
+        region_y1 = max(0, region_y1 - pixel_margin)
+        region_x2 = min(img_width, region_x2 + pixel_margin)
+        region_y2 = min(img_height, region_y2 + pixel_margin)
 
         regions.append((
             region_x1,
