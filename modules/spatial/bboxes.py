@@ -177,13 +177,13 @@ def apply_offset(
 
 def cluster_into_regions(
     bboxes: list,
-    img_height: int,
-    img_width: int,
-    max_width: int = 1920,
-    max_height: int = 1440,
-    min_width: int = 608,
-    min_height: int = 448,
-    margin: int = 5,
+    img_h: int,
+    img_w: int,
+    max_w: int = 1920,
+    max_h: int = 1440,
+    min_w: int = 608,
+    min_h: int = 448,
+    pixel_margin: int = 5,
     nms_thresh: float = 0.80,
 ) -> list[tuple[int, int, int, int]]:
     '''
@@ -230,15 +230,15 @@ def cluster_into_regions(
             if ar < target_ar_min:
                 new_w = int(new_h * target_ar_min)
                 new_x2 = new_x1 + new_w
-                if new_x2 > img_width:
+                if new_x2 > img_w:
                     continue
             elif ar > target_ar_max:
                 new_h = int(new_w / target_ar_max)
                 new_y2 = new_y1 + new_h
-                if new_y2 > img_height:
+                if new_y2 > img_h:
                     continue
         
-            if (new_w > max_width) and (new_h > max_height):
+            if (new_w > max_w) and (new_h > max_h):
                 continue
             else:
                 region_x1 = new_x1
@@ -253,19 +253,22 @@ def cluster_into_regions(
         region_h = region_y2 - region_y1
 
         if len(region_bboxes) == 1:
+            region_w *= 1.25
+            region_h *= 1.25
+
             ar = region_w / region_h
             if ar < target_ar_max:
                 region_w = int(region_h * target_ar_max)
 
         # ensure minimum size
-        region_w = max(region_w, min_width)
-        region_h = max(region_h, min_height)
+        region_w = max(region_w, min_w)
+        region_h = max(region_h, min_h)
 
         new_x2 = region_x1 + region_w
         new_y2 = region_y1 + region_h
 
-        adjust_x = new_x2 - img_width
-        adjust_y = new_y2 - img_height
+        adjust_x = new_x2 - img_w
+        adjust_y = new_y2 - img_h
 
         if adjust_x > 0:
             region_x1 -= adjust_x
@@ -277,12 +280,12 @@ def cluster_into_regions(
             region_y2 = new_y2
         
         # apply margin
-        pixel_margin = margin * 10 if len(region_bboxes) == 1 else margin
+        margin = pixel_margin * 50 if len(region_bboxes) == 1 else pixel_margin
 
-        region_x1 = max(0, region_x1 - pixel_margin)
-        region_y1 = max(0, region_y1 - pixel_margin)
-        region_x2 = min(img_width, region_x2 + pixel_margin)
-        region_y2 = min(img_height, region_y2 + pixel_margin)
+        region_x1 = int(max(0, region_x1 - margin))
+        region_y1 = int(max(0, region_y1 - margin))
+        region_x2 = int(min(img_w, region_x2 + margin))
+        region_y2 = int(min(img_h, region_y2 + margin))
 
         regions.append((
             region_x1,
