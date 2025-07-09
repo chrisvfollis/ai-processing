@@ -603,10 +603,10 @@ def global_identification(
     time_prefix: str,
     output_dir: str,
     # ----- feature-engineering knobs ----------------------------------
-    min_match_distance: float = 0.35,
-    max_mismatch_distance: float = 0.90,
+    match_cutoff: float = 0.35,
+    mismatch_threshold: float = 0.90,
     confidence_weight: float = 0.40,
-    distance_weight: float = 0.50,
+    distance_score_weight: float = 0.50,
     # ----- fusion / filtering knobs -----------------------------------
     n_matches: int = 1,                   # max matches per face detection
     min_score: float = 0.60,
@@ -614,8 +614,8 @@ def global_identification(
     fp_rate: float = 0.10,                # β – per-detection false-pos rate
     prior_presence: float = 0.05,         # π – prior P(identity present)
     recall_est: float = 0.65,
-    max_score_thresh: float = 0.75,
-    penalty_adj: tuple[float, float] = (0.50, 1.25),
+    bias_boundary: float = 0.75,
+    penalty_bias_scalars: tuple[float, float] = (0.50, 1.25),
     # ----- temporal weighting knobs -----------------------------------
     decay_window: float = 0.5,                      # seconds
     boost_range: tuple[float, float] = (1.5, 5.0),  # seconds (range)
@@ -623,6 +623,11 @@ def global_identification(
     max_boost: float = 0.3,
     boost_per_neighbor: float = 0.05,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    '''
+    Determines which identities were present in the work zone within a given
+    time segment by assessing the combined inference/tracking/etc data from
+    all available camera footage for that time.
+    '''
     def _apply_temporal_weighting(
         face_data: pd.DataFrame,
         decay_window: float,
@@ -632,8 +637,16 @@ def global_identification(
         boost_per_neighbor: float,
     ) -> pd.DataFrame:
         '''
-        Applies temporal weighting to reduce the influence of clustered detections
-        and boost support from moderately spaced detections.
+        Applies temporal weighting in order to:
+            1. Decay the influence of detections with the same identity from
+                short bursts of similar output across nearby frames. This is
+                essentially redundant, low-signal data that distorts the final
+                results.
+            2. Boost the influence of detections with the same identity that
+                are moderately spaced in time. Close enough that it's plausible
+                they really are the same person, but far enough that their
+                orientation's likely different. This helps rule out false
+                positives by confirming the same identity from multiple angles/etc.
         '''
         weighted_votes = []
 
@@ -669,7 +682,7 @@ def global_identification(
             face_data.at[idx, 'vote_prob'] = new_val
 
         return face_data
-
+    
     presence_df = pd.DataFrame(columns=[
         'identity',
         'name',
@@ -690,36 +703,54 @@ def global_identification(
     face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
     trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
 
+    distance_span = mismatch_threshold - match_cutoff
+    face_data['dist_score'] = (
+        mismatch_threshold - face_data['distance']
+    ) / distance_span
+
+    face_data['dist_score'] = face_data['dist_score'].clip(0.0, 1.0)
     face_data['confidence'] = face_data['confidence'].clip(0.0, 1.0)
 
-    distance_span = max_mismatch_distance - min_match_distance
-    face_data['dist_score'] = np.clip(
-        (max_mismatch_distance - face_data['distance']) / distance_span,
-        0.0, 1.0,
-    )
-
-    weight_values_sum = confidence_weight + distance_weight
+    # compute weighted `score` values: 
+    weight_values_sum = confidence_weight + distance_score_weight
     face_data['score'] = (
-        confidence_weight * face_data['confidence'] +
-        distance_weight * face_data['dist_score']
+        (face_data['dist_score'] * distance_score_weight) +
+        (face_data['confidence'] * confidence_weight)
     ) / weight_values_sum
-
+    
+    # filter face detections below `min_score`:
     face_data = face_data.loc[face_data['score'] >= min_score].copy()
-    face_data = face_data[~face_data['identity'].isna() & (face_data['identity'] != '')]
-
+    face_data = face_data[
+        (~face_data['identity'].isna()) & (face_data['identity'] != '')
+    ]
+    # retain only the top `n_matches` row(s) per detection:
     face_data = (
         face_data.sort_values('distance', ascending=True)
         .groupby(['x', 'y', 'w', 'h', 'f', 'cam_id'], group_keys=False)
         .head(n_matches)
     )
-    
     if face_data.empty:
-        logger.info('No valid face detections above score threshold.')
+        logger.info('No face dets above `min_score` threshold')
         return presence_df, face_data, trk_dets
-
+    else:
+        num_id_dets = (
+            face_data.drop_duplicates(
+                subset=['identity', 'cam_id', 'f'], keep='first'
+            )
+            .groupby('identity')
+            .size()
+        )
+    
+    # compute `vote_prob` column values:
     face_data['vote_prob'] = reliability_scale * face_data['score']
 
-    logger.info(f'Summary of vote_prob BEFORE temporal weighting: {face_data["vote_prob"].describe()}')
+    raw_vote_prob_summary = (
+        face_data['vote_prob'].describe()
+        .apply(
+            lambda x: round(float(x), 3)
+        )
+    )
+    logger.info(f"Raw `vote_prob` summary: \n{raw_vote_prob_summary}")
     face_data = _apply_temporal_weighting(
         face_data,
         decay_window,
@@ -728,7 +759,7 @@ def global_identification(
         max_boost,
         boost_per_neighbor,
     )
-    logger.info(f'Summary of vote_prob AFTER temporal weighting: {face_data["vote_prob"].describe()}')
+    logger.info(f'vote_prob AFTER temporal weighting: {face_data["vote_prob"].describe()}')
 
     track_votes = (
         face_data
@@ -744,32 +775,31 @@ def global_identification(
         )
         return presence_df, face_data, trk_dets
 
-    records = []
+    
     log_prior = math.log(prior_presence) - math.log1p(-prior_presence)
-
-    n_id_dets = face_data.groupby('identity')['f'].nunique()
-
+    
+    records = []
     for _, row in track_votes.iterrows():
-        ident = row['identity']
+        identity = row['identity']
 
-        first_name, last_name = io_utils.lookup_name(ident)
+        first_name, last_name = io_utils.lookup_name(identity)
         full_name = f'{first_name}_{last_name}'
 
-        p_list = np.clip(row['vote_prob'], 0, 1)            
+        p_list = row['vote_prob'].clip(0.0, 1.0)
         n_p = len(p_list)
 
         if n_p:
-            max_score = row['max_score']
+            total_vote_support = sum(p_list)
 
-            vote_support = sum(p_list)
             penalty = n_p * fp_rate
-
-            if max_score >= max_score_thresh:
-                penalty *= min(penalty_adj)
+            if row['max_score'] < bias_boundary:
+                high_penalty_bias = max(penalty_bias_scalars)
+                penalty *= high_penalty_bias
             else:
-                penalty *= max(penalty_adj)
+                low_penalty_bias = min(penalty_bias_scalars)
+                penalty *= low_penalty
 
-            log_odds = log_prior + (vote_support - penalty)
+            log_odds = log_prior + (total_vote_support - penalty)
             posterior = 1.0 / (1.0 + math.exp(-log_odds))
         else:
             max_score = 0.0
@@ -777,9 +807,9 @@ def global_identification(
             posterior = prior_presence * (1.0 - recall_est)
         
         records.append({
-            'identity'     : ident,
+            'identity'     : identity,
             'name'         : full_name,
-            'n_detected'   : n_id_dets.get(ident, 0),
+            'n_detected'   : num_id_dets.get(identity, 0),
             'max_score'    : max_score,
             'posterior'    : posterior,
             'present_flag' : posterior >= 0.5,
