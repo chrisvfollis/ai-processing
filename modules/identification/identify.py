@@ -614,8 +614,8 @@ def global_identification(
     fp_rate: float = 0.10,                # β – per-detection false-pos rate
     prior_presence: float = 0.05,         # π – prior P(identity present)
     recall_est: float = 0.65,
-    bias_boundary: float = 0.75,
-    penalty_bias_scalars: tuple[float, float] = (0.50, 1.25),
+    bias_score_boundary: float = 0.75,
+    penalty_biases: tuple[float, float] = (0.50, 1.25),
     # ----- temporal weighting knobs -----------------------------------
     decay_window: float = 0.5,                      # seconds
     boost_range: tuple[float, float] = (1.5, 5.0),  # seconds (range)
@@ -628,6 +628,78 @@ def global_identification(
     time segment by assessing the combined inference/tracking/etc data from
     all available camera footage for that time.
     '''
+    def _empty_presence_df():
+        presence_df = pd.DataFrame(
+            columns=[
+                'identity',
+                'name',
+                'n_detected',
+                'max_score',
+                'posterior',
+                'present_flag',
+            ]
+        )
+        return presence_df
+
+    face_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_faces.parquet'))
+    trk_files  = sorted(Path(output_dir).glob(f'{time_prefix}_*_trk_dets.parquet'))
+
+    if not face_files:
+        raise FileNotFoundError(
+            f'No face_data parquet files for prefix {time_prefix} in {output_dir}'
+        )
+
+    face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
+    trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
+
+    # feature engineer the `dist_score` and `score` columns:
+    distance_span = mismatch_threshold - match_cutoff
+    face_data['dist_score'] = (
+        mismatch_threshold - face_data['distance']
+    ) / distance_span
+
+    face_data['dist_score'] = face_data['dist_score'].clip(0.0, 1.0)
+    face_data['confidence'] = face_data['confidence'].clip(0.0, 1.0)
+
+    weight_values_sum = confidence_weight + distance_score_weight
+    face_data['score'] = (
+        (face_data['dist_score'] * distance_score_weight) +
+        (face_data['confidence'] * confidence_weight)
+    ) / weight_values_sum
+    
+    # filter face detections below `min_score`:
+    face_data = face_data.loc[face_data['score'] >= min_score].copy()
+    face_data = face_data[
+        (~face_data['identity'].isna()) & (face_data['identity'] != '')
+    ]
+    # retain only the top `n_matches` row(s) per detection:
+    face_data = (
+        face_data.sort_values('distance', ascending=True)
+        .groupby(['x', 'y', 'w', 'h', 'f', 'cam_id'], group_keys=False)
+        .head(n_matches)
+    )
+    if face_data.empty:
+        presence_df = _empty_presence_df()
+        logger.info('No face dets above `min_score` threshold')
+        return presence_df, face_data, trk_dets
+    else:
+        num_id_dets = (
+            face_data.drop_duplicates(
+                subset=['identity', 'cam_id', 'f'], keep='first'
+            )
+            .groupby('identity')
+            .size()
+        )
+
+    def _summarize_vote_signals(face_data):
+        vote_signal_summary = (
+            face_data['vote_signal'].describe()
+            .apply(
+                lambda x: round(float(x), 3)
+            )
+        )
+        return vote_signal_summary
+
     def _apply_temporal_weighting(
         face_data: pd.DataFrame,
         decay_window: float,
@@ -652,7 +724,7 @@ def global_identification(
 
         for (_, cam_id), group in face_data.groupby(['identity', 'cam_id']):
             times = group['s'].values
-            scores = group['vote_prob'].values
+            scores = group['vote_signal'].values
             idxs = group.index
 
             n = len(times)
@@ -663,7 +735,9 @@ def global_identification(
                 diffs = np.abs(times - t_i)
 
                 # decay:
-                decay_factors = np.exp(-np.square(diffs) / decay_window**2)
+                decay_factors = np.exp(
+                    -np.square(diffs) / decay_window**2     # Gaussian kernel (Radial Basis Function)
+                )
                 local_clump_penalty = decay_factors.sum() - 1  # exclude self
                 decay_weight = 1.0 - min(max_decay, 0.4 * local_clump_penalty)
 
@@ -679,78 +753,16 @@ def global_identification(
 
         weighted_votes.sort()
         for idx, new_val in weighted_votes:
-            face_data.at[idx, 'vote_prob'] = new_val
+            face_data.at[idx, 'vote_signal'] = new_val
 
         return face_data
     
-    presence_df = pd.DataFrame(columns=[
-        'identity',
-        'name',
-        'n_detected',
-        'max_score',
-        'posterior',
-        'present_flag',
-    ])
+    # compute `vote_signal` column values:
+    face_data['vote_signal'] = reliability_scale * face_data['score']
 
-    face_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_faces.parquet'))
-    trk_files  = sorted(Path(output_dir).glob(f'{time_prefix}_*_trk_dets.parquet'))
+    raw_vote_signal_summary = _summarize_vote_signals(face_data)
+    logger.info(f'Raw `vote_signal` summary: \n{raw_vote_signal_summary}')
 
-    if not face_files:
-        raise FileNotFoundError(
-            f'No face_data parquet files for prefix {time_prefix} in {output_dir}'
-        )
-
-    face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
-    trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
-
-    distance_span = mismatch_threshold - match_cutoff
-    face_data['dist_score'] = (
-        mismatch_threshold - face_data['distance']
-    ) / distance_span
-
-    face_data['dist_score'] = face_data['dist_score'].clip(0.0, 1.0)
-    face_data['confidence'] = face_data['confidence'].clip(0.0, 1.0)
-
-    # compute weighted `score` values: 
-    weight_values_sum = confidence_weight + distance_score_weight
-    face_data['score'] = (
-        (face_data['dist_score'] * distance_score_weight) +
-        (face_data['confidence'] * confidence_weight)
-    ) / weight_values_sum
-    
-    # filter face detections below `min_score`:
-    face_data = face_data.loc[face_data['score'] >= min_score].copy()
-    face_data = face_data[
-        (~face_data['identity'].isna()) & (face_data['identity'] != '')
-    ]
-    # retain only the top `n_matches` row(s) per detection:
-    face_data = (
-        face_data.sort_values('distance', ascending=True)
-        .groupby(['x', 'y', 'w', 'h', 'f', 'cam_id'], group_keys=False)
-        .head(n_matches)
-    )
-    if face_data.empty:
-        logger.info('No face dets above `min_score` threshold')
-        return presence_df, face_data, trk_dets
-    else:
-        num_id_dets = (
-            face_data.drop_duplicates(
-                subset=['identity', 'cam_id', 'f'], keep='first'
-            )
-            .groupby('identity')
-            .size()
-        )
-    
-    # compute `vote_prob` column values:
-    face_data['vote_prob'] = reliability_scale * face_data['score']
-
-    raw_vote_prob_summary = (
-        face_data['vote_prob'].describe()
-        .apply(
-            lambda x: round(float(x), 3)
-        )
-    )
-    logger.info(f"Raw `vote_prob` summary: \n{raw_vote_prob_summary}")
     face_data = _apply_temporal_weighting(
         face_data,
         decay_window,
@@ -759,69 +771,68 @@ def global_identification(
         max_boost,
         boost_per_neighbor,
     )
-    logger.info(f'vote_prob AFTER temporal weighting: {face_data["vote_prob"].describe()}')
+    vote_signal_summary = _summarize_vote_signals(face_data)
+    logger.info(f'Final `vote_signal` summary: {vote_signal_summary}')
 
+    # aggregate votes per identity:
     track_votes = (
         face_data
         .groupby(['identity'], as_index=False)
         .agg(
-            vote_prob=('vote_prob', list),
+            vote_signal=('vote_signal', list),
             max_score=('score', 'max')
         )
     )
     if track_votes.empty:
+        presence_df = _empty_presence_df()
         logger.info(
             'No track votes could be formed — skipping presence estimation'
         )
         return presence_df, face_data, trk_dets
-
     
+    # convert prior to log-odds space so it can combine linearly with evidence:
     log_prior = math.log(prior_presence) - math.log1p(-prior_presence)
-    
+
     records = []
     for _, row in track_votes.iterrows():
         identity = row['identity']
 
-        first_name, last_name = io_utils.lookup_name(identity)
-        full_name = f'{first_name}_{last_name}'
+        obs_vote_signals = row['vote_signal'].clip(0.0, 1.0)
+        n_obs = len(obs_vote_signals)
 
-        p_list = row['vote_prob'].clip(0.0, 1.0)
-        n_p = len(p_list)
+        if n_obs:
+            total_vote_support = sum(obs_vote_signals)
+            penalty = n_obs * fp_rate
 
-        if n_p:
-            total_vote_support = sum(p_list)
-
-            penalty = n_p * fp_rate
-            if row['max_score'] < bias_boundary:
-                high_penalty_bias = max(penalty_bias_scalars)
-                penalty *= high_penalty_bias
+            if row['max_score'] >= bias_score_boundary:
+                penalty *= min(penalty_biases)          # favorable bias
             else:
-                low_penalty_bias = min(penalty_bias_scalars)
-                penalty *= low_penalty
-
+                penalty *= max(penalty_biases)          # high penalty
+            
             log_odds = log_prior + (total_vote_support - penalty)
+            # convert `log_odds` back into a probability between 0 and 1 using
+            # the logistic function:
             posterior = 1.0 / (1.0 + math.exp(-log_odds))
         else:
-            max_score = 0.0
-            # zero detections → prior × recall miss-probability:
+            # zero detections -> prior x recall miss-probability:
             posterior = prior_presence * (1.0 - recall_est)
-        
+
         records.append({
             'identity'     : identity,
-            'name'         : full_name,
+            'name'         : '_'.join(io_utils.lookup_name(identity)),
             'n_detected'   : num_id_dets.get(identity, 0),
-            'max_score'    : max_score,
+            'max_score'    : row['max_score'] if n_obs else 0.0,
             'posterior'    : posterior,
             'present_flag' : posterior >= 0.5,
         })
 
     if not records:
-        logger.info('No valid face detections above score threshold.')
-        return presence_df, face_data, trk_dets
-
-    presence_df = pd.DataFrame(records).sort_values('posterior', ascending=False)
-
-    presence_path = Path(output_dir) / f'{time_prefix}_presence_summary.parquet'
-    presence_df.to_parquet(presence_path)
+        presence_df = _empty_presence_df()
+        logger.info('No face detections above score threshold')
+    else:
+        presence_df = pd.DataFrame(records).sort_values('posterior', ascending=False)
+        presence_df.to_parquet(os.path.join(
+            output_dir, f'{time_prefix}_presence_summary.parquet'
+        ))
 
     return presence_df, face_data, trk_dets
