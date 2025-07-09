@@ -652,6 +652,13 @@ def global_identification(
     face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
     trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
 
+    # retain only the top `n_matches` row(s) per detection:
+    face_data = (
+        face_data.sort_values('distance', ascending=True)
+        .groupby(['x', 'y', 'w', 'h', 'f', 'cam_id'], group_keys=False)
+        .head(n_matches)
+    )
+
     # feature engineer the `dist_score` and `score` columns:
     distance_span = mismatch_threshold - match_cutoff
     face_data['dist_score'] = (
@@ -672,12 +679,6 @@ def global_identification(
     face_data = face_data[
         (~face_data['identity'].isna()) & (face_data['identity'] != '')
     ]
-    # retain only the top `n_matches` row(s) per detection:
-    face_data = (
-        face_data.sort_values('distance', ascending=True)
-        .groupby(['x', 'y', 'w', 'h', 'f', 'cam_id'], group_keys=False)
-        .head(n_matches)
-    )
     if face_data.empty:
         presence_df = _empty_presence_df()
         logger.info('No face dets above `min_score` threshold')
@@ -789,7 +790,7 @@ def global_identification(
             'No track votes could be formed — skipping presence estimation'
         )
         return presence_df, face_data, trk_dets
-    
+
     # convert prior to log-odds space so it can combine linearly with evidence:
     log_prior = math.log(prior_presence) - math.log1p(-prior_presence)
 
@@ -797,7 +798,7 @@ def global_identification(
     for _, row in track_votes.iterrows():
         identity = row['identity']
 
-        obs_vote_signals = row['vote_signal'].clip(0.0, 1.0)
+        obs_vote_signals = np.clip(row['vote_signal'], 0.0, 1.0)
         n_obs = len(obs_vote_signals)
 
         if n_obs:

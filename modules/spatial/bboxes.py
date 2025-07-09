@@ -253,8 +253,8 @@ def cluster_into_regions(
         region_h = region_y2 - region_y1
 
         if len(region_bboxes) == 1:
-            region_w *= 1.25
-            region_h *= 1.25
+            # region_w *= 1.25
+            # region_h *= 1.25
 
             ar = region_w / region_h
             if ar < target_ar_max:
