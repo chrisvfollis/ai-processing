@@ -171,9 +171,9 @@ def wrap_up_segment(
 
     io_utils.clear_local_files(time_prefix, target_extensions=[
         '.hdf5',
+        '.png',
         '.jpg',
         '.jpeg',
-        '.png',
     ])
     if save_all_data == True:
         logger.info('Uploading data...')
