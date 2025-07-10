@@ -9,10 +9,9 @@ import pandas as pd
 import cv2
 
 # internal dependencies
+from utilities import utils, io_utils, log_utils
 from modules import OCSort, KalmanBoxTracker
 from modules.spatial import bboxes
-from utilities import io_utils, log_utils
-from utilities import general_utils as utils
 
 
 logger = log_utils.get_logger(__name__)

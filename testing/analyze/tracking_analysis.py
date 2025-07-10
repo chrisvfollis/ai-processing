@@ -11,8 +11,7 @@ import statsmodels.api as sm
 from scipy.stats import percentileofscore
 
 # internal dependencies
-from utilities import io_utils
-import utilities.general_utils as utils
+from utilities import utils, io_utils
 from testing import test_utils
 
 

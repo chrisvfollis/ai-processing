@@ -13,9 +13,8 @@ import torch
 import torch.multiprocessing as multiprocessing
 
 # internal dependencies
-from utilities import io_utils, log_utils, conn_utils
+from utilities import utils, io_utils, log_utils, conn_utils
 from utilities.io_utils import S3DownloadError
-from utilities import general_utils as utils
 from pipelines import InferencePipeline, TrackingPipeline
 from modules.identification import identify
 from modules import render
@@ -262,19 +261,19 @@ def main(
                 confidence_weight     = 0.45,
                 distance_score_weight = 0.55,
                 n_matches             = 1,
-                min_score             = 0.50,
-                reliability_scale     = 0.70,
+                min_score             = 0.45,
+                reliability_scale     = 0.75,
                 fp_rate               = 0.20,
-                prior_presence        = 0.05,
-                recall_est            = 0.65,
-                # bias_score_boundary   = 0.75,
+                presence_prior        = 0.05,
                 bias_score_boundary   = 0.70,
                 penalty_biases        = (0.5, 1.25),
                 decay_window          = 0.9,
                 boost_range           = (3.0, 5.0),
-                max_decay             = 0.8,
-                max_boost             = 0.7,
-                boost_per_neighbor    = 0.05,
+                max_decay             = 0.6,
+                max_boost             = 0.8,
+                boost_per_neighbor    = 0.075,
+                fallback_recall_est   = 0.60,
+                presence_thresh       = 0.55,
             )
             presence_df, filtered_faces, trk_dets = results
             logger.info('Finished global identification')
@@ -282,6 +281,7 @@ def main(
             if 'identity' in presence_df.columns and (
                 presence_df['identity'].notna().any()
             ):
+                logger.info('Generating event images...')
                 event_imgs_df = io_utils.save_global_id_event_imgs(
                     time_prefix, presence_df, filtered_faces, trk_dets, credentials
                 )

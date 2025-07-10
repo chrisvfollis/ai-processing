@@ -13,12 +13,11 @@ import torch
 import torch.nn.functional as F
 
 # internal dependencies
+from utilities import utils, io_utils, image_utils, log_utils
+from utilities.log_utils import press_stopwatch
 from modules.identification.data_structures import DetectedFace, FacialAreaRegion
 from modules.identification import face_utils
 from modules.spatial import bboxes
-from utilities import io_utils, image_utils, log_utils
-from utilities.log_utils import press_stopwatch
-from utilities import general_utils as utils
 
 
 logger = log_utils.get_logger(__name__)

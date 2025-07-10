@@ -21,9 +21,8 @@ warnings.filterwarnings(
 from torchreid import models as reid
 
 # internal dependencies
+from utilities import utils, io_utils
 from utilities.log_utils import press_stopwatch
-from utilities import io_utils
-import utilities.general_utils as utils
 
 
 class OSNet:

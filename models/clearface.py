@@ -14,8 +14,7 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 import torchvision.transforms as transforms
 
 # internal dependencies
-import utilities.general_utils as utils
-from utilities import io_utils
+from utilities import utils, io_utils
 
 
 class ClearFace:

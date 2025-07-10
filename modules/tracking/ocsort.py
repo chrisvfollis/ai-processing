@@ -11,7 +11,6 @@ import torch
 from modules.spatial import bboxes
 from modules.tracking import association
 from .kalmanfilter import KalmanFilterNew as KalmanFilter
-import utilities.general_utils as utils
 
 
 # =============================================================================

@@ -14,9 +14,8 @@ import torch.nn as nn
 import torchvision
 
 # internal dependencies
-from utilities import io_utils, log_utils
+from utilities import utils, io_utils, log_utils
 from utilities.log_utils import press_stopwatch
-import utilities.general_utils as utils
 
 
 logger = log_utils.get_logger(__name__)

@@ -608,12 +608,11 @@ def global_identification(
     confidence_weight: float = 0.40,
     distance_score_weight: float = 0.50,
     # ----- fusion / filtering knobs -----------------------------------
-    n_matches: int = 1,                   # max matches per face detection
+    n_matches: int = 1,                   # max ID matches per face detection
     min_score: float = 0.60,
-    reliability_scale: float = 0.65,      # α – scales score→success-prob
-    fp_rate: float = 0.10,                # β – per-detection false-pos rate
-    prior_presence: float = 0.05,         # π – prior P(identity present)
-    recall_est: float = 0.65,
+    reliability_scale: float = 0.65,      # α – scales `score` -> success probability
+    fp_rate: float = 0.10,                # β – per-detection false positive rate
+    presence_prior: float = 0.05,         # π – assumed prior for P(identity present)
     bias_score_boundary: float = 0.75,
     penalty_biases: tuple[float, float] = (0.50, 1.25),
     # ----- temporal weighting knobs -----------------------------------
@@ -622,6 +621,9 @@ def global_identification(
     max_decay: float = 0.5,
     max_boost: float = 0.3,
     boost_per_neighbor: float = 0.05,
+    # ----- final results knobs ----------------------------------------
+    fallback_recall_est: float = 0.60,
+    presence_thresh: float = 0.50,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     '''
     Determines which identities were present in the work zone within a given
@@ -633,7 +635,7 @@ def global_identification(
             columns=[
                 'identity',
                 'name',
-                'n_detected',
+                'n_detections',
                 'max_score',
                 'posterior',
                 'present_flag',
@@ -684,7 +686,7 @@ def global_identification(
         logger.info('No face dets above `min_score` threshold')
         return presence_df, face_data, trk_dets
     else:
-        num_id_dets = (
+        id_det_counts = (
             face_data.drop_duplicates(
                 subset=['identity', 'cam_id', 'f'], keep='first'
             )
@@ -792,7 +794,7 @@ def global_identification(
         return presence_df, face_data, trk_dets
 
     # convert prior to log-odds space so it can combine linearly with evidence:
-    log_prior = math.log(prior_presence) - math.log1p(-prior_presence)
+    log_prior = math.log(presence_prior) - math.log1p(-presence_prior)
 
     records = []
     for _, row in track_votes.iterrows():
@@ -816,15 +818,15 @@ def global_identification(
             posterior = 1.0 / (1.0 + math.exp(-log_odds))
         else:
             # zero detections -> prior x recall miss-probability:
-            posterior = prior_presence * (1.0 - recall_est)
+            posterior = presence_prior * (1.0 - fallback_recall_est)
 
         records.append({
             'identity'     : identity,
             'name'         : '_'.join(io_utils.lookup_name(identity)),
-            'n_detected'   : num_id_dets.get(identity, 0),
+            'n_detections' : id_det_counts[identity],
             'max_score'    : row['max_score'] if n_obs else 0.0,
             'posterior'    : posterior,
-            'present_flag' : posterior >= 0.5,
+            'present_flag' : posterior >= presence_thresh,
         })
 
     if not records:

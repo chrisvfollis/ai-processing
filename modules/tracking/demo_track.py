@@ -11,9 +11,8 @@ import torch
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # internal dependencies
+from utilities import utils, io_utils, log_utils
 from modules.spatial import bboxes
-import utilities.general_utils as utils
-from utilities import io_utils, log_utils
 from models import YoloX
 from modules import OCSort
 

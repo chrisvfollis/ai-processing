@@ -11,7 +11,10 @@ import cv2
 import torch
 
 # internal dependencies
-from utilities import io_utils
+from utilities import io_utils, log_utils
+
+
+logger = log_utils.get_logger(__name__)
 
 
 def get_git_commit_info(cfg_dir_path='../config'):

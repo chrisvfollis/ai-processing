@@ -11,8 +11,7 @@ import torch.nn.functional as F
 
 # internal dependencies
 from utilities.log_utils import press_stopwatch
-from utilities import io_utils
-import utilities.general_utils as utils
+from utilities import utils, io_utils
 
 
 class YOLOv4:

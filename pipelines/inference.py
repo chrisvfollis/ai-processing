@@ -18,11 +18,10 @@ import torch
 import numpy as np
 
 # internal dependencies
+from utilities import utils, io_utils, log_utils
 from models import YoloX, OSNet
 from modules.identification.face_analysis import FaceAnalysis
 from modules.spatial import bboxes
-from utilities import general_utils as utils
-from utilities import io_utils, log_utils
 
 
 logger = log_utils.get_logger(__name__)

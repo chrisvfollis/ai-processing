@@ -28,9 +28,11 @@ import psutil
 
 # internal dependencies
 from modules.spatial import bboxes
-from utilities import general_utils as utils
-from utilities import conn_utils
+from utilities import utils, conn_utils, log_utils
 from utilities.conn_utils import APIClient
+
+
+logger = log_utils.get_logger(__name__)
 
 
 # =============================================================================
@@ -357,6 +359,7 @@ def extract_and_save_crops(
     credentials: tuple[str, str],
 ):
     for cam_id, cam_df in event_imgs_df.groupby('cam_id'):
+        logger.info(f'Extracting event images from cam_id {cam_id}')
         video_path = video_paths.get(cam_id)
         if not video_path or not os.path.exists(video_path):
             print(f'Video path does not exist: {video_path}')
@@ -377,7 +380,6 @@ def extract_and_save_crops(
 
             img = frame.to_ndarray(format='bgr24')
             for row in frame_crop_map[idx]:
-                print('Cropping/saving...')
                 x1 = max(0, row['x'])
                 y1 = max(0, row['y'])
                 x2 = min(row['x'] + row['w'], img.shape[1])
@@ -398,8 +400,6 @@ def save_global_id_event_imgs(
 ):
     project_root = get_project_root()
 
-    print(f'Track detections: {len(trk_dets)} rows')
-
     output = []
 
     present_idents = presence_df[presence_df['present_flag']]['identity'].values
@@ -407,8 +407,6 @@ def save_global_id_event_imgs(
 
     face_data['cam_id'] = face_data['cam_id'].astype(int)
     trk_dets['cam_id'] = trk_dets['cam_id'].astype(int)
-
-    print(f'{len(face_data.groupby("identity"))} identities')
     
     for ident, id_faces in face_data.groupby('identity'):
         f_min, f_max = id_faces['f'].min(), id_faces['f'].max()

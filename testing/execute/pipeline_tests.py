@@ -7,8 +7,7 @@ import pickle
 pass
 
 # internal dependencies
-from utilities import io_utils, log_utils, conn_utils
-import utilities.general_utils as utils
+from utilities import utils, io_utils, conn_utils, log_utils
 
 logger = log_utils.get_logger(__name__)
 

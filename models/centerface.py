@@ -13,8 +13,7 @@ import torch
 # internal dependencies
 from modules.identification.data_structures import FacialAreaRegion
 from modules.spatial import bboxes
-from utilities import general_utils as utils
-from utilities import io_utils, log_utils
+from utilities import utils, io_utils, log_utils
 
 
 logger = log_utils.get_logger(__name__)

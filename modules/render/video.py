@@ -7,9 +7,8 @@ import av
 import cv2
 
 # internal dependencies
+from utilities import utils, io_utils
 from modules.render import annotate
-import utilities.general_utils as utils
-from utilities import io_utils
 
 
 def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff: Optional[int] = None):
