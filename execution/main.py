@@ -167,7 +167,7 @@ def wrap_up_segment(
     timestamp = utils.frame_timestamp(time_prefix)
 
     io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
-    io_utils.clear_queue_block(shop_id, timestamp)
+    # io_utils.clear_queue_block(shop_id, timestamp)
 
     io_utils.clear_local_files(time_prefix, target_extensions=[
         '.hdf5',
@@ -258,8 +258,8 @@ def main(
                 output_dir,
                 match_cutoff          = 0.25,
                 mismatch_threshold    = 0.90,
-                confidence_weight     = 0.45,
                 distance_score_weight = 0.55,
+                confidence_weight     = 0.45,
                 n_matches             = 1,
                 min_score             = 0.45,
                 reliability_scale     = 0.75,
