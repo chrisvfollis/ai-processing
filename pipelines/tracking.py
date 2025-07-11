@@ -52,7 +52,7 @@ class TrackingPipeline:
         self.prior_pkl = prior_pkl or ''
 
         # VIDEO ATTRIBUTES:
-        time_prefix, cam_id = utils.decode_vid_filename(video_file)
+        time_segment, cam_id = utils.decode_vid_filename(video_file)
         res, _, fps, f_total = utils.get_video_info(self.video_path, release=True)
 
         self.resolution = res
@@ -61,12 +61,12 @@ class TrackingPipeline:
         self.f_start = f_start
         self.f_end = f_end or f_total
 
-        self.start_time = utils.frame_timestamp(time_prefix, self.f_start, fps)
-        self.end_time = utils.frame_timestamp(time_prefix, self.f_end, fps)
+        self.start_time = utils.frame_timestamp(time_segment, self.f_start, fps)
+        self.end_time = utils.frame_timestamp(time_segment, self.f_end, fps)
         
         self.progress_interval = self.f_total // 4
 
-        self.time_prefix = time_prefix
+        self.time_segment = time_segment
         self.cam_id = cam_id
 
         # TRACKER:

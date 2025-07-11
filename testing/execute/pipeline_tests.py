@@ -68,7 +68,7 @@ def run_tracking_pipeline(video_file, inference_data=None):
     output_dir = os.path.join(project_root, 'files/output/')
 
     file_prefix = video_file.split('.')[0]
-    time_prefix, _ = utils.decode_vid_filename(video_file)
+    time_segment, _ = utils.decode_vid_filename(video_file)
 
     if not inference_data:
         filename = io_utils.get_latest_file(
@@ -85,7 +85,7 @@ def run_tracking_pipeline(video_file, inference_data=None):
 
     trk_pipeline = TrackingPipeline(
         video_file,
-        time_prefix,
+        time_segment,
         inference_data['object_detections'],
         inference_data['face_detections'],
         credentials,

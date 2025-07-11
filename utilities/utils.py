@@ -83,10 +83,10 @@ def frame_timestamp(clip_timestamp, f_num=0, fps=15):
 def decode_vid_filename(video_file) -> tuple[str, int]:
     sections = video_file.rsplit('_', 1)
 
-    time_prefix = sections[0]
+    time_segment = sections[0]
     cam_id = int(sections[1].split('.')[0])
 
-    return time_prefix, cam_id
+    return time_segment, cam_id
 
 
 def parse_filename(filename):
@@ -324,8 +324,8 @@ def query_columns_string(columns: list | tuple) -> str:
     return f"({', '.join(columns)})"
 
 
-def create_track_df(time_prefix: str) -> pd.DataFrame | None:
-    results = io_utils.get_track_info(time_prefix, designation='tracked_employee')
+def create_track_df(time_segment: str) -> pd.DataFrame | None:
+    results = io_utils.get_track_info(time_segment, designation='tracked_employee')
     if (not results) or (len(results) == 0):
         print('No tracked_employee tracks found')
         return None
@@ -380,3 +380,9 @@ def calculate_progress(completed, total):
     percent_complete = completed / total * 100
 
     return int(round(percent_complete, 0))
+
+
+def get_segment_info(segment_records: list[tuple]):
+    filenames = [row[2] for row in segment_records]
+    time_segment, _ = decode_vid_filename(filenames[0])
+    return time_segment, filenames

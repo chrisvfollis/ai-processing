@@ -370,7 +370,7 @@ def s3_time_delete(
         s3_client,
     )
     for timestamp in timestamps_to_clear:
-        io_utils.clear_queue_segment(shop_id, timestamp)
+        io_utils.dequeue_segment(shop_id, timestamp)
 
     return results
 

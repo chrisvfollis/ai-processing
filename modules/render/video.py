@@ -17,11 +17,11 @@ def global_id_output(video_file, person_df, face_df, trk_df, region_df, f_cutoff
     input_dir = os.path.join(project_root, 'files/input/')
     output_dir = os.path.join(project_root, 'files/output/')
 
-    time_prefix, cam_id = utils.decode_vid_filename(video_file)
+    time_segment, cam_id = utils.decode_vid_filename(video_file)
 
     input_path = os.path.join(input_dir, video_file)
     output_path = os.path.join(
-        output_dir, 'videos/', f'{time_prefix}_{cam_id}_annotated.mp4'
+        output_dir, 'videos/', f'{time_segment}_{cam_id}_annotated.mp4'
     )
 
     container = av.open(input_path)

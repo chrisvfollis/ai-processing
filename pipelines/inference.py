@@ -75,7 +75,7 @@ class InferencePipeline:
 
         self.f_num = 0
 
-        self.time_prefix, self.cam_id = utils.decode_vid_filename(self.video_file)
+        self.time_segment, self.cam_id = utils.decode_vid_filename(self.video_file)
 
         # PARAMETERS:
         self.track_stride = track_stride

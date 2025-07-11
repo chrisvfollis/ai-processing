@@ -396,7 +396,7 @@ def extract_and_save_crops(
 
 
 def save_global_id_event_imgs(
-        time_prefix, presence_df, face_data, trk_dets, credentials
+        time_segment, presence_df, face_data, trk_dets, credentials
 ):
     project_root = get_project_root()
 
@@ -484,7 +484,7 @@ def save_global_id_event_imgs(
 
     video_paths = {
         cam_id: os.path.join(
-            project_root, 'files/input', f'{time_prefix}_{cam_id}.mp4'
+            project_root, 'files/input', f'{time_segment}_{cam_id}.mp4'
         )
         for cam_id in event_imgs_df['cam_id'].unique()
     }
@@ -541,11 +541,11 @@ def upload_data(credentials, max_workers=8):
         print(f'S3 client error: {e}')
 
 
-def load_raw_detection_data(time_prefix, output_dir):
-    person_det_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_person_dets.parquet'))
-    face_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_faces.parquet'))
-    trk_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_trk_dets.parquet'))
-    region_log_files = sorted(Path(output_dir).glob(f'{time_prefix}_*_region_log.parquet'))
+def load_raw_detection_data(time_segment, output_dir):
+    person_det_files = sorted(Path(output_dir).glob(f'{time_segment}_*_person_dets.parquet'))
+    face_files = sorted(Path(output_dir).glob(f'{time_segment}_*_faces.parquet'))
+    trk_files = sorted(Path(output_dir).glob(f'{time_segment}_*_trk_dets.parquet'))
+    region_log_files = sorted(Path(output_dir).glob(f'{time_segment}_*_region_log.parquet'))
 
     person_det_dfs = [pd.read_parquet(f) for f in person_det_files]
     face_dfs = [pd.read_parquet(f) for f in face_files]
@@ -840,7 +840,7 @@ def get_designation(identity_uuid, db_name='data.db') -> str | None:
     return designation
 
 
-def save_track_info(time_prefix: str, target_trks: dict, fps: int = 30,
+def save_track_info(time_segment: str, target_trks: dict, fps: int = 30,
                     db_name='data.db') -> None:
     conn, cursor = conn_utils.sqlite_db_connect(os.path.join(
         get_project_root(), 'files/', db_name
@@ -869,11 +869,11 @@ def save_track_info(time_prefix: str, target_trks: dict, fps: int = 30,
         start_frame = trk.start
         end_frame = trk.map_offset(trk.start, trk.age)
 
-        start_time = utils.frame_timestamp(time_prefix, start_frame, fps)
-        end_time = utils.frame_timestamp(time_prefix, end_frame, fps)
+        start_time = utils.frame_timestamp(time_segment, start_frame, fps)
+        end_time = utils.frame_timestamp(time_segment, end_frame, fps)
 
         values = (
-            time_prefix,
+            time_segment,
             identity,
             start_img,
             end_img,
@@ -886,7 +886,7 @@ def save_track_info(time_prefix: str, target_trks: dict, fps: int = 30,
 
 
 def save_attendance_info(
-        time_prefix: str,
+        time_segment: str,
         presence_df: pd.DataFrame,
         event_imgs_df: pd.DataFrame,
         segment_length: float = 5.0,
@@ -914,8 +914,8 @@ def save_attendance_info(
     fps = 15
     end_frame = fps * total_seconds
 
-    start_time = utils.frame_timestamp(time_prefix)
-    end_time = utils.frame_timestamp(time_prefix, end_frame, fps)
+    start_time = utils.frame_timestamp(time_segment)
+    end_time = utils.frame_timestamp(time_segment, end_frame, fps)
 
     for _, row in presence_df.iterrows():
         if not row['present_flag']:
@@ -934,7 +934,7 @@ def save_attendance_info(
             start_img = end_img = ''
 
         values = (
-            time_prefix,
+            time_segment,
             identity,
             start_img,
             end_img,
@@ -946,7 +946,7 @@ def save_attendance_info(
     conn_utils.close_sqlite_db(conn, cursor, commit=True)
 
 
-def get_track_info(time_prefix: str, designation: Optional[str] = None,
+def get_track_info(time_segment: str, designation: Optional[str] = None,
                    db_name: str = 'data.db') -> list[tuple]:
     db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
@@ -957,7 +957,7 @@ def get_track_info(time_prefix: str, designation: Optional[str] = None,
         LEFT JOIN people ON track_info.identity = people.identity_uuid
         WHERE track_info.time_prefix = ?
     '''
-    params = [time_prefix]
+    params = [time_segment]
 
     if designation is not None:
         query += ' AND (people.designation = ? OR people.designation IS NULL)'
@@ -971,7 +971,7 @@ def get_track_info(time_prefix: str, designation: Optional[str] = None,
     return results
 
 
-def update_track_info(time_prefix, updates, db_name='data.db') -> None:
+def update_track_info(time_segment, updates, db_name='data.db') -> None:
     db_path = os.path.join(get_project_root(), 'files/', db_name)
     conn, cursor = conn_utils.sqlite_db_connect(db_path)
     
@@ -982,7 +982,7 @@ def update_track_info(time_prefix, updates, db_name='data.db') -> None:
         values = [data[col] for col in columns]
 
         condition = f"time_prefix = ? AND camera = ? AND track_id = ?"
-        values.extend([time_prefix, camera, id])
+        values.extend([time_segment, camera, id])
         query = f"UPDATE track_info SET {set_clause} WHERE {condition}"
 
         cursor.execute(query, values)
@@ -1150,19 +1150,19 @@ def fetch_person_data(
     return person_data
 
 
-def get_queue_segment(
+def get_next_queue_segment(
     shop_id: str,
     start_from: Optional[list | datetime] = None,
     priority_camera: Optional[str] = None,
 ) -> list[tuple] | None:
     '''
     Returns:
-        queue_segment (list[tuple] or None): A list of rows, where each row
+        segment_records (list[tuple] or None): A list of rows, where each row
         corresponds to a video file from the same time segment. Each row is
         ordered as follows:
             (`id`, `shop_id`, `filename`, `timestamp`, `cam_id`, `uploaded`) 
     '''
-    queue_segment = None
+    segment_records = None
     internal_api = APIClient(var_prefix='INTERNAL_API')
 
     if start_from:
@@ -1189,44 +1189,50 @@ def get_queue_segment(
         response.raise_for_status()
         try:
             data = response.json()
-            queue_segment = data.get('results', None)
+            segment_records = data.get('results', None)
 
         except ValueError:
             logger.error(f'Invalid JSON response: {response.text}')
     except requests.exceptions.RequestException as e:
         logger.error(f'Error making request: {e}')
     
-    if not queue_segment:
-        print('No clips in the queue')
+    if not segment_records:
+        logger.info('No footage in the queue')
     
-    return queue_segment
+    return segment_records
 
 
-def clear_queue_segment(shop_id, timestamp) -> None:
-    internal_api = APIClient(var_prefix='INTERNAL_API')
+def dequeue_segment(shop_id: str, time_segment: str) -> bool:
+    success_flag = False
 
+    timestamp = utils.frame_timestamp(time_segment).isoformat()
     payload = {
         'directive': 'clear_section',
         'shop_id': shop_id,
-        'timestamp': timestamp.isoformat()
+        'timestamp': timestamp
     }
+
+    internal_api = APIClient(var_prefix='INTERNAL_API')
     response = internal_api.post('update_queue/', json=payload)
 
     if response.status_code == 200:
-        print('Successfully cleared queue segment')
+        logger.info('Successfully dequeued records')
+        success_flag = True
     else:
-        print(f'Failed posting to internal API: {response.text}')
-        print(response.status_code) 
+        logger.warning(
+            f'Failed to dequeue: {response.text} \n{response.status_code}'
+        )
 
+    return success_flag
 
 def post_event_data(
-        shop_id, time_prefix, delete_data: bool = True, logger=None
+        shop_id, time_segment, delete_data: bool = True, logger=None
 ) -> bool:
     successful_post = False
 
     webapp_api = APIClient(var_prefix='WEBAPP_API')
 
-    track_data_df = utils.create_track_df(time_prefix)
+    track_data_df = utils.create_track_df(time_segment)
     if track_data_df is None or track_data_df.empty:
         if logger is None:
             print('No tracks found to post')
@@ -1279,7 +1285,7 @@ def post_event_data(
             logger.info(success_message)
 
         if delete_data:
-            clear_track_info(time_prefix)
+            clear_track_info(time_segment)
 
         successful_post = True
     else:

@@ -47,7 +47,7 @@ def run_worker_pipeline(
     io_utils.clear_memory()
 
     shop_id, filename = footage_record[1:3]
-    time_prefix, cam_id = utils.decode_vid_filename(filename)
+    time_segment, cam_id = utils.decode_vid_filename(filename)
 
     inference_cfg = {'model_cfg': model_cfg, 'device': device}
     if id_strategy == 'local':
@@ -61,7 +61,7 @@ def run_worker_pipeline(
             'use_features': False,
         }
 
-    file_prefix = f'{time_prefix}_{cam_id}'
+    file_prefix = f'{time_segment}_{cam_id}'
     object_key = f'{shop_id}/{filename}'
     
     process_result = False
@@ -83,9 +83,9 @@ def run_worker_pipeline(
         tracking.filter_tracks()
         trk_detections, _ = tracking.format_track_data()
 
-        if id_strategy == 'local':
+        if id_strategy == 'assign_tracks':
             try:
-                active_trks, inactive_trks = identify.identify_local_tracks(
+                active_trks, inactive_trks = identify.assign_track_identities(
                     face_data, active_trks, inactive_trks, trk_detections,
                     filename, credentials,
                 )
@@ -99,9 +99,9 @@ def run_worker_pipeline(
                 logger.exception('Error during local ID')
 
             io_utils.save_track_info(
-                time_prefix, cam_id, inactive_trks, tracking.fps
+                time_segment, cam_id, inactive_trks, tracking.fps
             )
-        elif id_strategy == 'global':
+        elif id_strategy == 'assess_presence':
             output_data = {
                 'person_dets': inference.person_detection_df,
                 'trk_dets': trk_detections,
@@ -158,18 +158,18 @@ def process_segment_records(footage_records: list[tuple], process_config: tuple)
 
 def wrap_up_segment(
     segment_filenames: list,
-    time_prefix: str,
+    time_segment: str,
     shop_id: str,
     credentials: tuple[str],
     retain_footage: bool,
     save_all_data: bool,
 ):
-    timestamp = utils.frame_timestamp(time_prefix)
+    logger.info('Finalizing time segment...')
+    
+    io_utils.post_event_data(shop_id, time_segment, delete_data=True, logger=logger)
+    io_utils.dequeue_segment(shop_id, time_segment)
 
-    io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
-    io_utils.clear_queue_segment(shop_id, timestamp)
-
-    io_utils.clear_local_files(time_prefix, target_extensions=[
+    io_utils.clear_local_files(time_segment, target_extensions=[
         '.hdf5',
         '.png',
         '.jpg',
@@ -180,13 +180,13 @@ def wrap_up_segment(
         io_utils.upload_data(credentials)
 
     if retain_footage == True:
-        io_utils.clear_local_files(time_prefix, skip_suffixes=['.mp4'])
+        io_utils.clear_local_files(time_segment, skip_suffixes=['.mp4'])
         return
     else:
         object_keys = [f'{shop_id}/{filename}' for filename in segment_filenames]
         io_utils.delete_s3_footage(object_keys, credentials)
 
-    io_utils.clear_local_files(time_prefix)
+    io_utils.clear_local_files(time_segment)
 
 
 # =============================================================================
@@ -203,7 +203,7 @@ def main(
     credentials: tuple[str] = None,
     save_all_data: bool = False,
     retain_footage: bool = False,
-    starting_point: Optional[datetime] = None,
+    start_from: Optional[datetime] = None,
     priority_cam: Optional[int] = None,
     f_cutoff: Optional[int] = None,
 ):
@@ -226,8 +226,8 @@ def main(
     }
 
     dir_paths = io_utils.get_common_dirs()
-    input_dir, output_dir, event_imgs_dir = [
-        dir_paths[name] for name in ['input_dir', 'output_dir', 'event_imgs_dir']
+    output_dir, event_imgs_dir = [
+        dir_paths[name] for name in ['output_dir', 'event_imgs_dir']
     ]
 
     io_utils.clear_local_files(target_dirs=[output_dir, event_imgs_dir])
@@ -235,28 +235,27 @@ def main(
 
     while True:
         io_utils.cleanup_semaphores(logger)
-        segment_records = io_utils.get_queue_segment(
-            shop_id, starting_point, priority_cam,
+        segment_records = io_utils.get_next_queue_segment(
+            shop_id, start_from, priority_cam,
         )
         if not segment_records:
             time.sleep(60)
             continue
         else:
-            time_logger, stop_timing = log_utils.observability_thread(
+            elapsed_time_logs, stop_timing = log_utils.observability_thread(
                 target='elapsed_time', logger=logger
             )
-            time_logger.start()
+            elapsed_time_logs.start()
 
-        filenames = [row[2] for row in segment_records]
-        time_prefix, _ = utils.decode_vid_filename(filenames[0])
-
+        time_segment_info = utils.get_segment_info(segment_records)
+        time_segment, filenames = time_segment_info
+        
         process_segment_records(segment_records, process_cfg)
 
-        if id_strategy == 'global':
+        if id_strategy == 'assess_presence':
             logger.info('Running global identification...')
-            results = identify.global_identification(
-                time_prefix,
-                output_dir,
+            results = identify.assess_present_identities(
+                time_segment,
                 match_cutoff          = 0.25,
                 mismatch_threshold    = 0.90,
                 distance_score_weight = 0.55,
@@ -284,9 +283,9 @@ def main(
             ):
                 logger.info('Generating event images...')
                 event_imgs_df = io_utils.save_global_id_event_imgs(
-                    time_prefix, presence_df, filtered_faces, trk_dets, credentials
+                    time_segment, presence_df, filtered_faces, trk_dets, credentials
                 )
-                io_utils.save_attendance_info(time_prefix, presence_df, event_imgs_df)
+                io_utils.save_attendance_info(time_segment, presence_df, event_imgs_df)
             else:
                 logger.warning(
                     'Skipping event image generation — no valid identities found'
@@ -294,7 +293,7 @@ def main(
 
             if save_all_data:
                 id_results_paths = [
-                    os.path.join(output_dir, f'{time_prefix}_{suffix}.csv')
+                    os.path.join(output_dir, f'{time_segment}_{suffix}.csv')
                     for suffix in [
                         'presence_summary', 'filtered_faces', 'trk_dets'
                     ]
@@ -303,7 +302,7 @@ def main(
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
 
-                raw_people, raw_faces, raw_trks, raw_regions = io_utils.load_raw_detection_data(time_prefix, output_dir)
+                raw_people, raw_faces, raw_trks, raw_regions = io_utils.load_raw_detection_data(time_segment, output_dir)
                 for filename in filenames:
                     if not filename.endswith('.mp4'):
                         continue
@@ -332,10 +331,9 @@ def main(
                         logger.exception(f'Failed to render annotated video for {filename}: {e}')
 
         stop_timing.set()
-        time_logger.join()
-
-        logger.info('Finalizing queue block...')
-        wrap_up_segment(filenames, time_prefix, **basic_args)
+        elapsed_time_logs.join()
+        
+        wrap_up_segment(filenames, time_segment, **basic_args)
 
 
 if __name__ == '__main__':
@@ -347,17 +345,17 @@ if __name__ == '__main__':
     parser.add_argument('--save-all-data', action='store_true', default=False)
     parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
     parser.add_argument('--priority-cam', type=str)
-    parser.add_argument('--id-strategy', type=str, default='local')
+    parser.add_argument('--id-strategy', type=str, default='assess_presence')
     parser.add_argument('--f-cutoff', type=int, default=None)
     args = parser.parse_args()
 
     log_utils.configure_logging(log_level=args.log_level)
 
-    starting_point = None
+    start_from = None
     if args.start_from:
         try:
-            parts = [int(x) for x in args.start_from.split(',')]
-            starting_point = datetime(*parts)
+            datetime_pieces = [int(x) for x in args.start_from.split(',')]
+            start_from = datetime(*datetime_pieces)
         except Exception as e:
             logger.error(f'Invalid --start-from value: {args.start_from} ({e})')
             sys.exit(1)
@@ -412,7 +410,7 @@ if __name__ == '__main__':
         'credentials'    : aws_credentials,
         'retain_footage' : args.retain_footage,
         'save_all_data'  : args.save_all_data,
-        'starting_point' : starting_point,
+        'start_from'     : start_from,
         'priority_cam'   : args.priority_cam,
         'f_cutoff'       : args.f_cutoff,
     }
