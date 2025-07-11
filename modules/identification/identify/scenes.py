@@ -74,6 +74,19 @@ def assess_present_identities(
     face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
     trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
 
+    # filter time interval if applicable:
+    if start_sec is not None and end_sec is not None:
+        face_data = face_data[
+            (face_data['s'] >= start_sec) & (face_data['s'] < end_sec)
+        ]
+        trk_dets = trk_dets[
+            (trk_dets['s'] >= start_sec) & (trk_dets['s'] < end_sec)
+        ]
+        if face_data.empty:
+            presence_df = _empty_presence_df()
+            logger.info(f'No data in time interval [{start_sec}, {end_sec})')
+            return presence_df, face_data, trk_dets
+
     # retain only the top `n_matches` row(s) per detection:
     face_data = (
         face_data.sort_values('distance', ascending=True)
@@ -261,11 +274,23 @@ def assess_present_identities(
     return presence_df, face_data, trk_dets
 
 
-def identity_presence_sweep(
+def subsegment_identity_sweep(
     time_segment: str,
-    segment_duration: int = 300,
+    full_segment_results: tuple,
+    full_segment_duration: int = 300,
+    full_segment_params: dict = {},
     subsegment_duration: int = 60,
-    segment_params: dict = {},
     subsegment_params: dict = {},
 ) -> dict:
-    pass
+    results = {}
+    results['full_segment'] = full_segment_results
+    
+    n_subs = full_segment_duration // subsegment_duration
+    for i in range(n_subs):
+        start = i * subsegment_duration
+        end = start + subsegment_duration
+        subsegment_results = assess_present_identities(
+            time_segment,
+            start_sec = start,
+            end_sec = end,
+        )
