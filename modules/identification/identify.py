@@ -608,11 +608,11 @@ def global_identification(
     distance_score_weight: float = 0.55,
     confidence_weight: float = 0.45,
     # ----- fusion / filtering knobs -----------------------------------
-    n_matches: int = 1,                   # max ID matches per face detection
+    n_matches: int = 1,                 # max ID matches per face detection
     min_score: float = 0.45,
-    reliability_scale: float = 0.75,      # α – scales `score` -> success probability
-    fp_rate: float = 0.20,                # β – per-detection false positive rate
-    presence_prior: float = 0.05,         # π – assumed prior for P(identity present)
+    reliability_scale: float = 0.75,    # α – scales `score` -> success probability
+    fp_rate: float = 0.20,              # β – per-detection false positive rate
+    presence_prior: float = 0.05,       # π – assumed prior for P(identity present)
     bias_score_boundary: float = 0.70,
     penalty_biases: tuple[float, float] = (0.50, 1.25),
     # ----- temporal weighting knobs -----------------------------------

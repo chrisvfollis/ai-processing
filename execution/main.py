@@ -131,12 +131,12 @@ def run_worker_pipeline(
 
 
 # =============================================================================
-#                      - QUEUE SEGMENT PROCESSING -
+#                    - QUEUED TIME SEGMENT PROCESSING -
 # -----------------------------------------------------------------------------
 
 
-def queue_segment_multiprocess(footage_records: list[tuple], process_config: tuple):
-    logger.info('Starting processing run for queue block ...')
+def process_segment_records(footage_records: list[tuple], process_config: tuple):
+    logger.info('Processing time segment records...')
 
     footage_processing_tasks = [
         ((record,) + process_config) for record in footage_records
@@ -167,7 +167,7 @@ def wrap_up_segment(
     timestamp = utils.frame_timestamp(time_prefix)
 
     io_utils.post_event_data(shop_id, time_prefix, delete_data=True, logger=logger)
-    # io_utils.clear_queue_block(shop_id, timestamp)
+    io_utils.clear_queue_segment(shop_id, timestamp)
 
     io_utils.clear_local_files(time_prefix, target_extensions=[
         '.hdf5',
@@ -235,22 +235,23 @@ def main(
 
     while True:
         io_utils.cleanup_semaphores(logger)
-        queue_block_records = io_utils.get_queue_block(
+        segment_records = io_utils.get_queue_segment(
             shop_id, starting_point, priority_cam,
         )
-        if not queue_block_records:
+        if not segment_records:
             time.sleep(60)
             continue
         else:
-            filenames = [row[2] for row in queue_block_records]
-            time_prefix, _ = utils.decode_vid_filename(filenames[0])
+            time_logger, stop_timing = log_utils.observability_thread(
+                target='elapsed_time', logger=logger
+            )
+            time_logger.start()
 
-        time_logger, stop_timing = log_utils.observability_thread(
-            target='elapsed_time', logger=logger
-        )
-        time_logger.start()
+        filenames = [row[2] for row in segment_records]
+        time_prefix, _ = utils.decode_vid_filename(filenames[0])
 
-        queue_segment_multiprocess(queue_block_records, process_cfg)
+        process_segment_records(segment_records, process_cfg)
+
         if id_strategy == 'global':
             logger.info('Running global identification...')
             results = identify.global_identification(

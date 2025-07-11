@@ -1150,50 +1150,59 @@ def fetch_person_data(
     return person_data
 
 
-def get_queue_block(
-        shop_id: str,
-        start_from: list | datetime = None,
-        priority_camera: str = None,
+def get_queue_segment(
+    shop_id: str,
+    start_from: Optional[list | datetime] = None,
+    priority_camera: Optional[str] = None,
 ) -> list[tuple] | None:
     '''
     Returns:
-        queue_block (list[tuple] or None): A list of rows corresponding to each
-            video file in the queue block. Each queue block row is ordered as
-            follows: (id, shop_id, filename, timestamp, cam_id, uploaded) 
+        queue_segment (list[tuple] or None): A list of rows, where each row
+        corresponds to a video file from the same time segment. Each row is
+        ordered as follows:
+            (`id`, `shop_id`, `filename`, `timestamp`, `cam_id`, `uploaded`) 
     '''
-    queue_block = None
-
+    queue_segment = None
     internal_api = APIClient(var_prefix='INTERNAL_API')
-    params = {'shop_id': shop_id, 'priority_camera': priority_camera}
+
     if start_from:
         try:
             if isinstance(start_from, list):
-                start_from = datetime(*start_from)
+                start_from = datetime(*start_from).isoformat(timespec='seconds')
+            start_from = start_from.isoformat(timespec='seconds')
+        except Exception as e:
+            logger.warning(
+                f'Invalid `start_from`: {start_from}. Reason: {e.args[0]} \n'
+            )
+            logger.info('Now starting from top of queue...')
 
-            params['start_from'] = start_from.isoformat(timespec='seconds')
-
-        except Exception:
-            print(f'Invalid start time input: {start_from}. Using default instead.')
-
+    params = {
+        'shop_id': shop_id,
+        'start_from': start_from,
+        'priority_camera': priority_camera, 
+    }
     try:
-        response = internal_api.get('get_queue_block/', params=params)
+        response = internal_api.get('get_queue_block/', params={
+            param: arg for param, arg in params.items()
+            if arg is not None
+        })
         response.raise_for_status()
         try:
             data = response.json()
-            queue_block = data.get('results', None)
+            queue_segment = data.get('results', None)
 
         except ValueError:
-            print(f'Invalid JSON response: {response.text}')
+            logger.error(f'Invalid JSON response: {response.text}')
     except requests.exceptions.RequestException as e:
-        print(f'Error making request: {e}')
+        logger.error(f'Error making request: {e}')
     
-    if not queue_block:
+    if not queue_segment:
         print('No clips in the queue')
     
-    return queue_block
+    return queue_segment
 
 
-def clear_queue_block(shop_id, timestamp) -> None:
+def clear_queue_segment(shop_id, timestamp) -> None:
     internal_api = APIClient(var_prefix='INTERNAL_API')
 
     payload = {
@@ -1204,7 +1213,7 @@ def clear_queue_block(shop_id, timestamp) -> None:
     response = internal_api.post('update_queue/', json=payload)
 
     if response.status_code == 200:
-        print('Successfully cleared queue block')
+        print('Successfully cleared queue segment')
     else:
         print(f'Failed posting to internal API: {response.text}')
         print(response.status_code) 

@@ -1,6 +1,6 @@
 # standard dependencies
 import os
-from typing import Optional
+from typing import Optional, Union
 
 # 3rd-party dependencies
 import boto3
@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import psycopg2
 import sqlite3
 import requests
+from requests.models import Response
 
 # internal dependencies
 pass
@@ -37,29 +38,48 @@ class APIClient:
             'X-Custom-API-Key': self.api_key,
             'Content-Type': 'application/json'
         }
-    
-    def endpoint_url(self, endpoint: str):
+        
+    def get_endpoint_url(self, endpoint: str):
         return self.base_url + endpoint
     
     def get(
-            self, endpoint: str, headers: dict = None, params: dict = None,
-            json=None
-    ) -> requests.models.Response:
+        self, endpoint: str, headers: Optional[dict] = None,
+        params: Optional[dict] = None, json: Optional[dict] = None
+    ) -> Response:
+        full_endpoint_url = self.get_endpoint_url(endpoint)
 
-        endpoint_url = self.endpoint_url(endpoint)
-        headers = headers or self.headers
-
-        return requests.get(endpoint_url, headers=headers, params=params, json=json)
+        response = requests.get(
+            full_endpoint_url, headers=(headers or self.headers),
+            **self._sanitize_payload(params, json)
+        )
+        return response
     
     def post(
-            self, endpoint: str, headers: dict = None, params: dict = None,
-            json=None
-    ) -> requests.models.Response:
+        self, endpoint: str, headers: Optional[dict] = None,
+        params: Optional[dict] = None, json: Optional[dict] = None
+    ) -> Response:
+        full_endpoint_url = self.get_endpoint_url(endpoint)
 
-        endpoint_url = self.endpoint_url(endpoint)
-        headers = headers or self.headers
+        response = requests.post(
+            full_endpoint_url, headers=(headers or self.headers),
+            **self._sanitize_payload(params, json)
+        )
+        return response
 
-        return requests.post(endpoint_url, headers=headers, params=params, json=json)
+    def _sanitize_payload(
+        self, params: dict | None, json: dict | None
+    ) -> dict:
+        payload_data = {}
+
+        for field_name, field_data in zip(['params', 'json'], [params, json]):
+            if field_data is not None:
+                field_data = {
+                    k: v for k, v in field_data.items()
+                    if v is not None
+                }
+            payload_data[field_name] = field_data
+
+        return payload_data
 
 
 # =============================================================================
