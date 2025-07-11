@@ -259,3 +259,13 @@ def assess_present_identities(
         ))
 
     return presence_df, face_data, trk_dets
+
+
+def identity_presence_sweep(
+    time_segment: str,
+    segment_duration: int = 300,
+    subsegment_duration: int = 60,
+    segment_params: dict = {},
+    subsegment_params: dict = {},
+) -> dict:
+    pass

@@ -332,7 +332,7 @@ def main(
 
         stop_timing.set()
         elapsed_time_logs.join()
-        
+
         wrap_up_segment(filenames, time_segment, **basic_args)
 
 
