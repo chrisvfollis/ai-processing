@@ -257,8 +257,7 @@ def main(
             face_data, trk_dets = processing_output[2:]
 
             logger.info('Running global identification...')
-            results = identify.assess_present_identities(
-                face_data,
+            identity_presence_params = utils.package_id_presence_params(
                 match_cutoff          = 0.25,
                 mismatch_threshold    = 0.90,
                 distance_score_weight = 0.55,
@@ -278,7 +277,13 @@ def main(
                 fallback_recall_est   = 0.60,
                 presence_thresh       = 0.55,
             )
-            presence_df, filtered_faces = results
+            presence_df, filtered_faces = identify.assess_present_identities(
+                face_data, **identity_presence_params
+            )
+            subsegment_results = identify.subsegment_identity_sweep(
+                face_data, presence_df, identity_presence_params,
+                full_duration=300, sub_duration=60
+            )
             logger.info('Finished global identification')
 
             if 'identity' in presence_df.columns and (

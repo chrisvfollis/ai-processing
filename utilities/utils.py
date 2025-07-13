@@ -385,4 +385,47 @@ def calculate_progress(completed, total):
 def get_segment_info(segment_records: list[tuple]):
     filenames = [row[2] for row in segment_records]
     time_segment, _ = decode_vid_filename(filenames[0])
+
     return time_segment, filenames
+
+
+def package_id_presence_params(
+    match_cutoff: float,
+    mismatch_threshold: float,
+    distance_score_weight: float,
+    confidence_weight: float,
+    n_matches: int,
+    min_score: float,
+    reliability_scale: float,
+    fp_rate: float,
+    presence_prior: float,
+    bias_score_boundary: float,
+    penalty_biases: tuple[float, float],
+    decay_window: float,
+    boost_range: tuple[float, float],
+    max_decay: float,
+    max_boost: float,
+    boost_per_neighbor: float,
+    fallback_recall_est: float,
+    presence_thresh: float,
+) -> dict:
+    return {
+        'match_cutoff'          : match_cutoff,
+        'mismatch_threshold'    : mismatch_threshold,
+        'distance_score_weight' : distance_score_weight,
+        'confidence_weight'     : confidence_weight,
+        'n_matches'             : n_matches,
+        'min_score'             : min_score,
+        'reliability_scale'     : reliability_scale,
+        'fp_rate'               : fp_rate,
+        'presence_prior'        : presence_prior,
+        'bias_score_boundary'   : bias_score_boundary,
+        'penalty_biases'        : penalty_biases,
+        'decay_window'          : decay_window,
+        'boost_range'           : boost_range,
+        'max_decay'             : max_decay,
+        'max_boost'             : max_boost,
+        'boost_per_neighbor'    : boost_per_neighbor,
+        'fallback_recall_est'   : fallback_recall_est,
+        'presence_thresh'       : presence_thresh,
+    }
