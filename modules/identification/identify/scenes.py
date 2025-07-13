@@ -1,7 +1,6 @@
 # standard dependencies
-import os
 from typing import Optional
-from pathlib import Path
+from datetime import datetime, timedelta
 import math
 
 # 3rd-party dependencies
@@ -9,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 # internal dependencies
-from utilities import io_utils, log_utils
+from utilities import utils, io_utils, log_utils
 
 
 logger = log_utils.get_logger(__name__)
@@ -263,6 +262,7 @@ def subsegment_identity_sweep(
     full_params: dict,
     full_duration: int = 300,
     sub_duration: int = 60,
+    flip_thresh: float = 0.80
 ) -> dict:
     results = {}
     n_subs = full_duration // sub_duration
@@ -275,6 +275,7 @@ def subsegment_identity_sweep(
     }
     subsegment_params = full_params | subsegment_params
 
+    presence_dfs, filtered_faces = [], []
     for i in range(n_subs):
         start_sec = i * sub_duration
         end_sec = start_sec + sub_duration
@@ -282,6 +283,31 @@ def subsegment_identity_sweep(
         subsegment_results = assess_present_identities(
             face_data, start_sec, end_sec, **subsegment_params,
         )
-        results[f'sub{i+1}'] = subsegment_results
+        presence_dfs.append(subsegment_results[0])
+        filtered_faces.append(subsegment_results[1])
+
+    for i, df in enumerate(presence_dfs):
+        df = df.copy()
+        if 0 < i < len(presence_dfs) - 1:
+            prev_df = presence_dfs[i - 1]
+            next_df = presence_dfs[i + 1]
+
+            common_ids = np.intersect1d(
+                prev_df['identity'].values,
+                next_df['identity'].values,
+            )
+            common_ids = np.intersect1d(common_ids, df['identity'].values)
+
+            for identity in common_ids:
+                if df.at[identity, 'present_flag'] == True:
+                    continue
+
+                if (
+                    (prev_df.at[identity, 'posterior'] >= flip_thresh) and
+                    (next_df.at[identity, 'posterior'] >= flip_thresh)
+                ):
+                    df.at[identity, 'present_flag'] = True
+
+        results[i] = (df, filtered_faces[i])
 
     return results
