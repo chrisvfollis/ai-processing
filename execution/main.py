@@ -253,9 +253,12 @@ def main(
         process_segment_records(segment_records, process_cfg)
 
         if id_strategy == 'assess_presence':
+            processing_output = io_utils.load_processing_output(time_segment)
+            face_data, trk_dets = processing_output[2:]
+
             logger.info('Running global identification...')
             results = identify.assess_present_identities(
-                time_segment,
+                face_data,
                 match_cutoff          = 0.25,
                 mismatch_threshold    = 0.90,
                 distance_score_weight = 0.55,
@@ -275,7 +278,7 @@ def main(
                 fallback_recall_est   = 0.60,
                 presence_thresh       = 0.55,
             )
-            presence_df, filtered_faces, trk_dets = results
+            presence_df, filtered_faces = results
             logger.info('Finished global identification')
 
             if 'identity' in presence_df.columns and (
@@ -301,29 +304,29 @@ def main(
                 presence_df.to_csv(id_results_paths[0], index=False)
                 filtered_faces.to_csv(id_results_paths[1], index=False)
                 trk_dets.to_csv(id_results_paths[2], index=False)
-
-                raw_people, raw_faces, raw_trks, raw_regions = io_utils.load_raw_detection_data(time_segment, output_dir)
+                
+                person_det_data, region_log_data = processing_output[:2]
                 for filename in filenames:
                     if not filename.endswith('.mp4'):
                         continue
 
                     _, cam_id = utils.decode_vid_filename(filename)
-                    person_dets_data = raw_people.loc[raw_people['cam_id'] == cam_id]
-                    face_data = raw_faces.loc[raw_faces['cam_id'] == cam_id]
-                    trk_dets_data = raw_trks.loc[raw_trks['cam_id'] == cam_id]
-                    region_data = raw_regions.loc[raw_regions['cam_id'] == cam_id]
-
-                    if face_data.empty and trk_dets_data.empty:
+                    cam_person_det_data = person_det_data.loc[person_det_data['cam_id'] == cam_id]
+                    cam_region_log_data = region_log_data.loc[region_log_data['cam_id'] == cam_id]
+                    cam_face_data = face_data.loc[face_data['cam_id'] == cam_id]
+                    cam_trk_dets  = trk_dets.loc[trk_dets['cam_id'] == cam_id]
+                    
+                    if cam_face_data.empty and cam_trk_dets.empty:
                         continue
 
                     try:
                         logger.info('Rendering video annotations...')
                         render.video.global_id_output(
                             filename,
-                            person_df=person_dets_data,
-                            face_df=face_data,
-                            trk_df=trk_dets_data,
-                            region_df=region_data,
+                            person_df=cam_person_det_data,
+                            face_df=cam_face_data,
+                            trk_df=cam_trk_dets,
+                            region_df=cam_region_log_data,
                             f_cutoff=f_cutoff,
                         )
                         logger.info(f'Annotated video saved')

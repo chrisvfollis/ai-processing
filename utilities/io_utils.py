@@ -541,23 +541,28 @@ def upload_data(credentials, max_workers=8):
         print(f'S3 client error: {e}')
 
 
-def load_raw_detection_data(time_segment, output_dir):
+def load_processing_output(time_segment):
+    project_root = get_project_root()
+    output_dir = os.path.join(project_root, 'files/output/')
+
     person_det_files = sorted(Path(output_dir).glob(f'{time_segment}_*_person_dets.parquet'))
-    face_files = sorted(Path(output_dir).glob(f'{time_segment}_*_faces.parquet'))
-    trk_files = sorted(Path(output_dir).glob(f'{time_segment}_*_trk_dets.parquet'))
     region_log_files = sorted(Path(output_dir).glob(f'{time_segment}_*_region_log.parquet'))
 
-    person_det_dfs = [pd.read_parquet(f) for f in person_det_files]
-    face_dfs = [pd.read_parquet(f) for f in face_files]
-    trk_dfs = [pd.read_parquet(f) for f in trk_files]
-    region_dfs = [pd.read_parquet(f) for f in region_log_files]
+    person_det_data = pd.concat([pd.read_parquet(f) for f in person_det_files], ignore_index=True)
+    region_log_data = pd.concat([pd.read_parquet(f) for f in region_log_files], ignore_index=True)
 
-    raw_people = pd.concat(person_det_dfs, ignore_index=True)
-    raw_faces = pd.concat(face_dfs, ignore_index=True)
-    raw_trks = pd.concat(trk_dfs, ignore_index=True)
-    raw_regions = pd.concat(region_dfs, ignore_index=True)
+    face_files = sorted(Path(output_dir).glob(f'{time_segment}_*_faces.parquet'))
+    trk_files  = sorted(Path(output_dir).glob(f'{time_segment}_*_trk_dets.parquet'))
 
-    return raw_people, raw_faces, raw_trks, raw_regions
+    if not face_files:
+        raise FileNotFoundError(
+            f'No face data files for {time_segment} in {output_dir}'
+        )
+
+    face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
+    trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
+
+    return person_det_data, region_log_data, face_data, trk_dets, 
 
 
 def parquet_to_csv(input_path: str = os.path.expanduser('~/Downloads'), remove=True):

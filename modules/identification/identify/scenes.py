@@ -16,7 +16,7 @@ logger = log_utils.get_logger(__name__)
 
 
 def assess_present_identities(
-    time_segment: str,
+    face_data: pd.DataFrame,
     start_sec: Optional[float] = None,
     end_sec: Optional[float] = None,
     # ----- feature-engineering knobs ----------------------------------
@@ -41,10 +41,10 @@ def assess_present_identities(
     # ----- final results knobs ----------------------------------------
     fallback_recall_est: float = 0.60,
     presence_thresh: float = 0.55,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     '''
     Determines which identities were present in the work zone within a given
-    time segment by assessing the combined inference/tracking/etc data from
+    time segment by assessing the combined face detection/recognition data from
     all available camera footage for that time.
     '''
     def _empty_presence_df():
@@ -60,32 +60,17 @@ def assess_present_identities(
         )
         return presence_df
 
-    project_root = io_utils.get_project_root()
-    output_dir = os.path.join(project_root, 'files/output/')
-
-    face_files = sorted(Path(output_dir).glob(f'{time_segment}_*_faces.parquet'))
-    trk_files  = sorted(Path(output_dir).glob(f'{time_segment}_*_trk_dets.parquet'))
-
-    if not face_files:
-        raise FileNotFoundError(
-            f'No face data files for {time_segment} in {output_dir}'
-        )
-
-    face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
-    trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
+    face_data = face_data.copy()
 
     # filter time interval if applicable:
     if start_sec is not None and end_sec is not None:
         face_data = face_data[
             (face_data['s'] >= start_sec) & (face_data['s'] < end_sec)
         ]
-        trk_dets = trk_dets[
-            (trk_dets['s'] >= start_sec) & (trk_dets['s'] < end_sec)
-        ]
         if face_data.empty:
             presence_df = _empty_presence_df()
             logger.info(f'No data in time interval [{start_sec}, {end_sec})')
-            return presence_df, face_data, trk_dets
+            return presence_df, face_data
 
     # retain only the top `n_matches` row(s) per detection:
     face_data = (
@@ -117,7 +102,7 @@ def assess_present_identities(
     if face_data.empty:
         presence_df = _empty_presence_df()
         logger.info('No face dets above `min_score` threshold')
-        return presence_df, face_data, trk_dets
+        return presence_df, face_data
     else:
         id_det_counts = (
             face_data.drop_duplicates(
@@ -224,7 +209,7 @@ def assess_present_identities(
         logger.info(
             'No track votes could be formed — skipping presence estimation'
         )
-        return presence_df, face_data, trk_dets
+        return presence_df, face_data
 
     # convert prior to log-odds space so it can combine linearly with evidence:
     log_prior = math.log(presence_prior) - math.log1p(-presence_prior)
@@ -266,12 +251,10 @@ def assess_present_identities(
         presence_df = _empty_presence_df()
         logger.info('No face detections above score threshold')
     else:
-        presence_df = pd.DataFrame(records).sort_values('posterior', ascending=False)
-        presence_df.to_parquet(os.path.join(
-            output_dir, f'{time_segment}_presence_summary.parquet'
-        ))
+        presence_df = pd.DataFrame(records)
+        presence_df = presence_df.sort_values('posterior', ascending=False)
 
-    return presence_df, face_data, trk_dets
+    return presence_df, face_data
 
 
 def subsegment_identity_sweep(
@@ -280,7 +263,8 @@ def subsegment_identity_sweep(
     full_segment_duration: int = 300,
     full_segment_params: dict = {},
     subsegment_duration: int = 60,
-    subsegment_params: dict = {},
+    subsegment_min_score: float = 0.40,
+    subsegment_fp_rate: float = 0.25,
 ) -> dict:
     results = {}
     results['full_segment'] = full_segment_results
@@ -294,3 +278,4 @@ def subsegment_identity_sweep(
             start_sec = start,
             end_sec = end,
         )
+        results[f'sub{i+1}'] = subsegment_results
