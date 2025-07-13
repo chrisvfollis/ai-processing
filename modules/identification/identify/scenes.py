@@ -271,7 +271,13 @@ def subsegment_identity_sweep(
     face_data = face_data[face_data['identity'].isin(present_ids)]
 
     subsegment_params = {
+        'distance_score_weight': 50,
+        'confidence_weight': 50,
+        'min_score': full_params['bias_score_boundary'] / 2,
+        'reliability_scale': full_params['reliability_scale'] * 1.1,
         'presence_prior': 1 / n_subs,
+        'bias_score_boundary': full_params['bias_score_boundary'] / 2,
+
     }
     subsegment_params = full_params | subsegment_params
 
