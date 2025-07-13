@@ -50,12 +50,12 @@ def run_worker_pipeline(
     time_segment, cam_id = utils.decode_vid_filename(filename)
 
     inference_cfg = {'model_cfg': model_cfg, 'device': device}
-    if id_strategy == 'local':
+    if id_strategy == 'assign_tracks':
         inference_cfg = inference_cfg | {
             'id_freq': '2 Hz',
             'use_features': True,
         }
-    elif id_strategy == 'global':
+    elif id_strategy == 'assess_presence':
         inference_cfg = inference_cfg | {
             'id_freq': '5 Hz',
             'use_features': False,

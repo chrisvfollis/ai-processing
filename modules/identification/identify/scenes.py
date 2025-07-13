@@ -268,7 +268,7 @@ def subsegment_identity_sweep(
     n_subs = full_duration // sub_duration
 
     present_ids = full_presence_df.query('present_flag == True')['identity']
-    face_data = face_data[face_data['identity']].isin(present_ids)
+    face_data = face_data[face_data['identity'].isin(present_ids)]
 
     subsegment_params = {
         'presence_prior': 1 / n_subs,
@@ -299,14 +299,18 @@ def subsegment_identity_sweep(
             common_ids = np.intersect1d(common_ids, df['identity'].values)
 
             for identity in common_ids:
-                if df.at[identity, 'present_flag'] == True:
+                id_mask = df['identity'] == identity
+                if not id_mask.any():
+                    continue
+
+                if df.loc[id_mask, 'present_flag'].values[0] == True:
                     continue
 
                 if (
-                    (prev_df.at[identity, 'posterior'] >= flip_thresh) and
-                    (next_df.at[identity, 'posterior'] >= flip_thresh)
+                    (prev_df.loc[prev_df['identity'] == identity, 'posterior'].values[0] >= flip_thresh) and
+                    (next_df.loc[next_df['identity'] == identity, 'posterior'].values[0] >= flip_thresh)
                 ):
-                    df.at[identity, 'present_flag'] = True
+                    df.loc[id_mask, 'present_flag'] = True
 
         results[i] = (df, filtered_faces[i])
 
