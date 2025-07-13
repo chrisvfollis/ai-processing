@@ -258,24 +258,30 @@ def assess_present_identities(
 
 
 def subsegment_identity_sweep(
-    time_segment: str,
-    full_segment_results: tuple,
-    full_segment_duration: int = 300,
-    full_segment_params: dict = {},
-    subsegment_duration: int = 60,
-    subsegment_min_score: float = 0.40,
-    subsegment_fp_rate: float = 0.25,
+    face_data: pd.DataFrame,
+    full_presence_df: pd.DataFrame,
+    full_params: dict,
+    full_duration: int = 300,
+    sub_duration: int = 60,
 ) -> dict:
     results = {}
-    results['full_segment'] = full_segment_results
-    
-    n_subs = full_segment_duration // subsegment_duration
+    n_subs = full_duration // sub_duration
+
+    present_ids = full_presence_df.query('present_flag == True')['identity']
+    face_data = face_data[face_data['identity']].isin(present_ids)
+
+    subsegment_params = {
+        'presence_prior': 1 / n_subs,
+    }
+    subsegment_params = full_params | subsegment_params
+
     for i in range(n_subs):
-        start = i * subsegment_duration
-        end = start + subsegment_duration
+        start_sec = i * sub_duration
+        end_sec = start_sec + sub_duration
+
         subsegment_results = assess_present_identities(
-            time_segment,
-            start_sec = start,
-            end_sec = end,
+            face_data, start_sec, end_sec, **subsegment_params,
         )
         results[f'sub{i+1}'] = subsegment_results
+
+    return results
