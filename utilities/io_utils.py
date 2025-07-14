@@ -453,6 +453,10 @@ def save_global_id_event_imgs(
             print(f'{ident} [{event}] → max_overlap={best_overlap:.2f}, trk_found={best_trk is not None}, frame={fnum}, cam={cam}, candidates={len(candidates)}')
 
             if best_trk is not None:
+                full_name = '_'.join(lookup_name(ident))
+                event_image = f'{uuid.uuid4()}.jpg'
+
+                logger.info(f'Name: {full_name}, Image: {event_image}')
                 output.append({
                     'identity'      : ident,
                     'f'             : int(best_trk['f']),
@@ -462,7 +466,7 @@ def save_global_id_event_imgs(
                     'w'             : int(best_trk['w']),
                     'h'             : int(best_trk['h']),
                     'event'         : event,
-                    'image'         : f'{uuid.uuid4()}.jpg',
+                    'image'         : event_image,
                     'overlap_ratio' : best_overlap,
                 })
     event_imgs_df = pd.DataFrame(output)

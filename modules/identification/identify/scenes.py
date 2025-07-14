@@ -262,22 +262,27 @@ def subsegment_identity_sweep(
     full_params: dict,
     full_duration: int = 300,
     sub_duration: int = 60,
-    flip_thresh: float = 0.80
+    flip_thresh: float = 0.60
 ) -> dict:
     results = {}
     n_subs = full_duration // sub_duration
+
+    face_data = (
+        face_data.sort_values('distance', ascending=True)
+        .groupby(['x', 'y', 'w', 'h', 'f', 'cam_id'], group_keys=False)
+        .head(1)
+    )
 
     present_ids = full_presence_df.query('present_flag == True')['identity']
     face_data = face_data[face_data['identity'].isin(present_ids)]
 
     subsegment_params = {
-        'distance_score_weight': 50,
-        'confidence_weight': 50,
-        'min_score': full_params['bias_score_boundary'] / 2,
-        'reliability_scale': full_params['reliability_scale'] * 1.1,
+        'distance_score_weight': 65,
+        'confidence_weight': 35,
+        'min_score': 0.40,
+        'reliability_scale': 0.80,
         'presence_prior': 1 / n_subs,
-        'bias_score_boundary': full_params['bias_score_boundary'] / 2,
-
+        'bias_score_boundary': 0.50,
     }
     subsegment_params = full_params | subsegment_params
 
