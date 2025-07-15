@@ -396,8 +396,8 @@ def extract_and_save_crops(
 
 
 def save_global_id_event_imgs(
-        time_segment, presence_df, face_data, trk_dets, credentials
-):
+    time_segment, presence_df, face_data, trk_dets, credentials
+) -> pd.DataFrame:
     project_root = get_project_root()
 
     output = []
@@ -407,7 +407,7 @@ def save_global_id_event_imgs(
 
     face_data['cam_id'] = face_data['cam_id'].astype(int)
     trk_dets['cam_id'] = trk_dets['cam_id'].astype(int)
-    
+
     for ident, id_faces in face_data.groupby('identity'):
         f_min, f_max = id_faces['f'].min(), id_faces['f'].max()
         
