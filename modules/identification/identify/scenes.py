@@ -61,6 +61,11 @@ def assess_present_identities(
 
     face_data = face_data.copy()
 
+    if face_data.empty:
+        presence_df = _empty_presence_df()
+        logger.info(f'No face data')
+        return presence_df, face_data
+
     # filter time interval if applicable:
     if start_sec is not None and end_sec is not None:
         face_data = face_data[
@@ -266,6 +271,9 @@ def subsegment_identity_sweep(
 ) -> dict:
     results = {}
     n_subs = full_duration // sub_duration
+
+    if face_data.empty:
+        return results
 
     face_data = (
         face_data.sort_values('distance', ascending=True)

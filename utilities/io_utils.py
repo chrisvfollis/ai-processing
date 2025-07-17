@@ -559,12 +559,10 @@ def load_processing_output(time_segment):
     trk_files  = sorted(Path(output_dir).glob(f'{time_segment}_*_trk_dets.parquet'))
 
     if not face_files:
-        raise FileNotFoundError(
-            f'No face data files for {time_segment} in {output_dir}'
-        )
-
-    face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
-    trk_dets  = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
+        face_data = pd.DataFrame()
+    else:
+        face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
+    trk_dets      = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
 
     return person_det_data, region_log_data, face_data, trk_dets, 
 

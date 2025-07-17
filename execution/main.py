@@ -255,7 +255,7 @@ def main(
         if id_strategy == 'assess_presence':
             processing_output = io_utils.load_processing_output(time_segment)
             face_data, trk_dets = processing_output[2:]
-
+                
             logger.info('Running global identification...')
             identity_presence_params = utils.package_id_presence_params(
                 match_cutoff          = 0.25,
@@ -286,8 +286,10 @@ def main(
             )
             logger.info('Finished global identification')
 
-            if 'identity' in presence_df.columns and (
-                presence_df['identity'].notna().any()
+            if (
+                ('identity' in presence_df.columns) and
+                (presence_df['identity'].notna().any()) and
+                ('cam_id' in trk_dets.columns)
             ):
                 logger.info('Generating event images...')
                 event_imgs_df = io_utils.save_global_id_event_imgs(
@@ -328,11 +330,11 @@ def main(
                         logger.info('Rendering video annotations...')
                         render.video.global_id_output(
                             filename,
-                            person_df=cam_person_det_data,
-                            face_df=cam_face_data,
-                            trk_df=cam_trk_dets,
-                            region_df=cam_region_log_data,
-                            f_cutoff=f_cutoff,
+                            person_df = cam_person_det_data,
+                            face_df   = cam_face_data,
+                            trk_df    = cam_trk_dets,
+                            region_df = cam_region_log_data,
+                            f_cutoff  = f_cutoff,
                         )
                         logger.info(f'Annotated video saved')
                     except Exception as e:
