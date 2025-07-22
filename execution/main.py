@@ -17,6 +17,7 @@ from utilities import utils, io_utils, log_utils, conn_utils
 from utilities.io_utils import S3DownloadError
 from pipelines import InferencePipeline, TrackingPipeline
 from modules.identification import identify
+from modules.identification.data_structures import AssessIdPresenceParams
 from modules import render
 
 
@@ -257,7 +258,7 @@ def main(
             face_data, trk_dets = processing_output[2:]
                 
             logger.info('Running global identification...')
-            identity_presence_params = utils.package_id_presence_params(
+            identity_presence_params = AssessIdPresenceParams(
                 match_cutoff          = 0.25,
                 mismatch_threshold    = 0.90,
                 distance_score_weight = 0.55,
