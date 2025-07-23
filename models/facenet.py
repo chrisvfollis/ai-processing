@@ -9,7 +9,12 @@ from torch import nn
 from torch.nn import functional as F
 
 # internal dependencies
-from utilities import io_utils
+from utilities import utils, io_utils
+
+
+# =============================================================================
+#                            - MODEL WRAPPERS -
+# -----------------------------------------------------------------------------
 
 
 class FaceNet512:
@@ -27,27 +32,29 @@ class FaceNet512:
         self.fp16 = fp16
         self.use_trt = use_trt
 
-        self.device = device or torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu'
-        )
+        self.device = device or utils.get_default_device()
+
+        load_args = {
+            'f'            : self.checkpoint_path,
+            'map_location' : self.device,
+            'weights_only' : False
+        }
 
         if use_trt:
             from torch2trt import TRTModule
             self.model = TRTModule()
-            state_dict = torch.load(
-                self.checkpoint_path, map_location=self.device, weights_only=False
-            )
+
+            state_dict = torch.load(**load_args)
+
             self.model.load_state_dict(state_dict)
             self.model.eval().to(self.device)
         else:
-            self.model = InceptionResnetV1()
+            self.model = InceptionResnetV1(embedding_size=512)
 
-            state_dict = torch.load(
-                self.checkpoint_path, map_location=self.device, weights_only=False
-            )
+            state_dict = torch.load(**load_args)
             # drop the classifier head
-            state_dict.pop("logits.weight", None)
-            state_dict.pop("logits.bias",  None)
+            state_dict.pop('logits.weight', None)
+            state_dict.pop('logits.bias',  None)
             
             self.model.load_state_dict(state_dict, strict=False)
             self.model.eval().to(self.device)
@@ -89,8 +96,54 @@ class FaceNet512:
         return embeddings
 
 
+class FaceNet128(FaceNet512):
+    def __init__(
+            self,
+            checkpoint: str = 'facenet128.pth',
+            device: torch.device = None,
+            fp16: bool = False,
+            use_trt: bool = False,
+    ):
+        project_root = io_utils.get_project_root()
+        self.checkpoint_path = os.path.join(
+            project_root, 'models/weights/facenet/', checkpoint
+        )
+        self.fp16 = fp16
+        self.use_trt = use_trt
+
+        self.device = device or utils.get_default_device()
+
+        load_args = {
+            'f'            : self.checkpoint_path,
+            'map_location' : self.device,
+            'weights_only' : False
+        }
+
+        if use_trt:
+            from torch2trt import TRTModule
+            self.model = TRTModule()
+
+            state_dict = torch.load(**load_args)
+            
+            self.model.load_state_dict(state_dict)
+            self.model.eval().to(self.device)
+        else:
+            self.model = InceptionResnetV1(embedding_size=128)
+
+            state_dict = torch.load(**load_args)
+            # drop the classifier head
+            state_dict.pop('logits.weight', None)
+            state_dict.pop('logits.bias',  None)
+            
+            self.model.load_state_dict(state_dict, strict=False)
+            self.model.eval().to(self.device)
+
+            if self.fp16:
+                self.model = self.model.half()
+
+
 # =============================================================================
-#                      - OVERALL MODEL ARCHITECTURE -
+#                          - MODEL ARCHITECTURE -
 # -----------------------------------------------------------------------------
 
 
@@ -98,7 +151,7 @@ class InceptionResnetV1(nn.Module):
     """
     Inception Resnet V1 model with optional loading of pretrained weights.
     """
-    def __init__(self, dropout_prob=0.6):
+    def __init__(self, dropout_prob=0.6, embedding_size=512):
         super().__init__()
 
         # Define layers
@@ -140,8 +193,10 @@ class InceptionResnetV1(nn.Module):
         self.block8 = Block8(noReLU=True)
         self.avgpool_1a = nn.AdaptiveAvgPool2d(1)
         self.dropout = nn.Dropout(dropout_prob)
-        self.last_linear = nn.Linear(1792, 512, bias=False)
-        self.last_bn = nn.BatchNorm1d(512, eps=0.001, momentum=0.1, affine=True)
+        self.last_linear = nn.Linear(1792, embedding_size, bias=False)
+        self.last_bn = nn.BatchNorm1d(
+            embedding_size, eps=0.001, momentum=0.1, affine=True
+        )
 
     def forward(self, x):
         """
