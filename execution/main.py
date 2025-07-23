@@ -197,10 +197,10 @@ def wrap_up_segment(
 
 
 def main(
-    shop_uuid: str,
-    model_configs: list[dict],
     id_strategy: str,
+    model_configs: list[dict],
     device: torch.device,
+    shop_uuid: str,
     credentials: tuple[str] = None,
     log_level: int = 0,
     save_all_data: bool = False,
@@ -221,7 +221,7 @@ def main(
         f_cutoff,
     )
     basic_args = {
-        'shop_uuid'        : shop_uuid,
+        'shop_uuid'      : shop_uuid,
         'credentials'    : credentials,
         'save_all_data'  : save_all_data,
         'retain_footage' : retain_footage,
@@ -369,10 +369,10 @@ if __name__ == '__main__':
     memory_monitor.start()
 
     main(
-        shop_uuid      = io_utils.get_shop()[0],
-        model_configs  = configure.package_model_cfgs(),
         id_strategy    = args.id_strategy,
+        model_configs  = configure.package_model_cfgs(),
         device         = utils.get_default_device(),
+        shop_uuid      = io_utils.get_shop()[0],
         log_level      = args.log_level,
         retain_footage = args.retain_footage,
         save_all_data  = args.save_all_data,
