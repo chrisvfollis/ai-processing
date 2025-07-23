@@ -13,7 +13,7 @@ import torch
 import torch.multiprocessing as multiprocessing
 
 # internal dependencies
-from execution import config
+from execution import configure
 from utilities import utils, io_utils, log_utils, conn_utils
 from utilities.io_utils import S3DownloadError
 from pipelines import InferencePipeline, TrackingPipeline
@@ -351,7 +351,7 @@ def main(
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
 
-    parser = config.make_parser()
+    parser = configure.make_parser()
     args = parser.parse_args()
 
     log_utils.configure_logging(log_level=args.log_level)
@@ -365,54 +365,16 @@ if __name__ == '__main__':
             logger.error(f'Invalid --start-from value: {args.start_from} ({e})')
             sys.exit(1)
     
-    device = utils.get_default_device()
-
-    yolox_cfg = {
-        'checkpoint'  : 'yolox_model_trt.pth',
-        'num_classes' : 1,
-        'depth'       : 1.33,
-        'width'       : 1.25,
-        'input_size'  : (800, 1440),
-        'conf_thresh' : 0.05,
-        'nms_thresh'  : 0.7,
-        'fp16'        : True,
-        'use_trt'     : True,
-    }
-    faces_cfg = {
-        'facenet_cfg': {
-            'checkpoint' : 'facenet512_model_trt.pth',
-            'fp16'       : False,
-            'use_trt'    : True,
-        },
-        'centerface_cfg': {
-            # 'conf_thresh' : 0.40,
-            'conf_thresh' : 0.35,
-            'min_area'    : (16, 16),
-        },
-        # 'clearface_cfg': {
-        #     'checkpoint': '90000_G.pth',
-        # }
-    }
-    osnet_cfg = {}
-    model_cfgs = {
-        'yolox': yolox_cfg,
-        'faces': faces_cfg,
-        'osnet': osnet_cfg,
-    }
-
-    aws_credentials = conn_utils.get_aws_credentials()
-    shop_id, _ = io_utils.get_shop()
-
     memory_monitor, _ = log_utils.observability_thread('low_memory', logger=logger)
     memory_monitor.start()
 
     run_config = {
-        'shop_id'        : shop_id,
-        'model_configs'  : model_cfgs,
+        'shop_id'        : io_utils.get_shop()[0],
+        'model_configs'  : configure.package_model_cfgs(),
         'id_strategy'    : args.id_strategy,
-        'device'         : device,
+        'device'         : utils.get_default_device(),
         'log_level'      : args.log_level,
-        'credentials'    : aws_credentials,
+        'credentials'    : conn_utils.get_aws_credentials(),
         'retain_footage' : args.retain_footage,
         'save_all_data'  : args.save_all_data,
         'start_from'     : start_from,
