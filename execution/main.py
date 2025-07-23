@@ -13,6 +13,7 @@ import torch
 import torch.multiprocessing as multiprocessing
 
 # internal dependencies
+from execution import config
 from utilities import utils, io_utils, log_utils, conn_utils
 from utilities.io_utils import S3DownloadError
 from pipelines import InferencePipeline, TrackingPipeline
@@ -350,14 +351,7 @@ def main(
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn', force=True)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--log-level', type=int, default=0)
-    parser.add_argument('--retain-footage', action='store_true', default=False)
-    parser.add_argument('--save-all-data', action='store_true', default=False)
-    parser.add_argument('--start-from', type=str, help='Comma-separated datetime')
-    parser.add_argument('--priority-cam', type=str)
-    parser.add_argument('--id-strategy', type=str, default='assess_presence')
-    parser.add_argument('--f-cutoff', type=int, default=None)
+    parser = config.make_parser()
     args = parser.parse_args()
 
     log_utils.configure_logging(log_level=args.log_level)
