@@ -48,7 +48,7 @@ def run_worker_pipeline(
     log_utils.configure_logging(log_level=log_level)
     io_utils.clear_memory()
 
-    shop_id, filename = footage_record[1:3]
+    shop_uuid, filename = footage_record[1:3]
     time_segment, cam_id = utils.decode_vid_filename(filename)
 
     inference_cfg = {'model_cfg': model_cfg, 'device': device}
@@ -64,7 +64,7 @@ def run_worker_pipeline(
         }
 
     file_prefix = f'{time_segment}_{cam_id}'
-    object_key = f'{shop_id}/{filename}'
+    object_key = f'{shop_uuid}/{filename}'
     
     process_result = False
     try:
@@ -161,15 +161,15 @@ def process_segment_records(footage_records: list[tuple], process_config: tuple)
 def wrap_up_segment(
     segment_filenames: list,
     time_segment: str,
-    shop_id: str,
+    shop_uuid: str,
     credentials: tuple[str],
     retain_footage: bool,
     save_all_data: bool,
 ):
     logger.info('Finalizing time segment...')
     
-    io_utils.post_event_data(shop_id, time_segment, delete_data=True, logger=logger)
-    io_utils.dequeue_segment(shop_id, time_segment)
+    io_utils.post_event_data(shop_uuid, time_segment, delete_data=True, logger=logger)
+    io_utils.dequeue_segment(shop_uuid, time_segment)
 
     io_utils.clear_local_files(time_segment, target_extensions=[
         '.hdf5',
@@ -185,7 +185,7 @@ def wrap_up_segment(
         io_utils.clear_local_files(time_segment, skip_suffixes=['.mp4'])
         return
     else:
-        object_keys = [f'{shop_id}/{filename}' for filename in segment_filenames]
+        object_keys = [f'{shop_uuid}/{filename}' for filename in segment_filenames]
         io_utils.delete_s3_footage(object_keys, credentials)
 
     io_utils.clear_local_files(time_segment)
@@ -197,12 +197,12 @@ def wrap_up_segment(
 
 
 def main(
-    shop_id: str,
+    shop_uuid: str,
     model_configs: list[dict],
     id_strategy: str,
     device: torch.device,
-    log_level: int = 0,
     credentials: tuple[str] = None,
+    log_level: int = 0,
     save_all_data: bool = False,
     retain_footage: bool = False,
     start_from: Optional[datetime] = None,
@@ -221,7 +221,7 @@ def main(
         f_cutoff,
     )
     basic_args = {
-        'shop_id'        : shop_id,
+        'shop_uuid'        : shop_uuid,
         'credentials'    : credentials,
         'save_all_data'  : save_all_data,
         'retain_footage' : retain_footage,
@@ -238,7 +238,7 @@ def main(
     while True:
         io_utils.cleanup_semaphores(logger)
         segment_records = io_utils.get_next_queue_segment(
-            shop_id, start_from, priority_cam,
+            shop_uuid, start_from, priority_cam,
         )
         if not segment_records:
             time.sleep(60)
@@ -368,18 +368,16 @@ if __name__ == '__main__':
     memory_monitor, _ = log_utils.observability_thread('low_memory', logger=logger)
     memory_monitor.start()
 
-    run_config = {
-        'shop_id'        : io_utils.get_shop()[0],
-        'model_configs'  : configure.package_model_cfgs(),
-        'id_strategy'    : args.id_strategy,
-        'device'         : utils.get_default_device(),
-        'log_level'      : args.log_level,
-        'credentials'    : conn_utils.get_aws_credentials(),
-        'retain_footage' : args.retain_footage,
-        'save_all_data'  : args.save_all_data,
-        'start_from'     : start_from,
-        'priority_cam'   : args.priority_cam,
-        'f_cutoff'       : args.f_cutoff,
-    }
-
-    main(**run_config)
+    main(
+        shop_uuid      = io_utils.get_shop()[0],
+        model_configs  = configure.package_model_cfgs(),
+        id_strategy    = args.id_strategy,
+        device         = utils.get_default_device(),
+        log_level      = args.log_level,
+        retain_footage = args.retain_footage,
+        save_all_data  = args.save_all_data,
+        credentials    = conn_utils.get_aws_credentials(),
+        start_from     = start_from,
+        priority_cam   = args.priority_cam,
+        f_cutoff       = args.f_cutoff,
+    )
