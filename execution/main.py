@@ -295,7 +295,8 @@ def main(
             ):
                 logger.info('Generating event images...')
                 event_imgs_df = io_utils.save_global_id_event_imgs(
-                    time_segment, presence_df, filtered_faces, trk_dets, credentials
+                    time_segment, presence_df, filtered_faces, trk_dets,
+                    credentials, min_frame_delta=100
                 )
                 io_utils.save_attendance_info(time_segment, presence_df, event_imgs_df)
             else:
