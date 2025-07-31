@@ -396,7 +396,8 @@ def extract_and_save_crops(
 
 
 def save_global_id_event_imgs(
-    time_segment, presence_df, face_data, trk_dets, credentials
+    time_segment, presence_df, face_data, trk_dets, credentials,
+    min_frame_delta: int = 100
 ) -> pd.DataFrame:
     project_root = get_project_root()
 
@@ -409,31 +410,28 @@ def save_global_id_event_imgs(
     trk_dets['cam_id'] = trk_dets['cam_id'].astype(int)
 
     for ident, id_faces in face_data.groupby('identity'):
-        f_min, f_max = id_faces['f'].min(), id_faces['f'].max()
-        
-        f_split = f_min + (f_max - f_min) // 2
+        sorted_faces = id_faces.sort_values('distance').reset_index(drop=True)
 
-        early_faces = id_faces[id_faces['f'] <= f_split]
-        late_faces  = id_faces[id_faces['f'] > f_split]
+        selected_faces = []
 
-        if early_faces.empty:
-            early_faces = id_faces[id_faces['f'] == f_min]
-        if late_faces.empty:
-            late_faces = id_faces[id_faces['f'] == f_max]
+        for i, row in sorted_faces.iterrows():
+            if len(selected_faces) == 0:
+                selected_faces.append(row)
+            elif len(selected_faces) == 1:
+                prev = selected_faces[0]
+                same_cam = row['cam_id'] == prev['cam_id']
+                frame_far_enough = abs(row['f'] - prev['f']) >= min_frame_delta
 
-        if early_faces.empty and late_faces.empty:
-            print('Both early and late faces empty')
-            continue
+                if not same_cam or frame_far_enough:
+                    selected_faces.append(row)
+            if len(selected_faces) == 2:
+                break
 
-        if early_faces.empty:
-            early_faces = late_faces
-        if late_faces.empty:
-            late_faces = early_faces
+        if len(selected_faces) < 2:
+            print(f'Warning: Only found {len(selected_faces)} face(s) for identity {ident}')
 
-        best_early_face = early_faces.sort_values('distance').iloc[0]
-        best_late_face  = late_faces.sort_values('distance').iloc[0]
-
-        for event, face_row in zip(['entry', 'exit'], [best_early_face, best_late_face]):
+        for face_idx, face_row in enumerate(selected_faces):
+            event = f'face{face_idx+1}'
             cam        = face_row['cam_id']
             fnum       = face_row['f']
             x, y, w, h = face_row[['x', 'y', 'w', 'h']]
@@ -450,6 +448,7 @@ def save_global_id_event_imgs(
                 overlap = bboxes.compute_overlap_ratio(face_box, trk_box)
                 if overlap > best_overlap:
                     best_overlap, best_trk = overlap, trk_row
+
             print(f'{ident} [{event}] → max_overlap={best_overlap:.2f}, trk_found={best_trk is not None}, frame={fnum}, cam={cam}, candidates={len(candidates)}')
 
             if best_trk is not None:
@@ -469,6 +468,7 @@ def save_global_id_event_imgs(
                     'image'         : event_image,
                     'overlap_ratio' : best_overlap,
                 })
+
     event_imgs_df = pd.DataFrame(output)
 
     if event_imgs_df.empty:

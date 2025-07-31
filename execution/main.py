@@ -36,7 +36,7 @@ def run_worker_pipeline(
     id_strategy: str,
     device: torch.device,
     log_level: int = 0,
-    credentials: tuple[str, ...] = None,
+    credentials: tuple[str, str] = None,
     save_all_data: bool = False,
     f_cutoff: Optional[int] = None,
 ) -> bool:
