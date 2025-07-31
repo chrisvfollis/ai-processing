@@ -4,7 +4,7 @@ from .osnet import OSNet
 from .retinaface import RetinaFace
 from .centerface import CenterFace
 from .clearface import ClearFace
-from .facenet import FaceNet512
+from .facenet import FaceNet
 
 
 __all__ = [
@@ -14,5 +14,5 @@ __all__ = [
     'RetinaFace',
     'CenterFace',
     'ClearFace',
-    'FaceNet512',
+    'FaceNet',
 ]

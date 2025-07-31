@@ -43,9 +43,9 @@ class FaceAnalysis:
         self.db_path = os.path.join(self.project_root, 'files/', 'data.db')
 
         # MODELS:
-        from models import CenterFace, FaceNet512
+        from models import CenterFace, FaceNet
         self.centerface = CenterFace(device=self.device, **centerface_cfg)
-        self.facenet512 = FaceNet512(device=self.device, **facenet_cfg)
+        self.facenet = FaceNet(device=self.device, **facenet_cfg)
 
         if clearface_cfg is None:
             self.enhance_faces = False
@@ -385,7 +385,7 @@ class FaceAnalysis:
         if not (len(face_imgs) == len(facial_areas) == len(confidences)):
             raise ValueError('All input lists must be the same length')
 
-        embeddings = self.facenet512.represent(face_imgs, postprocess=postprocess)
+        embeddings = self.facenet.represent(face_imgs, postprocess=postprocess)
 
         if isinstance(embeddings, torch.Tensor):
             embeddings = embeddings.cpu().numpy()

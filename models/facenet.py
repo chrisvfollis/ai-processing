@@ -13,54 +13,54 @@ from utilities import utils, io_utils
 
 
 # =============================================================================
-#                            - MODEL WRAPPERS -
+#                             - MODEL WRAPPER -
 # -----------------------------------------------------------------------------
 
 
-class FaceNet512:
+class FaceNet:
     def __init__(
-            self,
-            checkpoint: str = 'facenet512.pth',
-            device: torch.device = None,
-            fp16: bool = False,
-            use_trt: bool = False,
+        self,
+        embedding_size: int = 512,
+        checkpoint: str = None,
+        device: torch.device = None,
+        fp16: bool = False,
+        use_trt: bool = False,
     ):
+        self.embedding_size = embedding_size
+        self.fp16 = fp16
+        self.use_trt = use_trt
+        self.device = device or utils.get_default_device()
+
+        if checkpoint is None:
+            checkpoint = f'facenet{embedding_size}.pth'
+
         project_root = io_utils.get_project_root()
         self.checkpoint_path = os.path.join(
             project_root, 'models/weights/facenet/', checkpoint
         )
-        self.fp16 = fp16
-        self.use_trt = use_trt
-
-        self.device = device or utils.get_default_device()
 
         load_args = {
-            'f'            : self.checkpoint_path,
-            'map_location' : self.device,
-            'weights_only' : False
+            'f': self.checkpoint_path,
+            'map_location': self.device,
+            'weights_only': False
         }
 
         if use_trt:
             from torch2trt import TRTModule
             self.model = TRTModule()
-
             state_dict = torch.load(**load_args)
-
             self.model.load_state_dict(state_dict)
-            self.model.eval().to(self.device)
         else:
-            self.model = InceptionResnetV1(embedding_size=512)
-
+            self.model = InceptionResnetV1(embedding_size=embedding_size)
             state_dict = torch.load(**load_args)
-            # drop the classifier head
             state_dict.pop('logits.weight', None)
-            state_dict.pop('logits.bias',  None)
-            
+            state_dict.pop('logits.bias', None)
             self.model.load_state_dict(state_dict, strict=False)
-            self.model.eval().to(self.device)
 
-            if self.fp16:
-                self.model = self.model.half()
+        self.model.eval().to(self.device)
+
+        if self.fp16:
+            self.model = self.model.half()
 
     def preprocess(self, face_imgs):
         processed = []
@@ -70,76 +70,23 @@ class FaceNet512:
             elif img.dtype == np.float32 and img.max() <= 1.0:
                 img = (img * 255).astype(np.uint8)
             elif img.dtype != np.uint8:
-                img = img.astype(np.uint8)  
+                img = img.astype(np.uint8)
             img = cv2.resize(img, (160, 160))
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img = torch.from_numpy(img).permute(2, 0, 1).float() / 255.0
             if self.fp16:
                 img = img.half()
             processed.append(img)
-
-        batch = torch.stack(processed).to(self.device)
-        return batch
+        return torch.stack(processed).to(self.device)
 
     def postprocess(self, embeddings):
-        embeddings = embeddings.cpu().numpy()
-        return embeddings
+        return embeddings.cpu().numpy()
 
     @torch.no_grad()
     def represent(self, imgs, postprocess=False) -> torch.Tensor | np.ndarray:
         imgs = self.preprocess(imgs)
-        
         embeddings = self.model(imgs)
-        if postprocess:
-            embeddings = self.postprocess(embeddings)
-
-        return embeddings
-
-
-class FaceNet128(FaceNet512):
-    def __init__(
-            self,
-            checkpoint: str = 'facenet128.pth',
-            device: torch.device = None,
-            fp16: bool = False,
-            use_trt: bool = False,
-    ):
-        project_root = io_utils.get_project_root()
-        self.checkpoint_path = os.path.join(
-            project_root, 'models/weights/facenet/', checkpoint
-        )
-        self.fp16 = fp16
-        self.use_trt = use_trt
-
-        self.device = device or utils.get_default_device()
-
-        load_args = {
-            'f'            : self.checkpoint_path,
-            'map_location' : self.device,
-            'weights_only' : False
-        }
-
-        if use_trt:
-            from torch2trt import TRTModule
-            self.model = TRTModule()
-
-            state_dict = torch.load(**load_args)
-            
-            self.model.load_state_dict(state_dict)
-            self.model.eval().to(self.device)
-        else:
-            self.model = InceptionResnetV1(embedding_size=128)
-
-            state_dict = torch.load(**load_args)
-            # drop the classifier head
-            state_dict.pop('logits.weight', None)
-            state_dict.pop('logits.bias',  None)
-            
-            self.model.load_state_dict(state_dict, strict=False)
-            self.model.eval().to(self.device)
-
-            if self.fp16:
-                self.model = self.model.half()
+        return self.postprocess(embeddings) if postprocess else embeddings
 
 
 # =============================================================================

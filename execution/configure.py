@@ -40,9 +40,10 @@ def package_model_cfgs():
     osnet_cfg = {}
     faces_cfg = {
         'facenet_cfg': {
-            'checkpoint' : 'facenet512_model_trt.pth',
-            'fp16'       : False,
-            'use_trt'    : True,
+            'embedding_size' : 512,
+            'checkpoint'     : 'facenet512_model_trt.pth',
+            'fp16'           : False,
+            'use_trt'        : True,
         },
         'centerface_cfg': {
             # 'conf_thresh' : 0.40,
