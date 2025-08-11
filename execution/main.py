@@ -2,7 +2,6 @@
 import os
 import sys
 import time
-import argparse
 from datetime import datetime
 from typing import Optional
 
@@ -279,6 +278,8 @@ def main(
                 fallback_recall_est   = 0.60,
                 presence_thresh       = 0.55,
             )
+            identity_presence_params = identity_presence_params.as_dict()
+            
             presence_df, filtered_faces = identify.assess_present_identities(
                 face_data, **identity_presence_params
             )

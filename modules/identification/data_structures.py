@@ -1,6 +1,6 @@
 # standard dependencies
 from typing import Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 
 # 3rd-party dependencies
 import numpy as np
@@ -77,3 +77,6 @@ class AssessIdPresenceParams:
     boost_per_neighbor: float = 0.075
     fallback_recall_est: float = 0.60
     presence_thresh: float = 0.55
+
+    def as_dict(self):
+        return asdict(self)
