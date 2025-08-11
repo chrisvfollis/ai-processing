@@ -431,7 +431,7 @@ def save_global_id_event_imgs(
             print(f'Warning: Only found {len(selected_faces)} face(s) for identity {ident}')
 
         for face_idx, face_row in enumerate(selected_faces):
-            event = f'face{face_idx+1}'
+            event      = f'face{face_idx+1}'
             cam        = face_row['cam_id']
             fnum       = face_row['f']
             x, y, w, h = face_row[['x', 'y', 'w', 'h']]
@@ -932,8 +932,8 @@ def save_attendance_info(
 
         imgs = event_imgs_df[event_imgs_df['identity'] == identity]
         if not imgs.empty:
-            entry_ = imgs[imgs['event'] == 'entry']
-            exit_ = imgs[imgs['event'] == 'exit']
+            entry_ = imgs[imgs['event'] == 'face1']
+            exit_ = imgs[imgs['event'] == 'face2']
 
             start_img = entry_.iloc[0]['image'] if not entry_.empty else ''
             end_img = exit_.iloc[0]['image'] if not exit_.empty else ''

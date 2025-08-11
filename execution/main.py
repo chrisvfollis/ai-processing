@@ -279,14 +279,14 @@ def main(
                 presence_thresh       = 0.55,
             )
             identity_presence_params = identity_presence_params.as_dict()
-            
+
             presence_df, filtered_faces = identify.assess_present_identities(
                 face_data, **identity_presence_params
             )
-            subsegment_results = identify.subsegment_identity_sweep(
-                face_data, presence_df, identity_presence_params,
-                full_duration=300, sub_duration=60
-            )
+            # subsegment_results = identify.subsegment_identity_sweep(
+            #     face_data, presence_df, identity_presence_params,
+            #     full_duration=300, sub_duration=60
+            # )
             logger.info('Finished global identification')
 
             if (
