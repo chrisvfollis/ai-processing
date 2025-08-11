@@ -26,7 +26,7 @@ fi
 
 # Install:
 if [[ $1 == "--use-pipenv" ]]; then
-    cp "runtime/native/$MACHINE/Pipfile" Pipfile
+    cp "execution/runtime/native/$MACHINE/Pipfile" Pipfile
     pipenv install
     pipenv run pip install -e .
     printf "\n"

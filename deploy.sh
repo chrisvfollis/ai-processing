@@ -17,7 +17,7 @@ else
 fi
 
 # Set correct path to Dockerfile:
-DOCKERFILE="runtime/docker/$MACHINE/Dockerfile"
+DOCKERFILE="execution/runtime/docker/$MACHINE/Dockerfile"
 if [[ ! -f "$DOCKERFILE" ]]; then
   echo "Dockerfile not found for machine type '$MACHINE' at $DOCKERFILE"
   exit 1

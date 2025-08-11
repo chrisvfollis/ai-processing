@@ -14,10 +14,10 @@
 # -----------------------------------------------------------------------------
 
 # SPECIFICATIONS - CONTAINERIZED RUNTIMES:
-runtime/docker/
+execution/runtime/docker/
 
 # SPECIFICATIONS - NATIVE RUNTIMES:
-runtime/systemd/
+execution/runtime/systemd/
 *Pipfile
 *Pipfile.lock
 
@@ -97,13 +97,13 @@ training/
 !*.env.public
 
 # RUNTIME ENVIRONMENT DEPENDENCIES:
-!runtime/docker/gpu/dependencies/installed-packages.txt
-!runtime/docker/gpu/dependencies/requirements.txt
-!runtime/docker/gpu/dependencies/dev-requirements.txt
+!execution/runtime/docker/gpu/dependencies/installed-packages.txt
+!execution/runtime/docker/gpu/dependencies/requirements.txt
+!execution/runtime/docker/gpu/dependencies/dev-requirements.txt
 
-!runtime/docker/cpu/dependencies/installed-packages.txt
-!runtime/docker/cpu/dependencies/requirements.txt
-!runtime/docker/cpu/dependencies/dev-requirements.txt
+!execution/runtime/docker/cpu/dependencies/installed-packages.txt
+!execution/runtime/docker/cpu/dependencies/requirements.txt
+!execution/runtime/docker/cpu/dependencies/dev-requirements.txt
 
 # STRUCTURED DATA:
 !models/weights/**/*.h5
