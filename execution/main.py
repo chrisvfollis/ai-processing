@@ -18,7 +18,8 @@ from utilities.io_utils import S3DownloadError
 from pipelines import InferencePipeline, TrackingPipeline
 from modules.identification import identify
 from modules.identification.data_structures import AssessIdPresenceParams
-from modules import render
+from modules import results
+from modules.results import render
 
 
 logger = log_utils.get_logger(__name__)
@@ -99,7 +100,7 @@ def run_worker_pipeline(
             except Exception:
                 logger.exception('Error during local ID')
 
-            io_utils.save_track_info(
+            results.records.save_tracks(
                 time_segment, cam_id, inactive_trks, tracking.fps
             )
         elif id_strategy == 'assess_presence':
@@ -167,7 +168,9 @@ def wrap_up_segment(
 ):
     logger.info('Finalizing time segment...')
     
-    io_utils.post_event_data(shop_uuid, time_segment, delete_data=True, logger=logger)
+    results.records.post_event_records(shop_uuid, time_segment)
+
+    io_utils.clear_event_records(time_segment)
     io_utils.dequeue_segment(shop_uuid, time_segment)
 
     io_utils.clear_local_files(time_segment, target_extensions=[
@@ -232,7 +235,7 @@ def main(
     ]
 
     io_utils.clear_local_files(target_dirs=[output_dir, event_imgs_dir])
-    io_utils.clear_track_info('all')
+    io_utils.clear_event_records('all')
 
     while True:
         io_utils.cleanup_semaphores(logger)
@@ -295,11 +298,11 @@ def main(
                 ('cam_id' in trk_dets.columns)
             ):
                 logger.info('Generating event images...')
-                event_imgs_df = io_utils.save_global_id_event_imgs(
+                event_imgs_df = results.images.global_id_event_imgs(
                     time_segment, presence_df, filtered_faces, trk_dets,
                     credentials, min_frame_delta=100
                 )
-                io_utils.save_attendance_info(time_segment, presence_df, event_imgs_df)
+                results.records.save_attendance(time_segment, presence_df, event_imgs_df)
             else:
                 logger.warning(
                     'Skipping event image generation — no valid identities found'
