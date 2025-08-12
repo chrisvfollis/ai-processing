@@ -18,7 +18,6 @@ from botocore.exceptions import EndpointConnectionError, NoCredentialsError
 from modules.spatial import bboxes
 from utilities import utils, io_utils, conn_utils, log_utils
 from utilities.conn_utils import APIClient
-from modules.results import prepare
 
 
 logger = log_utils.get_logger(__name__)
@@ -215,8 +214,8 @@ def post_event_records(shop_id: str, time_segment: str) -> bool:
         logger.info('No event records found to post')
         return successful_post
 
-    event_records_df = prepare.convert_records_to_df(event_records)
-    event_records_df = prepare.merge_records_by_time(event_records_df)
+    event_records_df = convert_records_to_df(event_records)
+    event_records_df = merge_records_by_time(event_records_df)
 
     event_data = {
         'shop_id': [],
