@@ -46,11 +46,13 @@ def find_best_event_images(
                 selected_faces.append(row)
             elif len(selected_faces) == 1:
                 prev = selected_faces[0]
-                same_cam = row['cam_id'] == prev['cam_id']
-                frame_far_enough = abs(row['f'] - prev['f']) >= min_frame_delta
 
-                if not same_cam or frame_far_enough:
+                same_cam = row['cam_id'] == prev['cam_id']
+                insufficient_delta = abs(row['f'] - prev['f']) < min_frame_delta
+
+                if not (same_cam and insufficient_delta):
                     selected_faces.append(row)
+
             if len(selected_faces) == 2:
                 break
 
