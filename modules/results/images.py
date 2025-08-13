@@ -23,7 +23,7 @@ logger = log_utils.get_logger(__name__)
 
 
 def find_best_event_images(
-    time_segment: str, presence_df: pd.DataFrame, face_data, trk_dets,
+    time_segment: str, presence_df: pd.DataFrame, face_data: pd.DataFrame, trk_dets: pd.DataFrame,
     min_frame_delta: int = 100
 ) -> tuple[pd.DataFrame, dict]:
     project_root = io_utils.get_project_root()
@@ -36,7 +36,7 @@ def find_best_event_images(
     face_data['cam_id'] = face_data['cam_id'].astype(int)
     trk_dets['cam_id'] = trk_dets['cam_id'].astype(int)
 
-    for ident, id_faces in face_data.groupby('identity'):
+    for identity, id_faces in face_data.groupby('identity'):
         sorted_faces = id_faces.sort_values('distance').reset_index(drop=True)
 
         selected_faces = []
@@ -56,50 +56,55 @@ def find_best_event_images(
             if len(selected_faces) == 2:
                 break
 
-        if len(selected_faces) < 2:
-            print(f'Warning: Only found {len(selected_faces)} face(s) for identity {ident}')
+        if len(selected_faces) == 1:
+            selected_faces.append(selected_faces[0].copy())
+        elif len(selected_faces) == 0:
+            logger.warning(f'No faces found for identity {identity}')
+            continue
+        
+        selected_faces = sorted(selected_faces, key=lambda x: x['f'])
 
-        for face_idx, face_row in enumerate(selected_faces):
-            event      = f'face{face_idx+1}'
-            cam        = face_row['cam_id']
-            fnum       = face_row['f']
-            x, y, w, h = face_row[['x', 'y', 'w', 'h']]
-            face_box   = (x, y, w, h)
-
-            candidates = trk_dets[(trk_dets['f'] == fnum) & (trk_dets['cam_id'] == cam)]
-            if candidates.empty:
-                print(f'No candidates for {ident} at frame {fnum} on cam {cam}')
-                continue
+        for i, face in enumerate(selected_faces):
+            event      = f'face{i+1}'
+            cam_id     = face['cam_id']
+            f_num      = face['f']
+            face_box   = tuple(face[['x', 'y', 'w', 'h']].tolist())
 
             best_overlap, best_trk = 0.0, None
-            for _, trk_row in candidates.iterrows():
-                trk_box = (trk_row['x'], trk_row['y'], trk_row['w'], trk_row['h'])
+
+            trk_candidates = trk_dets[
+                (trk_dets['cam_id'] == cam_id) & (trk_dets['f'] == f_num)
+            ]
+            for _, trk in trk_candidates.iterrows():
+                trk_box = tuple(trk[['x', 'y', 'w', 'h']].tolist())
                 overlap = bboxes.compute_overlap_ratio(face_box, trk_box)
                 if overlap > best_overlap:
-                    best_overlap, best_trk = overlap, trk_row
-
-            print(f'{ident} [{event}] → max_overlap={best_overlap:.2f}, trk_found={best_trk is not None}, frame={fnum}, cam={cam}, candidates={len(candidates)}')
+                    best_overlap, best_trk = overlap, trk
 
             if best_trk is not None:
-                full_name = '_'.join(io_utils.lookup_name(ident))
-                event_image = f'{uuid.uuid4()}.jpg'
+                x, y, w, h = best_trk[['x', 'y', 'w', 'h']]
+            else:
+                x, y, w, h = face_box
 
-                logger.info(f'Name: {full_name}, Image: {event_image}')
-                output.append({
-                    'identity'      : ident,
-                    'f'             : int(best_trk['f']),
-                    'cam_id'        : int(best_trk['cam_id']),
-                    'x'             : int(best_trk['x']),
-                    'y'             : int(best_trk['y']),
-                    'w'             : int(best_trk['w']),
-                    'h'             : int(best_trk['h']),
-                    'event'         : event,
-                    'image'         : event_image,
-                    'overlap_ratio' : best_overlap,
-                })
+            img_object_key = f'{uuid.uuid4()}.jpg'
+
+            output.append({
+                'identity'      : identity,
+                'f'             : int(f_num),
+                'cam_id'        : int(cam_id),
+                'x'             : int(x),
+                'y'             : int(y),
+                'w'             : int(w),
+                'h'             : int(h),
+                'event'         : event,
+                'image'         : img_object_key,
+                'overlap_ratio' : best_overlap,
+            })
+
+            full_name = '_'.join(io_utils.lookup_name(identity))
+            logger.info(f'Name: {full_name}, Image: {img_object_key}')
 
     event_imgs_df = pd.DataFrame(output)
-
     if event_imgs_df.empty:
         print('No event crops to save')
         event_imgs_df = pd.DataFrame(columns=[
