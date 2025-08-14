@@ -134,13 +134,15 @@ def remove_files(
     return total_removed
 
 
-def get_project_root() -> str:
-    '''Gets the absolute path of the project root.'''
-
+def get_project_root(target_file: str = 'setup.py') -> str:
+    '''
+    Finds the absolute path of the project root by moving up directories until
+    finding one that contains a known file from the root.
+    '''
     current_path = os.path.abspath(os.path.dirname(__file__))
     
     while current_path != os.path.dirname(current_path):
-        if os.path.exists(os.path.join(current_path, 'setup.py')):
+        if (os.path.exists(os.path.join(current_path, target_file))):
             return current_path
 
         current_path = os.path.dirname(current_path)
