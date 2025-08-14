@@ -68,14 +68,22 @@ class FaceAnalysis:
         self.results = {}
         self.id_matches = {}
 
-    def _prepare_data(
+        # FACE DATABASE CACHING:
+        self.db_datastore_path = None
+        self.db_cache_key = None
+        self.db_rows = None
+        self.db_embeddings = None
+
+        self.reconcile_cache(self.db_path, refresh_database=True)
+
+    def prepare_database(
             self,
             db_path,
             refresh_database: bool = True,
             enhance: bool = True,
             normalize_face: bool = True,
         ):
-        def __find_bulk_embeddings(
+        def _find_bulk_embeddings(
                 employees: set[str],
                 enhance: bool = True,
             ) -> list[dict]:
@@ -254,7 +262,7 @@ class FaceAnalysis:
             if not hasattr(self, 'retinaface'):
                 from models import RetinaFace
                 self.retinaface = RetinaFace(device=self.device)
-            representations += __find_bulk_embeddings(
+            representations += _find_bulk_embeddings(
                 employees=new_images,
                 enhance=enhance,
             )
@@ -265,6 +273,54 @@ class FaceAnalysis:
                 pickle.dump(representations, f, pickle.HIGHEST_PROTOCOL)
 
         return representations
+
+    def reset_cache(self):
+        self.db_cache_key = None
+        self.db_rows = None
+        self.db_embeddings = None
+
+    def reconcile_cache(self, db_path: str, refresh_database: bool) -> None:
+        file_parts = ['ds', 'model', 'facenet512', 'detector', 'centerface']
+        file_name = '_'.join(file_parts).replace('-', '').lower() + '.pkl'
+        datastore_path = os.path.join(db_path, file_name)
+
+        if refresh_database:
+            _ = self.prepare_database(db_path, refresh_database=True)
+        
+        try:
+            stat = os.stat(datastore_path)
+        except FileNotFoundError:
+            raise ValueError(f'Datastore not found {datastore_path}')
+        
+        cache_key = (stat.st_mtime_ns, stat.st_size)
+
+        # early return if cache is still valid:
+        if (
+            (self.db_datastore_path == datastore_path) and
+            (self.db_cache_key == cache_key) and
+            (self.db_rows is not None) and (self.db_embeddings is not None)
+        ):
+            return
+            
+        with open(datastore_path, 'rb') as f:
+            representations = pickle.load(f)
+
+        if not representations:
+            raise ValueError(f'No representations in {datastore_path}')
+
+        df = pd.DataFrame(representations)
+
+        mask = df['embedding'].notna()
+        df = df[mask].reset_index(drop=True)
+        
+        db_embs = np.stack(df['embedding'].tolist()).astype(np.float32)
+        db_embs = torch.from_numpy(db_embs).to(self.device, non_blocking=True)
+        db_embs = F.normalize(db_embs, p=2, dim=1)
+
+        self.db_datastore_path = datastore_path
+        self.db_cache_key      = cache_key
+        self.db_rows           = df.drop(columns=['embedding']).reset_index(drop=True)
+        self.db_embeddings     = db_embs
 
     def detect(
             self,
@@ -387,18 +443,22 @@ class FaceAnalysis:
 
         embeddings = self.facenet.represent(face_imgs, postprocess=postprocess)
 
-        if isinstance(embeddings, torch.Tensor):
-            embeddings = embeddings.cpu().numpy()
-
         results = []
         for i, embedding in enumerate(embeddings):
+            if postprocess:
+                if isinstance(embedding, torch.Tensor):
+                    embedding = embedding.detach().cpu().numpy()
+                if isinstance(embedding, np.ndarray):
+                    embedding_out = embedding.tolist()
+                else:
+                    embedding_out = embedding
+            else:
+                embedding_out = embedding
+
             results.append({
-                'embedding': (
-                    embedding.tolist() if isinstance(embedding, np.ndarray)
-                    else embedding
-                ),
-                'facial_area': facial_areas[i],
-                'face_confidence': confidences[i],
+                'embedding'       : embedding_out,
+                'facial_area'     : facial_areas[i],
+                'face_confidence' : confidences[i],
             })
 
         return results
@@ -408,36 +468,26 @@ class FaceAnalysis:
             imgs: list[np.ndarray],
             db_path: str,
             id_cutoff: Optional[float] = None,
-            enhance: bool = True,
-            refresh_database: bool = True,
+            enhance: bool = False,
         ) -> list[list[pd.DataFrame]]:
-        per_image_resp_objs = []
-
         id_cutoff = id_cutoff or self.id_cutoff
 
-        representations = self._prepare_data(
-            db_path,
-            refresh_database=refresh_database,
-            enhance=enhance,
-        )
-        if len(representations) == 0:
-            logger.warning('No employee representations')
-            return []
-        df = pd.DataFrame(representations)
-        
-        per_image_objs = self.detect(
-            imgs,
-            enhance=enhance,
-        )
+        self.reconcile_cache(db_path, refresh_database=False)
+
+        per_image_resp_objs = []
+        per_image_objs = self.detect(imgs, enhance=enhance)
+
         for source_objs in per_image_objs:
             resp_obj = []
+
             if not source_objs:
                 resp_obj.append(pd.DataFrame())
                 per_image_resp_objs.append(resp_obj)
                 continue
-            face_imgs = [obj['face_img'] for obj in source_objs]
+
+            face_imgs    = [obj['face_img']    for obj in source_objs]
             facial_areas = [obj['facial_area'] for obj in source_objs]
-            confidences = [obj['confidence'] for obj in source_objs]
+            confidences  = [obj['confidence']  for obj in source_objs]
 
             press_stopwatch(self, 'face_recognition_time')
             target_embedding_objs = self.represent(
@@ -449,33 +499,29 @@ class FaceAnalysis:
             press_stopwatch(self, 'face_recognition_time')
 
             press_stopwatch(self, 'other_processing_time')
-            source_embeddings = np.stack(df['embedding'].tolist())
-            target_embeddings = np.stack(
-                [obj['embedding'] for obj in target_embedding_objs]
+            target_tensor = (
+                torch.stack([obj['embedding'] for obj in target_embedding_objs])
+                .to(self.device, non_blocking=True)
             )
-            source_tensor = torch.tensor(source_embeddings).to(self.device)
-            target_tensor = torch.tensor(target_embeddings).to(self.device)
-            source_tensor = F.normalize(source_tensor, p=2, dim=1)
             target_tensor = F.normalize(target_tensor, p=2, dim=1)
 
-            similarity = torch.mm(target_tensor, source_tensor.T)
-            distance_matrix = 1 - similarity
+            similarity_matrix = torch.mm(target_tensor, self.db_embeddings.T)
+            similarity_matrix = (
+                similarity_matrix.detach().cpu().float().numpy()
+            )
+            distance_matrix = 1 - similarity_matrix
 
             for i, embedding_obj in enumerate(target_embedding_objs):
-                face_region = embedding_obj['facial_area']
+                result_df = self.db_rows.copy(deep=False)
+                
+                result_df['x']          = embedding_obj['facial_area']['x']
+                result_df['y']          = embedding_obj['facial_area']['y']
+                result_df['w']          = embedding_obj['facial_area']['w']
+                result_df['h']          = embedding_obj['facial_area']['h']
 
-                result_df = df.copy()
-                result_df['x'] = face_region['x']
-                result_df['y'] = face_region['y']
-                result_df['w'] = face_region['w']
-                result_df['h'] = face_region['h']
-
-                distances = distance_matrix[i].detach().cpu().numpy().tolist()
-
-                result_df['distance'] = distances
                 result_df['confidence'] = embedding_obj['face_confidence']
-
-                result_df = result_df.drop(columns=['embedding'])
+                result_df['distance']   = distance_matrix[i]
+                
                 result_df = result_df[result_df['distance'] <= id_cutoff]
                 result_df = (
                     result_df.sort_values(by=['distance'], ascending=True)
@@ -484,7 +530,7 @@ class FaceAnalysis:
                 resp_obj.append(result_df)
             per_image_resp_objs.append(resp_obj)
 
-        press_stopwatch(self, 'other_processing_time')
+            press_stopwatch(self, 'other_processing_time')
 
         return per_image_resp_objs
 
