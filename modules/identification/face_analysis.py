@@ -39,8 +39,7 @@ class FaceAnalysis:
         self.input_dir = os.path.join(self.project_root, 'files/input/')
         self.output_dir = os.path.join(self.project_root, 'files/output/')
 
-        self.face_dir = os.path.join(self.input_dir, 'faces/')
-        self.db_path = os.path.join(self.project_root, 'files/', 'data.db')
+        self.face_datastore = os.path.join(self.input_dir, 'faces/')
 
         # MODELS:
         from models import CenterFace, FaceNet
@@ -74,12 +73,12 @@ class FaceAnalysis:
         self.db_rows = None
         self.db_embeddings = None
 
-        self.reconcile_cache(self.db_path, refresh_database=True)
+        self.reconcile_cache(face_datastore=self.face_datastore, refresh=True)
 
-    def prepare_database(
+    def prepare_datastore(
             self,
-            db_path,
-            refresh_database: bool = True,
+            face_datastore,
+            refresh: bool = True,
             enhance: bool = True,
             normalize_face: bool = True,
         ):
@@ -178,8 +177,8 @@ class FaceAnalysis:
 
             return representations
 
-        if not os.path.isdir(db_path):
-            raise ValueError(f'Passed path {db_path} does not exist!')
+        if not os.path.isdir(face_datastore):
+            raise ValueError(f'Passed path {face_datastore} does not exist!')
 
         file_parts = [
             'ds', 'model', 'facenet512',
@@ -188,7 +187,7 @@ class FaceAnalysis:
         file_name = '_'.join(file_parts) + '.pkl'
         file_name = file_name.replace('-', '').lower()
 
-        datastore_path = os.path.join(db_path, file_name)
+        datastore_path = os.path.join(face_datastore, file_name)
         representations = []
 
         # required cols for representations:
@@ -219,18 +218,18 @@ class FaceAnalysis:
                 )
 
         # Get the list of images on storage:
-        storage_images = set(image_utils.yield_images(path=db_path))
+        storage_images = set(image_utils.yield_images(path=face_datastore))
 
-        if len(storage_images) == 0 and refresh_database is True:
-            raise ValueError(f'No item found in {db_path}')
-        if len(representations) == 0 and refresh_database is False:
+        if len(storage_images) == 0 and refresh is True:
+            raise ValueError(f'No item found in {face_datastore}')
+        if len(representations) == 0 and refresh is False:
             raise ValueError(f'Nothing is found in {datastore_path}')
 
         must_save_pickle = False
         new_images, old_images, replaced_images = set(), set(), set()
 
         # enforce data consistency amongst on disk images and pickle file:
-        if refresh_database:
+        if refresh:
             pickled_images = {
                 representation['identity'] for representation in representations
             }
@@ -279,13 +278,13 @@ class FaceAnalysis:
         self.db_rows = None
         self.db_embeddings = None
 
-    def reconcile_cache(self, db_path: str, refresh_database: bool) -> None:
+    def reconcile_cache(self, face_datastore: str, refresh: bool) -> None:
         file_parts = ['ds', 'model', 'facenet512', 'detector', 'centerface']
         file_name = '_'.join(file_parts).replace('-', '').lower() + '.pkl'
-        datastore_path = os.path.join(db_path, file_name)
+        datastore_path = os.path.join(face_datastore, file_name)
 
-        if refresh_database:
-            _ = self.prepare_database(db_path, refresh_database=True)
+        if refresh:
+            _ = self.prepare_datastore(face_datastore, refresh=True)
         
         try:
             stat = os.stat(datastore_path)
@@ -466,13 +465,13 @@ class FaceAnalysis:
     def find(
             self,
             imgs: list[np.ndarray],
-            db_path: str,
+            face_datastore: str,
             id_cutoff: Optional[float] = None,
             enhance: bool = False,
         ) -> list[list[pd.DataFrame]]:
         id_cutoff = id_cutoff or self.id_cutoff
 
-        self.reconcile_cache(db_path, refresh_database=False)
+        self.reconcile_cache(face_datastore, refresh=False)
 
         per_image_resp_objs = []
         per_image_objs = self.detect(imgs, enhance=enhance)
@@ -540,7 +539,7 @@ class FaceAnalysis:
             regions: Optional[Sequence] = None,
             id_cutoff: Optional[float] = None,
             enhance: Optional[bool] = None,
-            db_path: Optional[str] = None,
+            face_datastore: Optional[str] = None,
         ) -> list[pd.DataFrame]:
         def _postprocess_output(all_face_dfs):
             '''
@@ -584,7 +583,7 @@ class FaceAnalysis:
             from models import ClearFace
             self.clearface = ClearFace(device=self.device)
 
-        db_path = db_path or self.face_dir
+        face_datastore = face_datastore or self.face_datastore
         id_cutoff = id_cutoff or self.id_cutoff
 
         press_stopwatch(self, 'identification_pipeline_time')
@@ -614,7 +613,7 @@ class FaceAnalysis:
                 imgs=batch_imgs_chunk,
                 id_cutoff=id_cutoff,
                 enhance=enhance,
-                db_path=db_path,
+                face_datastore=face_datastore,
             )
             per_image_face_dfs.extend(result)
 
