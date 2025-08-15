@@ -137,7 +137,7 @@ def run_worker_pipeline(
 # -----------------------------------------------------------------------------
 
 
-def process_segment_records(footage_records: list[tuple], process_config: tuple):
+def process_records(footage_records: list[tuple], process_config: tuple):
     logger.info('Processing time segment records...')
 
     footage_processing_tasks = [
@@ -245,16 +245,14 @@ def main(
         if not segment_records:
             time.sleep(60)
             continue
-        else:
-            elapsed_time_logs, stop_timing = log_utils.observability_thread(
-                target='elapsed_time', logger=logger
-            )
-            elapsed_time_logs.start()
-
-        time_segment_info = utils.get_segment_info(segment_records)
-        time_segment, filenames = time_segment_info
         
-        process_segment_records(segment_records, process_cfg)
+        time_segment, filenames = utils.get_segment_info(segment_records)
+        elapsed_time_logs, stop_timing = log_utils.observability_thread(
+            target='elapsed_time', logger=logger
+        )
+        elapsed_time_logs.start()
+
+        process_records(segment_records, process_cfg)
 
         if id_strategy == 'assess_presence':
             processing_output = io_utils.load_processing_output(time_segment)
