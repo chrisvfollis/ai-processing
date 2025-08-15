@@ -67,13 +67,13 @@ class FaceAnalysis:
         self.results = {}
         self.id_matches = {}
 
-        # FACE DATABASE CACHING:
-        self.db_datastore_path = None
-        self.db_cache_key = None
-        self.db_rows = None
-        self.db_embeddings = None
+        # FACE DATASTORE CACHING:
+        self.datastore_path = None
+        self.cache_key = None
+        self.faces_df = None
+        self.faces_tensor = None
 
-        self.reconcile_cache(face_datastore=self.face_datastore, refresh=True)
+        self.reconcile_cache(self.face_datastore, refresh=True)
 
     def prepare_datastore(
             self,
@@ -274,9 +274,9 @@ class FaceAnalysis:
         return representations
 
     def reset_cache(self):
-        self.db_cache_key = None
-        self.db_rows = None
-        self.db_embeddings = None
+        self.cache_key = None
+        self.faces_df = None
+        self.faces_tensor = None
 
     def reconcile_cache(self, face_datastore: str, refresh: bool) -> None:
         file_parts = ['ds', 'model', 'facenet512', 'detector', 'centerface']
@@ -295,9 +295,9 @@ class FaceAnalysis:
 
         # early return if cache is still valid:
         if (
-            (self.db_datastore_path == datastore_path) and
-            (self.db_cache_key == cache_key) and
-            (self.db_rows is not None) and (self.db_embeddings is not None)
+            (self.datastore_path == datastore_path) and
+            (self.cache_key == cache_key) and
+            (self.faces_df is not None) and (self.faces_tensor is not None)
         ):
             return
             
@@ -312,14 +312,17 @@ class FaceAnalysis:
         mask = df['embedding'].notna()
         df = df[mask].reset_index(drop=True)
         
-        db_embs = np.stack(df['embedding'].tolist()).astype(np.float32)
-        db_embs = torch.from_numpy(db_embs).to(self.device, non_blocking=True)
-        db_embs = F.normalize(db_embs, p=2, dim=1)
+        embeddings = np.stack(df['embedding'].tolist()).astype(np.float32)
+        embeddings = torch.from_numpy(embeddings).to(
+            self.device, non_blocking=True
+        )
 
-        self.db_datastore_path = datastore_path
-        self.db_cache_key      = cache_key
-        self.db_rows           = df.drop(columns=['embedding']).reset_index(drop=True)
-        self.db_embeddings     = db_embs
+        df = df.drop(columns=['embedding']).reset_index(drop=True)
+
+        self.datastore_path = datastore_path
+        self.cache_key      = cache_key
+        self.faces_df       = df
+        self.faces_tensor   = F.normalize(embeddings, p=2, dim=1)
 
     def detect(
             self,
@@ -502,16 +505,18 @@ class FaceAnalysis:
                 torch.stack([obj['embedding'] for obj in target_embedding_objs])
                 .to(self.device, non_blocking=True)
             )
-            target_tensor = F.normalize(target_tensor, p=2, dim=1)
 
-            similarity_matrix = torch.mm(target_tensor, self.db_embeddings.T)
+            # compute cosine sims:
+            target_tensor = F.normalize(target_tensor, p=2, dim=1)
+            similarity_matrix = torch.mm(target_tensor, self.faces_tensor.T)
+            
             similarity_matrix = (
                 similarity_matrix.detach().cpu().float().numpy()
             )
             distance_matrix = 1 - similarity_matrix
 
             for i, embedding_obj in enumerate(target_embedding_objs):
-                result_df = self.db_rows.copy(deep=False)
+                result_df = self.faces_df.copy(deep=False)
                 
                 result_df['x']          = embedding_obj['facial_area']['x']
                 result_df['y']          = embedding_obj['facial_area']['y']
