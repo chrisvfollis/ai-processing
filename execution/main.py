@@ -52,16 +52,20 @@ def run_worker_pipeline(
     time_segment, cam_id = utils.decode_vid_filename(filename)
 
     inference_cfg = {'model_cfg': model_cfg, 'device': device}
-    if id_strategy == 'assign_tracks':
-        inference_cfg = inference_cfg | {
-            'id_freq': '2 Hz',
-            'use_features': True,
+    if id_strategy == 'tracks':
+        strategy_params = {
+            'stride'          : 1,
+            'id_inference_Hz' : 2,
+            'use_features'    : True,
         }
-    elif id_strategy == 'assess_presence':
-        inference_cfg = inference_cfg | {
-            'id_freq': '5 Hz',
-            'use_features': False,
+    elif id_strategy == 'presence':
+        strategy_params = {
+            # 'stride'          : 1,
+            'stride'          : 2,
+            'id_inference_Hz' : 5,
+            'use_features'    : False,
         }
+    inference_cfg = inference_cfg | strategy_params
 
     file_prefix = f'{time_segment}_{cam_id}'
     object_key = f'{shop_uuid}/{filename}'
@@ -85,7 +89,7 @@ def run_worker_pipeline(
         tracking.filter_tracks()
         trk_detections, _ = tracking.format_track_data()
 
-        if id_strategy == 'assign_tracks':
+        if id_strategy == 'tracks':
             try:
                 active_trks, inactive_trks = identify.assign_track_identities(
                     face_data, active_trks, inactive_trks, trk_detections,
@@ -103,7 +107,7 @@ def run_worker_pipeline(
             results.records.save_tracks(
                 time_segment, cam_id, inactive_trks, tracking.fps
             )
-        elif id_strategy == 'assess_presence':
+        elif id_strategy == 'presence':
             output_data = {
                 'person_dets': inference.person_detection_df,
                 'trk_dets': trk_detections,
@@ -254,7 +258,7 @@ def main(
 
         process_records(segment_records, process_cfg)
 
-        if id_strategy == 'assess_presence':
+        if id_strategy == 'presence':
             processing_output = io_utils.load_processing_output(time_segment)
             face_data, trk_dets = processing_output[2:]
                 

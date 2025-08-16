@@ -34,7 +34,7 @@ class InferencePipeline:
         video_file: str,
         model_cfg: dict,
         device: torch.device = None,
-        inference_stride: int = 1,
+        stride: int = 1,
         id_inference_Hz: str | int = '*',
         use_features: bool = False,
     ):
@@ -79,16 +79,16 @@ class InferencePipeline:
         self.time_segment, self.cam_id = utils.decode_vid_filename(self.video_file)
 
         # PROCESSING PARAMETERS:
-        self.inference_stride = inference_stride
-        self.inference_Hz = self.fps // inference_stride
-        
+        self.stride = stride
+        self.baseline_Hz = self.fps // stride
+
         if id_inference_Hz == '*':
             self.id_stride = 1
         else:
-            synced_frequency_ratio = max(1, math.ceil(
-                self.inference_Hz / id_inference_Hz
+            aligned_frequency_ratio = max(1, math.ceil(
+                self.baseline_Hz / id_inference_Hz
             ))
-            self.id_stride = inference_stride * synced_frequency_ratio
+            self.id_stride = stride * aligned_frequency_ratio
         
         self.use_features = use_features
 
@@ -166,7 +166,7 @@ class InferencePipeline:
     def run(self, batch_size: int = 20, f_cutoff: Optional[int] = None):
         f_cutoff = f_cutoff or self.f_total
         self.prog_interval = (
-            ((f_cutoff // 4) // self.inference_stride) * self.inference_stride
+            ((f_cutoff // 4) // self.stride) * self.stride
         )
         self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
@@ -250,7 +250,7 @@ class InferencePipeline:
         
         person_detections = {}
         for idx, detections in enumerate(yolo_output):
-            f_num = frame_data['start'] + (idx * self.inference_stride)
+            f_num = frame_data['start'] + (idx * self.stride)
 
             if (
                 isinstance(detections, torch.Tensor) or
@@ -287,7 +287,7 @@ class InferencePipeline:
 
             img = frame.to_ndarray(format='bgr24')  # Converts to BGR numpy array
 
-            if self.f_num % self.inference_stride == 0:
+            if self.f_num % self.stride == 0:
                 frames.append(img)
                 idx = len(frames) - 1
                 if self.f_num % self.id_stride == 0:
@@ -364,7 +364,7 @@ class InferencePipeline:
 
                 f'{self.resolution[0]}x{self.resolution[1]}',   
                 f'{self.fps} fps',
-                f'{self.inference_Hz} fps',
+                f'{self.baseline_Hz} fps',
 
                 self.yolox.input_size,                         
                 self.yolox.nms_thresh,
