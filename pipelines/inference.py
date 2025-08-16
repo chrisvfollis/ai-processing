@@ -201,6 +201,9 @@ class InferencePipeline:
         frames = frame_data['frames']
         id_frames = frame_data['id_frames']
 
+        if not frames:
+            return {}, {}
+
         yolo_output = self.yolox.inference(frames)
 
         face_data = {}
@@ -252,10 +255,7 @@ class InferencePipeline:
         for idx, detections in enumerate(yolo_output):
             f_num = frame_data['start'] + (idx * self.stride)
 
-            if (
-                isinstance(detections, torch.Tensor) or
-                isinstance(detections, np.ndarray)
-            ):
+            if isinstance(detections, (torch.Tensor, np.ndarray)):
                 person_detections[f_num] = detections
 
         return person_detections, face_data
