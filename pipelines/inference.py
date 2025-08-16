@@ -2,6 +2,7 @@
 import os
 import pickle
 import gc
+import math
 from typing import Optional
 import warnings
 
@@ -29,13 +30,13 @@ logger = log_utils.get_logger(__name__)
 
 class InferencePipeline:
     def __init__(
-            self,
-            video_file: str,
-            model_cfg: dict = {},
-            device: torch.device = None,
-            track_stride: int = 1,
-            id_freq: str = '2 Hz',
-            use_features: bool = True,
+        self,
+        video_file: str,
+        model_cfg: dict,
+        device: torch.device = None,
+        inference_stride: int = 1,
+        id_inference_Hz: str | int = '*',
+        use_features: bool = False,
     ):
         log_utils.press_stopwatch(self, 'init_time')
 
@@ -77,20 +78,18 @@ class InferencePipeline:
 
         self.time_segment, self.cam_id = utils.decode_vid_filename(self.video_file)
 
-        # PARAMETERS:
-        self.track_stride = track_stride
-
-        self.effective_fps = self.fps // self.track_stride
-        self.aligned_1s_interval = self.effective_fps * self.track_stride
-
-        if id_freq == 'fps':
+        # PROCESSING PARAMETERS:
+        self.inference_stride = inference_stride
+        self.inference_Hz = self.fps // inference_stride
+        
+        if id_inference_Hz == '*':
             self.id_stride = 1
         else:
-            id_Hz_val = int(
-                str(id_freq).split()[0]
-            )
-            self.id_stride = self.aligned_1s_interval // id_Hz_val
-
+            synced_frequency_ratio = max(1, math.ceil(
+                self.inference_Hz / id_inference_Hz
+            ))
+            self.id_stride = inference_stride * synced_frequency_ratio
+        
         self.use_features = use_features
 
         # INFERENCE DATA STORAGE:
@@ -167,7 +166,7 @@ class InferencePipeline:
     def run(self, batch_size: int = 20, f_cutoff: Optional[int] = None):
         f_cutoff = f_cutoff or self.f_total
         self.prog_interval = (
-            ((f_cutoff // 4) // self.track_stride) * self.track_stride
+            ((f_cutoff // 4) // self.inference_stride) * self.inference_stride
         )
         self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
@@ -251,7 +250,7 @@ class InferencePipeline:
         
         person_detections = {}
         for idx, detections in enumerate(yolo_output):
-            f_num = frame_data['start'] + (idx * self.track_stride)
+            f_num = frame_data['start'] + (idx * self.inference_stride)
 
             if (
                 isinstance(detections, torch.Tensor) or
@@ -288,7 +287,7 @@ class InferencePipeline:
 
             img = frame.to_ndarray(format='bgr24')  # Converts to BGR numpy array
 
-            if self.f_num % self.track_stride == 0:
+            if self.f_num % self.inference_stride == 0:
                 frames.append(img)
                 idx = len(frames) - 1
                 if self.f_num % self.id_stride == 0:
@@ -365,7 +364,7 @@ class InferencePipeline:
 
                 f'{self.resolution[0]}x{self.resolution[1]}',   
                 f'{self.fps} fps',
-                f'{self.effective_fps} fps',
+                f'{self.inference_Hz} fps',
 
                 self.yolox.input_size,                         
                 self.yolox.nms_thresh,
