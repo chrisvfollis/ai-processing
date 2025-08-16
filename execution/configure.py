@@ -20,7 +20,7 @@ def make_parser():
     parser.add_argument('--priority-cam', type=str)
     parser.add_argument('--f-cutoff', type=int, default=None)
 
-    parser.add_argument('--id-strategy', type=str, default='assess_presence')
+    parser.add_argument('--id-strategy', type=str, default='presence')
 
     return parser
 
