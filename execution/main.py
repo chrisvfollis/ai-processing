@@ -67,19 +67,24 @@ def run_worker_pipeline(
         }
     inference_cfg = inference_cfg | strategy_params
 
-    file_prefix = f'{time_segment}_{cam_id}'
-    object_key = f'{shop_uuid}/{filename}'
-    
-    process_result = False
+    file_prefix  = f'{time_segment}_{cam_id}'
+    local_path   = os.path.join(input_dir, filename)
+    object_key   = f'{shop_uuid}/{filename}'
+    footage_info = (local_path, object_key)
+
+    worker_pipeline_result = False
     try:
-        if not os.path.exists(os.path.join(input_dir, filename)):
-            if not io_utils.download_s3_footage(object_key, credentials):
-                raise S3DownloadError(f'Failed to download footage: {object_key}')
+        status = io_utils.ensure_footage(*footage_info, credentials)
+        if status != True:
+            if status == 'NoSuchKey':
+                return worker_pipeline_result
+            raise S3DownloadError(f'Failed to download {object_key}')
 
         inference = InferencePipeline(filename, **inference_cfg)
+        
         if inference.skim(f_cutoff) == False:
             io_utils.delete_s3_footage(object_key, credentials)
-            return process_result
+            return worker_pipeline_result
         
         person_detections, face_data = inference.run(f_cutoff=f_cutoff)
 
@@ -127,13 +132,13 @@ def run_worker_pipeline(
         tracking.save_state()
 
         logger.info(f'Processed {filename}')
-        process_result = True
+        worker_pipeline_result = True
     except Exception:
         logger.exception(f'Error occurred while processing {filename}')
     finally:
         io_utils.clear_memory()
 
-    return process_result
+    return worker_pipeline_result
 
 
 # =============================================================================

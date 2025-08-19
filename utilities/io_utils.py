@@ -21,7 +21,7 @@ import cv2
 import av
 import torch
 import boto3
-from botocore.exceptions import EndpointConnectionError, NoCredentialsError
+from botocore.exceptions import ClientError, EndpointConnectionError, NoCredentialsError
 from botocore.config import Config
 import requests
 import psutil
@@ -103,7 +103,7 @@ def cleanup_semaphores(logger):
 
 
 # =============================================================================
-#                           - LOCAL FILES -
+#                             - LOCAL FILES -
 # -----------------------------------------------------------------------------
 
 
@@ -423,35 +423,39 @@ class S3DownloadError(Exception):
 
 
 def download_s3_footage(
-        object_keys: list[str] | str,
-        credentials: Optional[tuple[str, ...]] = None,
-        region: str = 'us-west-1',
-        bucket_name: str = 'ivakt-footage',
-) -> bool:
+    object_keys: list[str] | str,
+    credentials: Optional[tuple[str, ...]] = None,
+    region: str = 'us-west-1',
+    bucket_name: str = 'ivakt-footage',
+) -> dict:
     s3_client = conn_utils.s3_connect(region, credentials)
     project_root = get_project_root()
 
     object_keys = [object_keys] if isinstance(object_keys, str) else object_keys
-    successfully_downloaded = []
+    results = {}
 
     for object_key in object_keys:
-        download_status = False
-
         filename = utils.parse_obj_key(object_key)[-1]
         local_path = os.path.join(project_root, 'files/input', filename)
 
         try:
             s3_client.download_file(bucket_name, object_key, local_path)
-            download_status = True
-            print(f'Downloaded {filename}')
-
+            logger.info(f'Downloaded {filename}')
+            results[object_key] = True
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'NoSuchKey':
+                logger.warning(f'File not found in S3: {object_key}')
+            else:
+                logger.error(f'ClientError while downloading {filename}: {e}')
+                remove_files(local_path, missing_ok=True)
+            results[object_key] = error_code
         except Exception as e:
-            print(f'Failed to download {filename}: {e}')
+            logger.error(f'Failed to download {filename}: {e}')
             remove_files(local_path, missing_ok=True)
+            results[object_key] = False
 
-        successfully_downloaded.append(download_status)
-
-    return all(successfully_downloaded)
+    return results
 
 
 def delete_s3_footage(
@@ -902,3 +906,30 @@ def dequeue_segment(shop_id: str, time_segment: str) -> bool:
         )
 
     return success_flag
+
+
+# =============================================================================
+#                          - AMBIGUOUS LOCATIONS -
+# -----------------------------------------------------------------------------
+
+
+def ensure_footage(
+    file_path: str,
+    object_key: str,
+    credentials: Optional[tuple[str, ...]] = None,
+    region: str = 'us-west-1',
+    bucket_name: str = 'ivakt-footage',
+) -> bool | str:
+    '''
+    Checks for the file locally, and if it's missing attempts to download
+    it from the S3 bucket.
+    '''
+    if not os.path.exists(file_path):
+        return True
+    else:
+        download_result = download_s3_footage(
+            object_key, credentials, region, bucket_name
+        )
+        result = download_result[object_key]
+
+    return result
