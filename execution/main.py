@@ -136,6 +136,11 @@ def run_worker_pipeline(
     except Exception:
         logger.exception(f'Error occurred while processing {filename}')
     finally:
+        try:
+            del inference
+            del tracking
+        except NameError:
+            pass
         io_utils.clear_memory()
 
     return worker_pipeline_result
@@ -316,7 +321,7 @@ def main(
                 logger.info('Generating event images...')
                 event_imgs_df = results.images.global_id_event_imgs(
                     time_segment, presence_df, filtered_faces, trk_dets,
-                    credentials, min_frame_delta=100
+                    credentials, min_frame_delta=60
                 )
                 results.records.save_attendance(time_segment, presence_df, event_imgs_df)
             else:

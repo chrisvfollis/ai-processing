@@ -55,7 +55,7 @@ def get_video_info(source, release=True):
                   int(source.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     frame_diag = math.dist([0, 0], resolution)
 
-    total_frames = int(source.get(cv2.CAP_PROP_FRAME_COUNT))
+    total_frames = int(round(source.get(cv2.CAP_PROP_FRAME_COUNT), 0))
     fps = int(round(source.get(cv2.CAP_PROP_FPS), 0))
 
     if release:
