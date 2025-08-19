@@ -924,7 +924,7 @@ def ensure_footage(
     Checks for the file locally, and if it's missing attempts to download
     it from the S3 bucket.
     '''
-    if not os.path.exists(file_path):
+    if os.path.exists(file_path):
         return True
     else:
         download_result = download_s3_footage(
