@@ -264,8 +264,17 @@ def main(
         process_records(segment_records, process_cfg)
 
         if id_strategy == 'presence':
-            processing_output = io_utils.load_processing_output(time_segment)
-            face_data, trk_dets = processing_output[2:]
+            try:
+                processing_output = io_utils.load_processing_output(time_segment)
+                face_data, trk_dets = processing_output[2:]
+            except ValueError:
+                logger.info('No results to process')
+
+                stop_timing.set()
+                elapsed_time_logs.join()
+                
+                wrap_up_segment(filenames, time_segment, **basic_args)
+                continue
                 
             logger.info('Running global identification...')
             identity_presence_params = AssessIdPresenceParams(
