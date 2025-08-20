@@ -86,7 +86,7 @@ def run_worker_pipeline(
             io_utils.delete_s3_footage(object_key, credentials)
             return worker_pipeline_result
         
-        person_detections, face_data = inference.run(f_cutoff=f_cutoff)
+        person_detections, face_data = inference.run(batch_size=16, f_cutoff=f_cutoff)
 
         tracking = TrackingPipeline(filename, person_detections)
 
@@ -287,17 +287,17 @@ def main(
                 mismatch_threshold    = 0.90,
                 distance_score_weight = 0.55,
                 confidence_weight     = 0.45,
-                n_matches             = 1,
+                n_matches             = 2,
                 min_score             = 0.45,
-                reliability_scale     = 0.75,
+                reliability_scale     = 0.725,
                 fp_rate               = 0.20,
                 presence_prior        = 0.05,
-                bias_score_boundary   = 0.70,
+                bias_score_boundary   = 0.75,
                 penalty_biases        = (0.5, 1.25),
                 decay_window          = 0.9,
                 boost_range           = (3.0, 5.0),
                 max_decay             = 0.6,
-                max_boost             = 0.8,
+                max_boost             = 0.9,
                 boost_per_neighbor    = 0.075,
                 fallback_recall_est   = 0.60,
                 presence_thresh       = 0.55,
@@ -354,19 +354,19 @@ def main(
                     if cam_face_data.empty and cam_trk_dets.empty:
                         continue
 
-                    try:
-                        logger.info('Rendering video annotations...')
-                        render.video.global_id_output(
-                            filename,
-                            person_df = cam_person_det_data,
-                            face_df   = cam_face_data,
-                            trk_df    = cam_trk_dets,
-                            region_df = cam_region_log_data,
-                            f_cutoff  = f_cutoff,
-                        )
-                        logger.info(f'Annotated video saved')
-                    except Exception as e:
-                        logger.exception(f'Failed to render annotated video for {filename}: {e}')
+                    # try:
+                    #     logger.info('Rendering video annotations...')
+                    #     render.video.global_id_output(
+                    #         filename,
+                    #         person_df = cam_person_det_data,
+                    #         face_df   = cam_face_data,
+                    #         trk_df    = cam_trk_dets,
+                    #         region_df = cam_region_log_data,
+                    #         f_cutoff  = f_cutoff,
+                    #     )
+                    #     logger.info(f'Annotated video saved')
+                    # except Exception as e:
+                    #     logger.exception(f'Failed to render annotated video for {filename}: {e}')
 
         stop_timing.set()
         elapsed_time_logs.join()

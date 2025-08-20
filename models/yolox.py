@@ -217,11 +217,15 @@ class YoloX:
 
             padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
             r = min(input_size[0] / orig_h, input_size[1] / orig_w)
+            press_stopwatch(self, 'resize_time')
             resized_img = cv2.resize(
                 image,
                 (int(orig_w * r), int(orig_h * r)),
                 interpolation=cv2.INTER_LINEAR,
             ).astype(np.float32)
+            press_stopwatch(self, 'resize_time')
+
+            press_stopwatch(self, 'pad_and_norm_time')
             padded_img[:int(orig_h * r), :int(orig_w * r)] = resized_img
 
             padded_img = padded_img[:, :, ::-1] / 255.0  # BGR to RGB + normalize
@@ -229,13 +233,18 @@ class YoloX:
                 padded_img -= mean
             if std is not None:
                 padded_img /= std
+            press_stopwatch(self, 'pad_and_norm_time')
 
+            press_stopwatch(self, 'transpose_time')
             padded_img = padded_img.transpose(swap)
             padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
+            press_stopwatch(self, 'transpose_time')
             preprocessed_images.append(padded_img)
 
+        press_stopwatch(self, 'convert_time')
         preprocessed_images = np.stack(preprocessed_images, axis=0)
         preprocessed_images = torch.from_numpy(preprocessed_images).to(self.device)
+        press_stopwatch(self, 'convert_time')
 
         press_stopwatch(self, 'preprocess_time')
         return preprocessed_images, original_shapes

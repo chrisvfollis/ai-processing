@@ -382,7 +382,7 @@ class InferencePipeline:
         performance_data = {
             'module': [
                 *['pipeline'] * 5,
-                *['yolox'] * 3,
+                *['yolox'] * 7,
                 *['osnet'] * 3,
                 *['face_analysis'] * 4
             ],
@@ -393,7 +393,11 @@ class InferencePipeline:
                 'initialize_time',
                 'video_skim_time',
 
-                'preprocess_time',                  # YOLOv4
+                'preprocess_time',                  # YOLOX
+                'resize_time',
+                'pad_and_norm_time',
+                'transpose_time',
+                'convert_time',
                 'inference_time',
                 'postprocess_time',
                 
@@ -414,6 +418,10 @@ class InferencePipeline:
                 self.skim_time,
                 
                 self.yolox.preprocess_time,
+                self.yolox.resize_time,
+                self.yolox.pad_and_norm_time,
+                self.yolox.transpose_time,
+                self.yolox.convert_time,
                 self.yolox.inference_time,
                 self.yolox.postprocess_time,
 
