@@ -86,7 +86,7 @@ def run_worker_pipeline(
             io_utils.delete_s3_footage(object_key, credentials)
             return worker_pipeline_result
         
-        person_detections, face_data = inference.run(batch_size=16, f_cutoff=f_cutoff)
+        person_detections, face_data = inference.run(batch_size=8, f_cutoff=f_cutoff)
 
         tracking = TrackingPipeline(filename, person_detections)
 
