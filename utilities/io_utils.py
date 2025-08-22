@@ -452,7 +452,7 @@ def download_s3_footage(
             results[object_key] = True
         except ClientError as e:
             error_code = e.response['Error']['Code']
-            if error_code == 'NoSuchKey':
+            if error_code in ('NoSuchKey', '404', 'NotFound'):
                 logger.warning(f'File not found in S3: {object_key}')
             else:
                 logger.error(f'ClientError while downloading {filename}: {e}')

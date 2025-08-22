@@ -76,7 +76,7 @@ def run_worker_pipeline(
     try:
         status = io_utils.ensure_footage(*footage_info, credentials)
         if status != True:
-            if status == 'NoSuchKey':
+            if status in ('NoSuchKey', '404', 'NotFound'):
                 return worker_pipeline_result
             raise S3DownloadError(f'Failed to download {object_key}')
 
@@ -136,13 +136,14 @@ def run_worker_pipeline(
     except Exception:
         logger.exception(f'Error occurred while processing {filename}')
     finally:
-        inference.close()
         try:
+            inference.close()
             del inference, tracking
             del person_detections, face_data, trk_detections
+        except UnboundLocalError:
+            pass
         except NameError as e:
             logger.error(f'Error clearing {filename}: {e}')
-            pass
         io_utils.clear_memory()
 
     return worker_pipeline_result
