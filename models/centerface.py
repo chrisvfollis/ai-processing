@@ -59,11 +59,11 @@ class CenterFace:
             self.face_detections = {}
 
     def detect_faces(
-            self,
-            imgs: np.ndarray | list[np.ndarray],
-            regions: list[Sequence] = None,
-            conf_thresh: float = None,
-            min_area: tuple[int] | int = None,
+        self,
+        imgs: np.ndarray | list[np.ndarray],
+        regions: list[Sequence] = None,
+        conf_thresh: float = None,
+        min_area: tuple[int] | int = None,
         ) -> list[list[FacialAreaRegion]]:
         if isinstance(imgs, np.ndarray):
             imgs = [imgs]

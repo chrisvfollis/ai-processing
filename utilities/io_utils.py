@@ -41,8 +41,16 @@ logger = log_utils.get_logger(__name__)
 
 
 def clear_memory():
-    torch.cuda.empty_cache()
     gc.collect()
+    try:
+        torch.cuda.synchronize()
+    except Exception:
+        pass
+    torch.cuda.empty_cache()
+    try:
+        torch.cuda.ipc_collect()
+    except Exception:
+        pass
 
 
 def cleanup_semaphores(logger):
