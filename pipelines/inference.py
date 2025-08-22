@@ -169,6 +169,13 @@ class InferencePipeline:
         self.prog_interval = (
             ((f_cutoff // 4) // self.stride) * self.stride
         )
+        if self.prog_interval == 0:
+            logger.info(
+                f'Invalid prog_interval: {self.prog_interval}\n' +
+                f'f_cutoff: {f_cutoff}\n' + f'stride: {self.stride}'
+            )
+            self.prog_interval = f_cutoff
+            
         self.progress = 0
         logger.info(f'Running inference pipeline for {self.video_file}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
