@@ -316,60 +316,60 @@ def main(
             # )
             logger.info('Finished global identification')
 
-            if (
+            if not (
                 ('identity' in presence_df.columns) and
                 (presence_df['identity'].notna().any()) and
                 ('cam_id' in trk_dets.columns)
             ):
+                logger.warning(
+                    'Skipping event image generation — no valid identities found'
+                )
+            else:
                 logger.info('Generating event images...')
                 event_imgs_df = results.images.global_id_event_imgs(
                     time_segment, presence_df, filtered_faces, trk_dets,
                     credentials, min_frame_delta=60
                 )
                 results.records.save_attendance(time_segment, presence_df, event_imgs_df)
-            else:
-                logger.warning(
-                    'Skipping event image generation — no valid identities found'
-                )
-
-            if save_all_data:
-                id_results_paths = [
-                    os.path.join(output_dir, f'{time_segment}_{suffix}.csv')
-                    for suffix in [
-                        'presence_summary', 'filtered_faces', 'trk_dets'
-                    ]
-                ]
-                presence_df.to_csv(id_results_paths[0], index=False)
-                filtered_faces.to_csv(id_results_paths[1], index=False)
-                trk_dets.to_csv(id_results_paths[2], index=False)
                 
-                person_det_data, region_log_data = processing_output[:2]
-                for filename in filenames:
-                    if not filename.endswith('.mp4'):
-                        continue
-
-                    _, cam_id = utils.decode_vid_filename(filename)
-                    cam_person_det_data = person_det_data.loc[person_det_data['cam_id'] == cam_id]
-                    cam_region_log_data = region_log_data.loc[region_log_data['cam_id'] == cam_id]
-                    cam_face_data = face_data.loc[face_data['cam_id'] == cam_id]
-                    cam_trk_dets  = trk_dets.loc[trk_dets['cam_id'] == cam_id]
+                if save_all_data:
+                    id_results_paths = [
+                        os.path.join(output_dir, f'{time_segment}_{suffix}.csv')
+                        for suffix in [
+                            'presence_summary', 'filtered_faces', 'trk_dets'
+                        ]
+                    ]
+                    presence_df.to_csv(id_results_paths[0], index=False)
+                    filtered_faces.to_csv(id_results_paths[1], index=False)
+                    trk_dets.to_csv(id_results_paths[2], index=False)
                     
-                    if cam_face_data.empty and cam_trk_dets.empty:
-                        continue
+                    person_det_data, region_log_data = processing_output[:2]
+                    for filename in filenames:
+                        if not filename.endswith('.mp4'):
+                            continue
 
-                    # try:
-                    #     logger.info('Rendering video annotations...')
-                    #     render.video.global_id_output(
-                    #         filename,
-                    #         person_df = cam_person_det_data,
-                    #         face_df   = cam_face_data,
-                    #         trk_df    = cam_trk_dets,
-                    #         region_df = cam_region_log_data,
-                    #         f_cutoff  = f_cutoff,
-                    #     )
-                    #     logger.info(f'Annotated video saved')
-                    # except Exception as e:
-                    #     logger.exception(f'Failed to render annotated video for {filename}: {e}')
+                        _, cam_id = utils.decode_vid_filename(filename)
+                        cam_person_det_data = person_det_data.loc[person_det_data['cam_id'] == cam_id]
+                        cam_region_log_data = region_log_data.loc[region_log_data['cam_id'] == cam_id]
+                        cam_face_data = face_data.loc[face_data['cam_id'] == cam_id]
+                        cam_trk_dets  = trk_dets.loc[trk_dets['cam_id'] == cam_id]
+                        
+                        if cam_face_data.empty and cam_trk_dets.empty:
+                            continue
+
+                        # try:
+                        #     logger.info('Rendering video annotations...')
+                        #     render.video.global_id_output(
+                        #         filename,
+                        #         person_df = cam_person_det_data,
+                        #         face_df   = cam_face_data,
+                        #         trk_df    = cam_trk_dets,
+                        #         region_df = cam_region_log_data,
+                        #         f_cutoff  = f_cutoff,
+                        #     )
+                        #     logger.info(f'Annotated video saved')
+                        # except Exception as e:
+                        #     logger.exception(f'Failed to render annotated video for {filename}: {e}')
 
         stop_timing.set()
         elapsed_time_logs.join()
