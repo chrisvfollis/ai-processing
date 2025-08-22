@@ -136,10 +136,12 @@ def run_worker_pipeline(
     except Exception:
         logger.exception(f'Error occurred while processing {filename}')
     finally:
+        inference.close()
         try:
             del inference, tracking
             del person_detections, face_data, trk_detections
-        except NameError:
+        except NameError as e:
+            logger.error(f'Error clearing {filename}: {e}')
             pass
         io_utils.clear_memory()
 

@@ -666,6 +666,12 @@ class FaceAnalysis:
 
         return pd.concat(merged_dfs, ignore_index=True)
 
+    def close(self):
+        self.centerface.close()
+        self.facenet.close()
+        if hasattr(self, 'retinaface'):
+            self.retinaface.close()
+
     def save_runtime_data(self):
         filename = os.path.join(self.output_dir, 'faceiq_data.xlsx')
     

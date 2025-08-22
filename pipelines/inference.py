@@ -319,6 +319,10 @@ class InferencePipeline:
 
         io_utils.clear_memory()
 
+    def close(self):
+        self.yolox.close()
+        self.face_analysis.close()
+        
     def save_run_info(self):
         runtime_data_dir = os.path.join(self.output_dir, 'runtime_data/')
         commit_hash, commit_datetime = utils.get_git_commit_info()
