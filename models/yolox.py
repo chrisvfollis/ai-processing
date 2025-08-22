@@ -233,7 +233,7 @@ class YoloX:
             nw, nh, px, py = meta_cache[key]
 
             press_stopwatch(self, 'resize_time')
-            resized = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_AREA)
+            resized = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_LINEAR)
             press_stopwatch(self, 'resize_time')
 
             press_stopwatch(self, 'pad_time')
