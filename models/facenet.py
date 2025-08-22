@@ -1,5 +1,6 @@
 # standard dependencies
 import os
+from contextlib import nullcontext
 
 # 3rd-party dependencies
 import numpy as np
@@ -25,11 +26,13 @@ class FaceNet:
         device: torch.device = None,
         fp16: bool = False,
         use_trt: bool = False,
+        stream: torch.cuda.Stream = None
     ):
         self.embedding_size = embedding_size
         self.fp16 = fp16
         self.use_trt = use_trt
         self.device = device or utils.get_default_device()
+        self.stream = stream
 
         if checkpoint is None:
             checkpoint = f'facenet{embedding_size}.pth'
@@ -84,10 +87,19 @@ class FaceNet:
 
     @torch.no_grad()
     def represent(self, imgs, postprocess=False) -> torch.Tensor | np.ndarray:
-        imgs = self.preprocess(imgs)
-        embeddings = self.model(imgs)
+        if self.stream is not None:
+            ctx = torch.cuda.stream(self.stream)
+        else:
+            ctx = nullcontext()
+        with ctx:
+            imgs = self.preprocess(imgs)
+            embeddings = self.model(imgs)
+        if self.stream is not None:
+            self.stream.synchronize()
         return self.postprocess(embeddings) if postprocess else embeddings
 
+    def close(self):
+        self.model = None
 
 # =============================================================================
 #                          - MODEL ARCHITECTURE -

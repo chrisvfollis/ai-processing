@@ -5,6 +5,7 @@
 import math
 import os
 from typing import Optional
+from contextlib import nullcontext
 
 # 3rd-party dependencies
 import numpy as np
@@ -23,18 +24,19 @@ logger = log_utils.get_logger(__name__)
 
 class YoloX:
     def __init__(
-            self,
-            checkpoint: str = 'yolox_mot17.pth.tar',
-            num_classes: int = 1,
-            depth: float = 1.33,
-            width: float = 1.25,
-            input_size: tuple[int] = (800, 1440),
-            conf_thresh: float = 0.1,
-            nms_thresh: float = 0.7,
-            device: torch.device = None,
-            fp16: bool = True,
-            use_trt: bool = False,
-            decode: bool = True,
+        self,
+        checkpoint: str = 'yolox_mot17.pth.tar',
+        num_classes: int = 1,
+        depth: float = 1.33,
+        width: float = 1.25,
+        input_size: tuple[int] = (800, 1440),
+        conf_thresh: float = 0.1,
+        nms_thresh: float = 0.7,
+        device: torch.device = None,
+        fp16: bool = True,
+        use_trt: bool = False,
+        decode: bool = True,
+        stream: torch.cuda.Stream = None,
     ):
         def _configure_batchnorm(model):
             '''
@@ -101,6 +103,7 @@ class YoloX:
                     m.forward = m.fuseforward  # update forward
 
         self.device = device or utils.get_default_device()
+        self.stream = stream
         self.num_classes = num_classes
         self.input_size = input_size
         self.conf_thresh = conf_thresh
@@ -161,11 +164,11 @@ class YoloX:
         self.inference_time = 0
         
     def inference(
-            self,
-            img_data: list[np.ndarray] | np.ndarray,
-            conf_thresh: Optional[float] = None,
-            nms_thresh: Optional[float] = None,
-            num_classes: Optional[int] = None,
+        self,
+        img_data: list[np.ndarray] | np.ndarray,
+        conf_thresh: Optional[float] = None,
+        nms_thresh: Optional[float] = None,
+        num_classes: Optional[int] = None,
     ) -> list[torch.Tensor | None]:
         '''
         Returns (list[torch.tensor or None]): List of tensors, one for each
@@ -182,12 +185,19 @@ class YoloX:
             img_data = [img_data]
 
         img_data = [img.copy() for img in img_data]
-        img_tensor, orig_shapes = self.preprocess(
-            img_data, self.input_size, self.rgb_means, self.std
-        )
-        if self.fp16:
-            img_tensor = img_tensor.half()
-        with torch.no_grad():
+
+        if self.stream is not None:
+            ctx = torch.cuda.stream(self.stream)
+        else:
+            ctx = nullcontext()
+
+        with ctx, torch.no_grad():
+            img_tensor, orig_shapes = self.preprocess(
+                img_data, self.input_size, self.rgb_means, self.std
+            )
+            if self.fp16:
+                img_tensor = img_tensor.half()
+
             press_stopwatch(self, 'inference_time')
             outputs = self.model(img_tensor)
             press_stopwatch(self, 'inference_time')
@@ -203,6 +213,9 @@ class YoloX:
                 num_classes,
                 orig_shapes,
             )
+
+        if self.stream is not None:
+            self.stream.synchronize()
             
         return outputs
 
@@ -314,6 +327,13 @@ class YoloX:
 
         return dets
 
+    def close(self):
+        try:
+            pass
+        finally:
+            self.model = None
+            self._mean_t = None
+            self._std_t = None
 
 # =============================================================================
 #                      - OVERALL MODEL ARCHITECTURE -

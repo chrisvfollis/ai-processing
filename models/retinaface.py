@@ -2,6 +2,7 @@
 from itertools import product as product
 from math import ceil
 import os
+from contextlib import nullcontext
 
 # 3rd-party dependencies
 import cv2
@@ -23,23 +24,24 @@ logger = log_utils.get_logger(__name__)
 
 class RetinaFace:
     def __init__(
-            self,
-            checkpoint: str = 'retinaface.pth',
-            device: torch.device = None,
-            conf_thresh: float = 0.6,
-            nms_thresh: float = 0.3,
-            top_k: int = 5000,
-            keep_top_k: int = 750,
-            min_sizes: list = [
-                [16, 32],
-                [64, 128],
-                [256, 512],
-            ],
-            steps: list = [8, 16, 32],
-            variance: list = [0.1, 0.2],
-            clip: bool = False,
-            fp16: bool = False,
-            expand_margin: bool = True,
+        self,
+        checkpoint: str = 'retinaface.pth',
+        device: torch.device = None,
+        conf_thresh: float = 0.6,
+        nms_thresh: float = 0.3,
+        top_k: int = 5000,
+        keep_top_k: int = 750,
+        min_sizes: list = [
+            [16, 32],
+            [64, 128],
+            [256, 512],
+        ],
+        steps: list = [8, 16, 32],
+        variance: list = [0.1, 0.2],
+        clip: bool = False,
+        fp16: bool = False,
+        expand_margin: bool = True,
+        stream: torch.cuda.Stream = None,
     ):
         project_root = io_utils.get_project_root()
         self.checkpoint_path = os.path.join(
@@ -49,6 +51,7 @@ class RetinaFace:
         self.device = device or torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu'
         )
+        self.stream = stream
 
         self.model = RetinaFaceModel()
         state_dict = torch.load(
@@ -199,66 +202,75 @@ class RetinaFace:
 
     def detect(self, img):
         orig_h, orig_w = img.shape[:2]
-        img_tensor, (resized_h, resized_w) = self.preprocess(img)
 
-        scale_x = orig_w / max(1, resized_w)
-        scale_y = orig_h / max(1, resized_h)
+        if self.stream is not None:
+            ctx = torch.cuda.stream(self.stream)
+        else:
+            ctx = nullcontext()
 
-        with torch.no_grad():
+        with ctx, torch.no_grad():
+            img_tensor, (resized_h, resized_w) = self.preprocess(img)
+
+            scale_x = orig_w / max(1, resized_w)
+            scale_y = orig_h / max(1, resized_h)
+
             try:
                 loc, conf, landms = self.model(img_tensor)
             except Exception:
                 logger.exception(f'Model forward failed.')
                 return []
 
-        scale = torch.tensor(
-            [resized_w, resized_h, resized_w, resized_h],
-            device=self.device,
-            dtype=loc.dtype
-        )
+            scale = torch.tensor(
+                [resized_w, resized_h, resized_w, resized_h],
+                device=self.device,
+                dtype=loc.dtype
+            )
 
-        priors = self.get_priors(image_size=(resized_h, resized_w))
-        prior_data = priors.data
+            priors = self.get_priors(image_size=(resized_h, resized_w))
+            prior_data = priors.data
 
-        boxes = self.decode(loc.data.squeeze(0), prior_data, self.variance)
-        boxes = boxes * scale
-        boxes = boxes.cpu().numpy()
+            boxes = self.decode(loc.data.squeeze(0), prior_data, self.variance)
+            boxes = boxes * scale
+            boxes = boxes.cpu().numpy()
 
-        boxes[:, [0, 2]] *= scale_x
-        boxes[:, [1, 3]] *= scale_y
+            boxes[:, [0, 2]] *= scale_x
+            boxes[:, [1, 3]] *= scale_y
 
-        scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
+            scores = conf.squeeze(0).data.cpu().numpy()[:, 1]
 
-        scale1 = torch.tensor(
-            [resized_w, resized_h] * 5,
-            dtype=loc.dtype,
-            device=self.device
-        )
-        landms = self.decode_landm(landms.data.squeeze(0), prior_data, self.variance)
-        landms = landms * scale1
-        landms = landms.cpu().numpy()
+            scale1 = torch.tensor(
+                [resized_w, resized_h] * 5,
+                dtype=loc.dtype,
+                device=self.device
+            )
+            landms = self.decode_landm(landms.data.squeeze(0), prior_data, self.variance)
+            landms = landms * scale1
+            landms = landms.cpu().numpy()
 
-        landms[:, 0::2] *= scale_x
-        landms[:, 1::2] *= scale_y
+            landms[:, 0::2] *= scale_x
+            landms[:, 1::2] *= scale_y
 
-        # filter + NMS
-        inds = np.where(scores > self.conf_thresh)[0]
-        boxes = boxes[inds]
-        landms = landms[inds]
-        scores = scores[inds]
+            # filter + NMS
+            inds = np.where(scores > self.conf_thresh)[0]
+            boxes = boxes[inds]
+            landms = landms[inds]
+            scores = scores[inds]
 
-        order = scores.argsort()[::-1][:self.top_k]
-        boxes = boxes[order]
-        landms = landms[order]
-        scores = scores[order]
+            order = scores.argsort()[::-1][:self.top_k]
+            boxes = boxes[order]
+            landms = landms[order]
+            scores = scores[order]
 
-        dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
-        keep = self.py_cpu_nms(dets, self.nms_thresh)
-        dets = dets[keep, :]
-        landms = landms[keep]
+            dets = np.hstack((boxes, scores[:, np.newaxis])).astype(np.float32, copy=False)
+            keep = self.py_cpu_nms(dets, self.nms_thresh)
+            dets = dets[keep, :]
+            landms = landms[keep]
 
-        dets = dets[:self.keep_top_k, :]
-        landms = landms[:self.keep_top_k, :]
+            dets = dets[:self.keep_top_k, :]
+            landms = landms[:self.keep_top_k, :]
+
+        if self.stream is not None:
+            self.stream.synchronize()
 
         return np.concatenate((dets, landms), axis=1)
 
@@ -310,6 +322,8 @@ class RetinaFace:
 
         return results
 
+    def close(self):
+        self.model = None
 
 # =============================================================================
 #                      - OVERALL MODEL ARCHITECTURE -

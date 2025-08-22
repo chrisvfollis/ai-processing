@@ -42,9 +42,10 @@ class InferencePipeline:
 
         # MODEL SETUP:
         self.device = device or utils.get_default_device()
+        self.stream = torch.cuda.Stream(device=self.device.index)
 
-        yolox_cfg = model_cfg['yolox'] | {'device': self.device}
-        faces_cfg = model_cfg['faces'] | {'device': self.device}
+        yolox_cfg = model_cfg['yolox']  | {'device': self.device, 'stream': self.stream}
+        faces_cfg = model_cfg['faces']  | {'device': self.device, 'stream': self.stream}
             
         self.yolox = YoloX(**yolox_cfg)
         self.face_analysis = FaceAnalysis(**faces_cfg)

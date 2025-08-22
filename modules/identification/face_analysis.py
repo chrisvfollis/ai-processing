@@ -25,14 +25,16 @@ logger = log_utils.get_logger(__name__)
 
 class FaceAnalysis:
     def __init__(
-            self,
-            id_cutoff: float = 0.9,
-            device: torch.device = None,
-            centerface_cfg: dict = {},
-            clearface_cfg: Optional[dict] = None,
-            facenet_cfg: dict = {},
+        self,
+        id_cutoff: float = 0.9,
+        device: torch.device = None,
+        centerface_cfg: dict = {},
+        clearface_cfg: Optional[dict] = None,
+        facenet_cfg: dict = {},
+        stream: torch.cuda.Stream = None,
     ):
         self.device = device or utils.get_default_device()
+        self.stream = stream
 
         # PATHS:
         self.project_root = io_utils.get_project_root()
@@ -43,8 +45,8 @@ class FaceAnalysis:
 
         # MODELS:
         from models import CenterFace, FaceNet
-        self.centerface = CenterFace(device=self.device, **centerface_cfg)
-        self.facenet = FaceNet(device=self.device, **facenet_cfg)
+        self.centerface = CenterFace(device=self.device, stream=self.stream, **centerface_cfg)
+        self.facenet = FaceNet(device=self.device, stream=self.stream, **facenet_cfg)
 
         if clearface_cfg is None:
             self.enhance_faces = False
@@ -260,7 +262,7 @@ class FaceAnalysis:
         if len(new_images) > 0:
             if not hasattr(self, 'retinaface'):
                 from models import RetinaFace
-                self.retinaface = RetinaFace(device=self.device)
+                self.retinaface = RetinaFace(device=self.device, stream=self.stream)
             representations += _find_bulk_embeddings(
                 employees=new_images,
                 enhance=enhance,

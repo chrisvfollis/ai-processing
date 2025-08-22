@@ -3,6 +3,7 @@ from typing import Sequence
 from collections.abc import Iterable
 import math
 import os
+from contextlib import nullcontext
 
 # 3rd-party dependencies
 import numpy as np
@@ -21,17 +22,18 @@ logger = log_utils.get_logger(__name__)
 
 class CenterFace:
     def __init__(
-            self,
-            device: torch.device = None,
-            checkpoint: str = 'centerface.pth',
-            conf_thresh: float = 0.50,
-            min_area: tuple[int] | int = (32, 32),
-            ignore_landmarks: bool = False,
-            expand_margin: float = 0.25,
-            save_data: bool = False,
-        ):
-        
+        self,
+        device: torch.device = None,
+        checkpoint: str = 'centerface.pth',
+        conf_thresh: float = 0.50,
+        min_area: tuple[int] | int = (32, 32),
+        ignore_landmarks: bool = False,
+        expand_margin: float = 0.25,
+        save_data: bool = False,
+        stream: torch.cuda.Stream = None,
+    ):
         self.device = device or utils.get_default_device()
+        self.stream = stream
 
         self.project_root = io_utils.get_project_root()
         self.output_dir = os.path.join(self.project_root, 'files/output/')
@@ -183,9 +185,18 @@ class CenterFace:
             blobs.append(torch.from_numpy(blob))
             scales.append((scale_h, scale_w))
 
-        tensor = torch.stack(blobs).to(self.device)
-        with torch.no_grad():
+        if self.stream is not None:
+            ctx = torch.cuda.stream(self.stream)
+        else:
+            ctx = nullcontext()
+
+        tensor = torch.stack(blobs)
+        with ctx, torch.no_grad():
+            tensor = tensor.to(self.device, non_blocking=True)
             outputs = self.model(tensor)
+
+        if self.stream is not None:
+            self.stream.synchronize()
 
         heatmaps, scales_out, offsets, landmarks = [
             output.cpu().numpy() for output in outputs
@@ -320,6 +331,9 @@ class CenterFace:
     def forward(self, x):
         heatmaps, scales_out, offsets, landmarks = self.model(x)
         return heatmaps
+
+    def close(self):
+        self.model = None
 
     def visualize_detections(
             self, image: np.ndarray, face_detections: list[FacialAreaRegion],
