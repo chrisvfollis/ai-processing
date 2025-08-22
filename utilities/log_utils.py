@@ -33,33 +33,31 @@ def configure_logging(log_level=0):
         def log_progress(self, message, *args, **kwargs):
             if self.isEnabledFor(PROGRESS_LEVEL):
                 self._log(PROGRESS_LEVEL, message, args, **kwargs)
-
         logging.Logger.progress = log_progress
 
-    formatter = ColorFormatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s PID[%(process)d]: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
+    fmt = "%(asctime)s [%(levelname)s] %(shortname)s PID[%(process)d]: %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
 
-    file_handler = RotatingFileHandler(
-        log_file,
-        maxBytes=(500 * MB),
-        backupCount=4
-    )
-    file_handler.setFormatter(logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s PID[%(process)d]: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    ))
+    force_color = os.getenv("FORCE_COLOR", "0") == "1"
+
+    stream_formatter = ColorFormatter(fmt=fmt, datefmt=datefmt, force_color=force_color)
+    file_formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
+
+    file_handler = RotatingFileHandler(log_file, maxBytes=(500 * MB), backupCount=4)
+    file_handler.setFormatter(file_formatter)
 
     stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
+    stream_handler.setFormatter(stream_formatter)
 
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    shortname_filter = ShortNameFilter()
+    file_handler.addFilter(shortname_filter)
+    stream_handler.addFilter(shortname_filter)
 
-    root_logger.handlers.clear()
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(stream_handler)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO if not log_level else log_level)
+    root.handlers.clear()
+    root.addHandler(file_handler)
+    root.addHandler(stream_handler)
 
 
 def get_logger(name=None):
@@ -76,11 +74,23 @@ class ColorFormatter(logging.Formatter):
         'RESET': '\033[0m',
     }
 
+    def __init__(self, *args, force_color=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.force_color = force_color
+
     def format(self, record):
-        levelname = record.levelname
-        color = self.COLORS.get(levelname, self.COLORS['RESET'])
         message = super().format(record)
-        return f"{color}{message}{self.COLORS['RESET']}"
+        if self.force_color or sys.stderr.isatty():
+            color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
+            return f"{color}{message}{self.COLORS['RESET']}"
+        else:
+            return message
+
+
+class ShortNameFilter(logging.Filter):
+    def filter(self, record):
+        record.shortname = record.name.split('.')[-1]
+        return True
 
 
 def press_stopwatch(instance, target_attr: str):
