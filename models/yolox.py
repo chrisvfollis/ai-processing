@@ -206,48 +206,53 @@ class YoloX:
             
         return outputs
 
-    def preprocess(self, images, input_size, mean, std, swap=(2, 0, 1)):
+    def preprocess(self, images, input_size, mean, std, swap=(2,0,1)):
         press_stopwatch(self, 'preprocess_time')
-        preprocessed_images = []
+        H, W = input_size
+        N = len(images)
         original_shapes = []
+        batch = np.empty((N, H, W, 3), dtype=np.uint8)
 
-        for image in images:
-            orig_h, orig_w = image.shape[:2]
-            original_shapes.append((orig_h, orig_w))
+        if not hasattr(self, '_mean_t'):
+            self._mean_t = (torch.tensor(mean, device=self.device).view(1,3,1,1)
+                            if mean is not None else None)
+            self._std_t  = (torch.tensor(std,  device=self.device).view(1,3,1,1)
+                            if std  is not None else None)
 
-            padded_img = np.ones((input_size[0], input_size[1], 3)) * 114.0
-            r = min(input_size[0] / orig_h, input_size[1] / orig_w)
+        meta_cache = {}
+
+        for i, image in enumerate(images):
+            oh, ow = image.shape[:2]
+            original_shapes.append((oh, ow))
+            key = (oh, ow)
+            if key not in meta_cache:
+                r = min(H/oh, W/ow)
+                nw, nh = int(ow*r), int(oh*r)
+                px, py = (W - nw)//2, (H - nh)//2
+                meta_cache[key] = (nw, nh, px, py)
+            nw, nh, px, py = meta_cache[key]
+
             press_stopwatch(self, 'resize_time')
-            resized_img = cv2.resize(
-                image,
-                (int(orig_w * r), int(orig_h * r)),
-                interpolation=cv2.INTER_LINEAR,
-            ).astype(np.float32)
+            resized = cv2.resize(image, (nw, nh), interpolation=cv2.INTER_AREA)
             press_stopwatch(self, 'resize_time')
 
-            press_stopwatch(self, 'pad_and_norm_time')
-            padded_img[:int(orig_h * r), :int(orig_w * r)] = resized_img
+            press_stopwatch(self, 'pad_time')
+            canvas = batch[i]
+            canvas.fill(114)
+            canvas[py:py+nh, px:px+nw] = resized
+            cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB, dst=canvas)
+            press_stopwatch(self, 'pad_time')
 
-            padded_img = padded_img[:, :, ::-1] / 255.0  # BGR to RGB + normalize
-            if mean is not None:
-                padded_img -= mean
-            if std is not None:
-                padded_img /= std
-            press_stopwatch(self, 'pad_and_norm_time')
-
-            press_stopwatch(self, 'transpose_time')
-            padded_img = padded_img.transpose(swap)
-            padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
-            press_stopwatch(self, 'transpose_time')
-            preprocessed_images.append(padded_img)
-
-        press_stopwatch(self, 'convert_time')
-        preprocessed_images = np.stack(preprocessed_images, axis=0)
-        preprocessed_images = torch.from_numpy(preprocessed_images).to(self.device)
-        press_stopwatch(self, 'convert_time')
+        press_stopwatch(self, 'h2d_norm_time')
+        t = torch.from_numpy(batch).pin_memory().to(self.device, non_blocking=True)
+        t = t.permute(0,3,1,2).contiguous()
+        t = t.to(torch.float16 if self.fp16 else torch.float32).mul_(1/255.0)
+        if self._mean_t is not None: t.sub_(self._mean_t)
+        if self._std_t  is not None: t.div_(self._std_t)
+        press_stopwatch(self, 'h2d_norm_time')
 
         press_stopwatch(self, 'preprocess_time')
-        return preprocessed_images, original_shapes
+        return t, original_shapes
 
     def postprocess(self, prediction, conf_thresh, nms_thresh, num_classes, orig_shapes):
         press_stopwatch(self, 'postprocess_time')
