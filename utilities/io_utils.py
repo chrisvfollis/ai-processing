@@ -305,7 +305,7 @@ def clear_local_files(
             target_paths.append(file_path)
 
     total_removed = remove_files(target_paths, missing_ok=True)
-    print(f'Successfully deleted {total_removed} files')
+    logger.info(f'Successfully deleted {total_removed} files')
 
     return total_removed
 

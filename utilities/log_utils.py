@@ -65,14 +65,29 @@ def get_logger(name=None):
 
 
 class ColorFormatter(logging.Formatter):
+    # log level colors:
     COLORS = {
-        'PROGRESS': '\033[96m',  # bright cyan
+        'PROGRESS': '\033[96m', # bright cyan
         'INFO': '\033[92m',
         'WARNING': '\033[93m',
         'ERROR': '\033[91m',
         'DEBUG': '\033[90m',
         'RESET': '\033[0m',
     }
+
+    # main process color:
+    MAIN_COLOR = '\033[97m'
+
+    # worker process palette:
+    PID_COLORS = [
+        '\033[35m',
+        '\033[34m',
+        '\033[36m',
+        '\033[32m',
+        '\033[33m',
+        '\033[94m',
+        '\033[95m',
+    ]
 
     def __init__(self, *args, force_color=False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -81,10 +96,19 @@ class ColorFormatter(logging.Formatter):
     def format(self, record):
         message = super().format(record)
         if self.force_color or sys.stderr.isatty():
-            color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
-            return f"{color}{message}{self.COLORS['RESET']}"
-        else:
-            return message
+            level_color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
+            message = message.replace(
+                f"[{record.levelname}]",
+                f"[{level_color}{record.levelname}{self.COLORS['RESET']}]"
+            )
+            # colorize the PID deterministically:
+
+            pid_color = self.PID_COLORS[record.process % len(self.PID_COLORS)]
+            message = message.replace(
+                f"PID[{record.process}]",
+                f"PID[{pid_color}{record.process}{self.COLORS['RESET']}]"
+            )
+        return message
 
 
 class ShortNameFilter(logging.Filter):

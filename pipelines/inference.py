@@ -171,8 +171,8 @@ class InferencePipeline:
         )
         if self.prog_interval == 0:
             logger.info(
-                f'Invalid prog_interval: {self.prog_interval}\n' +
-                f'f_cutoff: {f_cutoff}\n' + f'stride: {self.stride}'
+                f'Invalid prog_interval: {self.prog_interval} ' +
+                f'f_cutoff: {f_cutoff} ' + f'stride: {self.stride}'
             )
             self.prog_interval = f_cutoff
             
