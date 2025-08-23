@@ -128,7 +128,7 @@ class InferencePipeline:
 
     def skim(self, f_cutoff: Optional[int] = None):
         f_cutoff = f_cutoff or self.f_total
-        logger.info(f'Skimming...')
+        logger.progress(f'Skimming {self.video_file}...')
         log_utils.press_stopwatch(self, 'skim_time')
 
         cap = cv2.VideoCapture(self.video_path)
