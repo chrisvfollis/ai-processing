@@ -24,7 +24,7 @@ logger = log_utils.get_logger(__name__)
 
 def find_best_event_images(
     time_segment: str, presence_df: pd.DataFrame, face_data: pd.DataFrame, trk_dets: pd.DataFrame,
-    min_frame_delta: int = 100
+    min_frame_delta: int = 100, min_overlap: float = 0.4
 ) -> tuple[pd.DataFrame, dict]:
     project_root = io_utils.get_project_root()
 
@@ -78,7 +78,7 @@ def find_best_event_images(
             for _, trk in trk_candidates.iterrows():
                 trk_box = tuple(trk[['x', 'y', 'w', 'h']].tolist())
                 overlap = bboxes.compute_overlap_ratio(face_box, trk_box)
-                if overlap > best_overlap:
+                if (overlap >= min_overlap) and (overlap > best_overlap):
                     best_overlap, best_trk = overlap, trk
 
             if best_trk is not None:

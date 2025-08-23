@@ -156,7 +156,7 @@ class TrackingPipeline:
         log_utils.press_stopwatch(self, 'persist_time')
 
     def run(self) -> tuple[dict, ...]:
-        logger.progress(f'Running tracking pipeline for {self.video_file}...')
+        logger.progress(f'Running tracking pipeline for Camera {self.cam_id}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
         self.f_num = self.f_start
         

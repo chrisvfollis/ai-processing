@@ -77,7 +77,10 @@ class InferencePipeline:
 
         self.f_num = 0
 
-        self.time_segment, self.cam_id = utils.decode_vid_filename(self.video_file)
+        time_segment, cam_id = utils.decode_vid_filename(self.video_file)
+
+        self.time_segment = time_segment
+        self.cam_id = cam_id
 
         # PROCESSING PARAMETERS:
         self.stride = stride
@@ -128,7 +131,7 @@ class InferencePipeline:
 
     def skim(self, f_cutoff: Optional[int] = None):
         f_cutoff = f_cutoff or self.f_total
-        logger.progress(f'Skimming {self.video_file}...')
+        logger.progress(f'Skimming footage from Camera {self.cam_id}...')
         log_utils.press_stopwatch(self, 'skim_time')
 
         cap = cv2.VideoCapture(self.video_path)
@@ -177,7 +180,7 @@ class InferencePipeline:
             self.prog_interval = f_cutoff
             
         self.progress = 0
-        logger.progress(f'Running inference pipeline for {self.video_file}...')
+        logger.progress(f'Running inference pipeline for Camera {self.cam_id}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
 
         while self.f_num < f_cutoff:

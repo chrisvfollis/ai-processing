@@ -55,6 +55,8 @@ def run_worker_pipeline(
     shop_uuid, filename = footage_record[1:3]
     time_segment, cam_id = utils.decode_vid_filename(filename)
 
+    logger.progress(f'Processing {filename}...')
+
     inference_cfg = {'model_cfg': model_cfg, 'device': device}
     if id_strategy == 'tracks':
         strategy_params = {
@@ -173,10 +175,10 @@ def run_worker_pipeline(
 # -----------------------------------------------------------------------------
 
 
-def process_records(footage_records: list[tuple], process_config: tuple):
-    logger.progress('Processing time segment records...')
+def process_records(time_segment: str, records: list[tuple], process_config: tuple):
+    logger.progress(f'Processing {time_segment} time segment records...')
 
-    num_records = len(footage_records)
+    num_records = len(records)
     
     with py_mp.Manager() as mgr:
         done_counter = mgr.Value('i', 0)
@@ -185,7 +187,7 @@ def process_records(footage_records: list[tuple], process_config: tuple):
         process_config = process_config + (num_records, done_counter, counter_lock)
 
         footage_processing_tasks = [
-            ((record,) + process_config) for record in footage_records
+            ((record,) + process_config) for record in records
         ]
 
         with torch_mp.Pool(processes=4) as pool:
@@ -296,7 +298,7 @@ def main(
         )
         elapsed_time_logs.start()
 
-        process_records(segment_records, process_cfg)
+        process_records(time_segment, segment_records, process_cfg)
 
         if id_strategy == 'presence':
             try:

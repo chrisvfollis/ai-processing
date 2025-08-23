@@ -47,7 +47,7 @@ def expand_bbox_asym(x1, y1, x2, y2, img_w, img_h, top=0.05, bottom=0.15, left=0
     return new_x1, new_y1, new_x2, new_y2
 
 
-def compute_overlap_ratio(boxA, boxB):
+def compute_overlap_ratio(boxA, boxB) -> float:
     xA = max(boxA[0], boxB[0])
     yA = max(boxA[1], boxB[1])
     xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
