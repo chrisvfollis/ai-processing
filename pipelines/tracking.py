@@ -19,24 +19,24 @@ logger = log_utils.get_logger(__name__)
 
 class TrackingPipeline:
     def __init__(
-            self,
-            video_file: str,
-            detections: dict,
-            aspect_ratio_thresh: float = 1.6,
-            min_box_area: int = 100,
-            det_thresh: float = 0.6,
-            max_age=30,
-            min_hits=3, 
-            iou_threshold=0.3,
-            delta_t=3,
-            asso_func='iou',
-            inertia=0.2,
-            use_byte=False,
-            f_start=0,
-            f_end=None,
-            min_lifespan=5,
-            min_avg_size=0.004,
-            prior_pkl=False,
+        self,
+        video_file: str,
+        detections: dict,
+        aspect_ratio_thresh: float = 1.6,
+        min_box_area: int = 100,
+        det_thresh: float = 0.6,
+        max_age=30,
+        min_hits=3, 
+        iou_threshold=0.3,
+        delta_t=3,
+        asso_func='iou',
+        inertia=0.2,
+        use_byte=False,
+        f_start=0,
+        f_end=None,
+        min_lifespan=5,
+        min_avg_size=0.004,
+        prior_pkl=False,
     ):
         # INFERENCE DATA:
         self.detections = detections
@@ -141,7 +141,7 @@ class TrackingPipeline:
         prior_pipeline.ocsort.inactive_trks = {}
 
         self.num_persisted = len(prior_pipeline.ocsort.active_trks)
-        logger.info(f'Continuing {self.num_persisted} prior tracks...')
+        logger.progress(f'Continuing {self.num_persisted} prior tracks...')
 
         prior_pipeline.run()
 
@@ -156,6 +156,7 @@ class TrackingPipeline:
         log_utils.press_stopwatch(self, 'persist_time')
 
     def run(self) -> tuple[dict, ...]:
+        logger.progress(f'Running tracking pipeline for {self.video_file}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
         self.f_num = self.f_start
         
@@ -181,10 +182,6 @@ class TrackingPipeline:
                     'online_boxes': online_boxes,
                     'online_ids': online_ids,
                 }
-
-            if self.f_num % self.progress_interval == 0:
-                progress = utils.calculate_progress(self.f_num, self.f_total)
-                logger.progress(f'tracking —> {progress}%')
         
             self.f_num += 1
 

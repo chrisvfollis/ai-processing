@@ -177,7 +177,7 @@ class InferencePipeline:
             self.prog_interval = f_cutoff
             
         self.progress = 0
-        logger.info(f'Running inference pipeline for {self.video_file}...')
+        logger.progress(f'Running inference pipeline for {self.video_file}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
 
         while self.f_num < f_cutoff:

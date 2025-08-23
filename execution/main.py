@@ -147,9 +147,9 @@ def run_worker_pipeline(
                 n = done_counter.value
 
         if n is not None and segment_total:
-            logger.info(f'Processed {filename} ({n}/{segment_total})')
+            logger.progress(f'Processed {filename} ({n}/{segment_total})')
         else:
-            logger.info(f'Processed {filename}')
+            logger.progress(f'Processed {filename}')
 
         worker_pipeline_result = True
     except Exception:
@@ -174,7 +174,7 @@ def run_worker_pipeline(
 
 
 def process_records(footage_records: list[tuple], process_config: tuple):
-    logger.info('Processing time segment records...')
+    logger.progress('Processing time segment records...')
 
     num_records = len(footage_records)
     
@@ -311,7 +311,7 @@ def main(
                 wrap_up_segment(filenames, time_segment, **basic_args)
                 continue
                 
-            logger.info('Running global identification...')
+            logger.progress('Running global identification...')
             identity_presence_params = AssessIdPresenceParams(
                 match_cutoff          = 0.25,
                 mismatch_threshold    = 0.90,
@@ -341,7 +341,7 @@ def main(
             #     face_data, presence_df, identity_presence_params,
             #     full_duration=300, sub_duration=60
             # )
-            logger.info('Finished global identification')
+            logger.progress('Finished global identification')
 
             if not (
                 ('identity' in presence_df.columns) and
@@ -352,7 +352,7 @@ def main(
                     'Skipping event image generation — no valid identities found'
                 )
             else:
-                logger.info('Generating event images...')
+                logger.progress('Generating event images...')
                 event_imgs_df = results.images.global_id_event_imgs(
                     time_segment, presence_df, filtered_faces, trk_dets,
                     credentials, min_frame_delta=60
