@@ -180,7 +180,7 @@ class InferencePipeline:
             self.prog_interval = f_cutoff
             
         self.progress = 0
-        logger.progress(f'Running inference pipeline for Camera {self.cam_id}...')
+        logger.progress(f'Running inference pipeline for cam_id {self.cam_id}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
 
         while self.f_num < f_cutoff:
@@ -194,7 +194,7 @@ class InferencePipeline:
             io_utils.clear_memory()
 
             if log_progress == True:
-                logger.progress(f'inference —> {self.progress}%')
+                logger.progress(f'{self.progress}%')
         
         log_utils.press_stopwatch(self, 'primary_run_time')
 
