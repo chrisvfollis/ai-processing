@@ -4,12 +4,13 @@ import sys
 import time
 from datetime import datetime
 from typing import Optional
+import multiprocessing as py_mp
 
 # 3rd-party dependencies
 import pandas as pd
 os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 import torch
-import torch.multiprocessing as multiprocessing
+import torch.multiprocessing as torch_mp
 
 # internal dependencies
 from execution import configure
@@ -39,6 +40,9 @@ def run_worker_pipeline(
     credentials: tuple[str, str] = None,
     save_all_data: bool = False,
     f_cutoff: Optional[int] = None,
+    segment_total: int = 1,
+    done_counter=None,
+    counter_lock=None,
 ) -> bool:
     project_root = io_utils.get_project_root()
 
@@ -91,10 +95,10 @@ def run_worker_pipeline(
         tracking = TrackingPipeline(filename, person_detections)
 
         active_trks, inactive_trks = tracking.run()
-        tracking.filter_tracks()
-        trk_detections, _ = tracking.format_track_data()
 
         if id_strategy == 'tracks':
+            tracking.filter_tracks()
+            trk_detections, _ = tracking.format_track_data()
             try:
                 active_trks, inactive_trks = identify.assign_track_identities(
                     face_data, active_trks, inactive_trks, trk_detections,
@@ -113,6 +117,7 @@ def run_worker_pipeline(
                 time_segment, cam_id, inactive_trks, tracking.fps
             )
         elif id_strategy == 'presence':
+            trk_detections, _ = tracking.format_track_data()
             output_data = {
                 'person_dets': inference.person_detection_df,
                 'trk_dets': trk_detections,
@@ -131,7 +136,21 @@ def run_worker_pipeline(
 
         tracking.save_state()
 
-        logger.info(f'Processed {filename}')
+        n = None
+        if done_counter is not None:
+            if counter_lock is not None:
+                with counter_lock:
+                    done_counter.value += 1
+                    n = done_counter.value
+            else:
+                done_counter.value += 1
+                n = done_counter.value
+
+        if n is not None and segment_total:
+            logger.info(f'Processed {filename} ({n}/{segment_total})')
+        else:
+            logger.info(f'Processed {filename}')
+
         worker_pipeline_result = True
     except Exception:
         logger.exception(f'Error occurred while processing {filename}')
@@ -157,22 +176,30 @@ def run_worker_pipeline(
 def process_records(footage_records: list[tuple], process_config: tuple):
     logger.info('Processing time segment records...')
 
-    footage_processing_tasks = [
-        ((record,) + process_config) for record in footage_records
-    ]
+    num_records = len(footage_records)
+    
+    with py_mp.Manager() as mgr:
+        done_counter = mgr.Value('i', 0)
+        counter_lock = mgr.Lock()
+    
+        process_config = process_config + (num_records, done_counter, counter_lock)
 
-    with multiprocessing.Pool(processes=4) as pool:
-        time.sleep(1)       # give workers a moment to start
-        initial_pids = {p.pid for p in pool._pool if p.is_alive()}
-        async_results = pool.starmap_async(
-            run_worker_pipeline, footage_processing_tasks
-        )
-        worker_monitor = log_utils.observability_thread(
-            'failed_workers', args=(pool, initial_pids, async_results),
-            logger=logger
-        )
-        worker_monitor.start()
-        async_results.get()
+        footage_processing_tasks = [
+            ((record,) + process_config) for record in footage_records
+        ]
+
+        with torch_mp.Pool(processes=4) as pool:
+            time.sleep(1)       # give workers a moment to start
+            initial_pids = {p.pid for p in pool._pool if p.is_alive()}
+            async_results = pool.starmap_async(
+                run_worker_pipeline, footage_processing_tasks
+            )
+            worker_monitor = log_utils.observability_thread(
+                'failed_workers', args=(pool, initial_pids, async_results),
+                logger=logger
+            )
+            worker_monitor.start()
+            async_results.get()
 
 
 def wrap_up_segment(
@@ -378,7 +405,7 @@ def main(
 
 
 if __name__ == '__main__':
-    multiprocessing.set_start_method('spawn', force=True)
+    torch_mp.set_start_method('spawn', force=True)
 
     parser = configure.make_parser()
     args = parser.parse_args()
