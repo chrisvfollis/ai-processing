@@ -86,14 +86,9 @@ def find_best_event_images(
             trk_candidates = person_dets[
                 (person_dets['cam_id'] == cam_id) & (person_dets['f'] == f_num)
             ]
-            logger.info(f'{len(trk_candidates)} detection candidates for cam_id {cam_id} frame {f_num}')
             for _, trk in trk_candidates.iterrows():
                 trk_box = tuple(trk[['x', 'y', 'w', 'h']].tolist())
                 overlap = bboxes.compute_overlap_ratio(face_box, trk_box)
-                if overlap >= min_overlap:
-                    logger.info(f'sufficient overlap: {overlap}')
-                else:
-                    logger.info(f'low overlap: {overlap}')
                 if (overlap >= min_overlap) and (overlap > best_overlap):
                     best_overlap, best_trk = overlap, trk
 
