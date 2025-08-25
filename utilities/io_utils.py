@@ -439,6 +439,36 @@ def parquet_to_csv(input_path: str = os.path.expanduser('~/Downloads'), remove=T
             print(f'Error converting {p}: {e}')
 
 
+def analyze_small_video_files(cutoff_mb: int | float = 70, max_missing_frames: int = 50):
+    cutoff_bytes = cutoff_mb * 1024 * 1024
+
+    input_dir = os.path.join(get_project_root(), 'files/input/')
+    filenames = sorted(os.listdir(input_dir))
+
+    for filename in filenames:
+        if not filename.endswith('.mp4'):
+            continue
+        file_path = os.path.join(input_dir, filename)
+        try:
+            fsize = os.path.getsize(file_path)
+        except OSError:
+            continue
+        if fsize < cutoff_bytes:
+            try:
+                cap = None
+                cap = cv2.VideoCapture(file_path)
+                frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                if abs(6000 - frames) <= max_missing_frames:
+                    continue
+            except Exception:
+                frames = 'N/A'
+            finally:
+                if cap is not None:
+                    cap.release()
+            print(f'{filename} ({frames} frames; {fsize / (1024*1024):.2f} MB)')
+
+
+
 # =============================================================================
 #                           - REMOTE FILES -
 # -----------------------------------------------------------------------------
