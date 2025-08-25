@@ -356,7 +356,7 @@ def main(
                     filtered_faces,
                     person_dets,
                     credentials,
-                    min_frame_delta=60.
+                    min_frame_delta=20
                 )
                 results.records.save_attendance(
                     time_segment, presence_df, event_imgs_df
