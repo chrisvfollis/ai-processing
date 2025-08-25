@@ -439,15 +439,23 @@ def parquet_to_csv(input_path: str = os.path.expanduser('~/Downloads'), remove=T
             print(f'Error converting {p}: {e}')
 
 
-def analyze_small_video_files(cutoff_mb: int | float = 70, max_missing_frames: int = 50):
+# -- VIDEO FILES: --
+
+def analyze_small_video_files(
+    cutoff_mb: int | float = 70,
+    max_missing_frames: int = 50,
+    new_footage_buffer: int = 8,
+):
     cutoff_bytes = cutoff_mb * 1024 * 1024
 
     input_dir = os.path.join(get_project_root(), 'files/input/')
-    filenames = sorted(os.listdir(input_dir))
 
-    for filename in filenames:
-        if not filename.endswith('.mp4'):
-            continue
+    video_files = [
+        f for f in sorted(os.listdir(input_dir)) if f.endswith('.mp4')
+    ]
+    video_files = video_files[:-new_footage_buffer]
+
+    for filename in video_files:
         file_path = os.path.join(input_dir, filename)
         try:
             fsize = os.path.getsize(file_path)
@@ -467,6 +475,39 @@ def analyze_small_video_files(cutoff_mb: int | float = 70, max_missing_frames: i
                     cap.release()
             print(f'{filename} ({frames} frames; {fsize / (1024*1024):.2f} MB)')
 
+
+def find_relevant_footage(
+    start_time: Optional[datetime | list] = None,
+    end_time: Optional[datetime | list] = None,
+    cam_ids: Optional[int | list[int]] = None
+) -> list[str]:
+    project_root = get_project_root()
+    input_dir = os.path.join(project_root, 'files/input/')
+
+    all_files = sorted([f for f in os.listdir(input_dir) if f.endswith('.mp4')])
+
+    start_time = utils.convert_to_datetime(start_time)
+    end_time = utils.convert_to_datetime(end_time)
+
+    if (not start_time) and (not end_time):
+        return all_files
+    
+    if isinstance(cam_ids, int):
+        cam_ids = [cam_ids]
+
+    relevant_files = []
+    for f, dtime in {f: utils.extract_datetime(f) for f in all_files}.items():
+        if (
+            ((not start_time) or (dtime >= start_time)) and
+            ((not end_time)   or (dtime <  end_time))
+        ):
+            _, cam_id = utils.decode_vid_filename(f)
+            if (cam_ids is not None) and (cam_id not in cam_ids):
+                continue
+
+            relevant_files.append(f)
+
+    return relevant_files
 
 
 # =============================================================================

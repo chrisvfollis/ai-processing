@@ -88,6 +88,41 @@ def decode_vid_filename(video_file) -> tuple[str, int]:
     return time_segment, cam_id
 
 
+def convert_to_datetime(x: datetime | str | list | None) -> datetime | None:
+    '''
+    Ensures the given argument is a datetime object by converting as necessary,
+    or simply returns None if that is what's provided.
+    Accepts:
+        - datetime : datetime object
+        - str      : whitespace-, comma-, or hyphen-separated datetime elements
+        - list     : list of datetime elements
+        - None     : None
+    '''
+    if isinstance(x, datetime) or (x is None):
+        return x
+    
+    if isinstance(x, str):
+        if ',' in x:
+            x = x.split(',')
+        elif '-' in x:
+            x = x.split('-')
+        else:
+            x.split()
+        
+    if isinstance(x, list):
+        x = [element.strip() for element in x if isinstance(element, str)]
+        x = map(int, x)
+    
+    return datetime(*x)
+
+
+def extract_datetime(footage_filename: str) -> datetime:
+    datetime_portions = footage_filename.split('_')[:2]
+    datetime_elements_str = '-'.join(datetime_portions)
+    
+    return convert_to_datetime(datetime_elements_str)
+
+
 def parse_filename(filename):
     file_parts = filename.rsplit('.', 1)
 
