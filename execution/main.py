@@ -191,7 +191,7 @@ def process_records(time_segment: str, records: list[tuple], process_config: tup
             async_results = pool.starmap_async(
                 run_worker_pipeline, footage_processing_tasks
             )
-            worker_monitor = log_utils.observability_thread(
+            worker_monitor = log_utils.observability(
                 'failed_workers', args=(pool, initial_pids, async_results),
                 logger=logger
             )
@@ -206,9 +206,7 @@ def wrap_up_segment(
     credentials: tuple[str],
     retain_footage: bool,
     save_all_data: bool,
-):
-    logger.info('Finalizing time segment...')
-    
+):    
     results.records.post_event_records(shop_uuid, time_segment)
 
     io_utils.clear_event_records(time_segment)
@@ -288,7 +286,7 @@ def main(
             continue
         
         time_segment, filenames = utils.get_segment_info(segment_records)
-        elapsed_time_logs, stop_timing = log_utils.observability_thread(
+        elapsed_time_logs, stop_timing = log_utils.observability(
             target='elapsed_time', logger=logger
         )
         elapsed_time_logs.start()
@@ -362,13 +360,10 @@ def main(
                 results.records.save_attendance(
                     time_segment, presence_df, event_imgs_df
                 )
-                
                 if save_all_data:
                     id_results_paths = [
                         os.path.join(output_dir, f'{time_segment}_{suffix}.csv')
-                        for suffix in [
-                            'presence_summary', 'filtered_faces',
-                        ]
+                        for suffix in ['presence_summary', 'filtered_faces']
                     ]
                     presence_df.to_csv(id_results_paths[0], index=False)
                     filtered_faces.to_csv(id_results_paths[1], index=False)
@@ -391,16 +386,7 @@ if __name__ == '__main__':
 
     log_utils.configure_logging(log_level=args.log_level)
 
-    start_from = None
-    if args.start_from:
-        try:
-            datetime_pieces = [int(x) for x in args.start_from.split(',')]
-            start_from = datetime(*datetime_pieces)
-        except Exception as e:
-            logger.error(f'Invalid --start-from value: {args.start_from} ({e})')
-            sys.exit(1)
-    
-    memory_monitor, _ = log_utils.observability_thread('low_memory', logger=logger)
+    memory_monitor, _ = log_utils.observability('low_memory', logger=logger)
     memory_monitor.start()
 
     main(
@@ -412,7 +398,7 @@ if __name__ == '__main__':
         retain_footage = args.retain_footage,
         save_all_data  = args.save_all_data,
         credentials    = conn_utils.get_aws_credentials(),
-        start_from     = start_from,
+        start_from     = utils.convert_to_datetime(args.start_from),
         priority_cam   = args.priority_cam,
         f_cutoff       = args.f_cutoff,
     )

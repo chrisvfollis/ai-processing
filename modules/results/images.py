@@ -64,7 +64,7 @@ def extract_and_save_event_images(
     credentials: tuple[str, str],
 ):
     for cam_id, cam_df in event_imgs_df.groupby('cam_id'):
-        logger.info(f'Extracting event images from cam_id {cam_id}')
+        logger.info(f'Extracting images from cam_id {cam_id}')
         video_path = video_paths.get(cam_id)
         if not video_path or not os.path.exists(video_path):
             print(f'Video path does not exist: {video_path}')

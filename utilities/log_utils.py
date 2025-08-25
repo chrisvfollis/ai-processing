@@ -137,7 +137,7 @@ def press_stopwatch(instance, target_attr: str):
         return False
 
 
-def observability_thread(target, args=None, logger=None):
+def observability(target, args=None, logger=None):
     """
     Initializes a thread for monitoring & logging some aspect of a process.
 

@@ -305,7 +305,7 @@ def clear_local_files(
             target_paths.append(file_path)
 
     total_removed = remove_files(target_paths, missing_ok=True)
-    logger.info(f'Successfully deleted {total_removed} files')
+    logger.info(f'Deleted {total_removed} files')
 
     return total_removed
 
@@ -494,7 +494,7 @@ def find_relevant_footage(
     
     if isinstance(cam_ids, int):
         cam_ids = [cam_ids]
-
+    
     relevant_files = []
     for f, dtime in {f: utils.extract_datetime(f) for f in all_files}.items():
         if (

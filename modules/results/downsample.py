@@ -11,14 +11,14 @@ import cv2
 import numpy as np
 
 # internal dependencies
-from utilities import io_utils
+from utilities import utils, io_utils
 
 
 def downsample_video(
     input_path: str,
     output_path: str,
-    sample_every_s: float = 15.0,
-    still_duration_s: float = 2.0,
+    sample_interval: float = 15.0,
+    still_duration: float = 2.0,
     output_fps: int = 1,
     max_dim: int = 1920,
     crf: int = 23,                   # quality: lower = better (H.264 CRF)
@@ -77,7 +77,7 @@ def downsample_video(
             if max_dim is not None:
                 img = _resize_keep_aspect(img, max_dim=max_dim)
             sampled_images.append(img)
-            next_sample_t += sample_every_s
+            next_sample_t += sample_interval
 
     in_container.close()
 
@@ -100,7 +100,7 @@ def downsample_video(
     except Exception:
         pass
 
-    still_frames = max(1, int(round(still_duration_s * output_fps)))
+    still_frames = max(1, int(round(still_duration * output_fps)))
     time_base = Fraction(1, output_fps)
     pts = 0
 
@@ -124,8 +124,8 @@ def bulk_downsample(
     start_time: Optional[datetime | list] = None,
     end_time: Optional[datetime | list] = None,
     cam_ids: Optional[int | list[int]] = None,
-    sample_every_s: float = 15.0,
-    still_duration_s: float = 2.0,
+    sample_interval: float = 15.0,      # seconds
+    still_duration: float = 2.0,        # seconds
     output_fps: int = 1,
     max_dim: int = 1920,
     crf: int = 23,
@@ -138,11 +138,12 @@ def bulk_downsample(
     footage = io_utils.find_relevant_footage(start_time, end_time, cam_ids)
 
     for filename in footage:
+        print(f'[{datetime.now()}] Downsampling {filename}...')
         downsample_video(
             input_path       = os.path.join(input_dir, filename),
             output_path      = os.path.join(output_dir, f'ds_{filename}'),
-            sample_every_s   = sample_every_s,
-            still_duration_s = still_duration_s,
+            sample_interval  = sample_interval,
+            still_duration   = still_duration,
             output_fps       = output_fps,
             max_dim          = max_dim,
             crf              = crf,
@@ -151,4 +152,16 @@ def bulk_downsample(
 
 
 if __name__ == '__main__':
-    bulk_downsample()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--start-time', type=str, default=None)
+    parser.add_argument('--end-time', type=str, default=None)
+    parser.add_argument('--cam-ids', type=str, default=None)
+
+    args = parser.parse_args()
+
+    bulk_downsample(
+        start_time = utils.convert_to_datetime(args.start_time),
+        end_time   = utils.convert_to_datetime(args.end_time),
+        cam_ids    = list(map(int, args.cam_ids.split(','))) if args.cam_ids else None,
+    )
