@@ -158,9 +158,9 @@ def find_best_event_images(
         parts = []
         weights = []
 
-        parts.append(_robust_minmax(df['score'], invert=False));       weights.append(1.0)
-        parts.append(_robust_minmax(df['distance'], invert=True));     weights.append(0.8)
-        parts.append(_robust_minmax(df['confidence'], invert=False));  weights.append(0.6)
+        parts.append(_robust_minmax(df['distance'], invert=True));     weights.append(1.0)
+        parts.append(_robust_minmax(df['score'], invert=False));       weights.append(0.5)
+        parts.append(_robust_minmax(df['confidence'], invert=False));  weights.append(0.5)
 
         if parts:
             W = np.array(weights, dtype=float)
@@ -188,7 +188,7 @@ def find_best_event_images(
 
         sort_cols, sort_asc = ['quality'], [False]
         for col, asc in [
-            ('score', False), ('distance', True), ('confidence', False)
+            ('distance', True), ('score', False), ('confidence', False)
         ]:
             if col in cand.columns:
                 sort_cols.append(col); sort_asc.append(asc)
