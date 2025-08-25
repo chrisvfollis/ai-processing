@@ -158,9 +158,9 @@ def find_best_event_images(
         parts = []
         weights = []
 
-        parts.append(_robust_minmax(df['distance'], invert=True));     weights.append(1.0)
-        parts.append(_robust_minmax(df['score'], invert=False));       weights.append(0.5)
-        parts.append(_robust_minmax(df['confidence'], invert=False));  weights.append(0.5)
+        parts.append(_robust_minmax(df['distance'], invert=True));     weights.append(1.00)
+        parts.append(_robust_minmax(df['score'], invert=False));       weights.append(0.50)
+        parts.append(_robust_minmax(df['confidence'], invert=False));  weights.append(0.25)
 
         if parts:
             W = np.array(weights, dtype=float)
@@ -395,7 +395,7 @@ def global_id_event_imgs(
         min_frame_delta   = min_frame_delta,
         min_overlap       = 0.15,
         topk              = 15,
-        overlap_weight    = 0.50,
+        overlap_weight    = 0.25,
         quality_weight    = 1.0,
     )
     extract_and_save_event_images(event_imgs_df, video_paths, credentials)

@@ -366,12 +366,15 @@ def main(
                     id_results_paths = [
                         os.path.join(output_dir, f'{time_segment}_{suffix}.csv')
                         for suffix in [
-                            'presence_summary', 'filtered_faces', 'person_dets'
+                            'presence_summary', 'filtered_faces',
                         ]
                     ]
                     presence_df.to_csv(id_results_paths[0], index=False)
                     filtered_faces.to_csv(id_results_paths[1], index=False)
-                    person_dets.to_csv(id_results_paths[2], index=False)
+                    
+                    io_utils.consolidate_processing_output(
+                        time_segment, person_dets, face_data, processing_output[2]
+                    )
 
         stop_timing.set()
         elapsed_time_logs.join()

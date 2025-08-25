@@ -359,7 +359,7 @@ def upload_data(credentials, max_workers=8):
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for root, _, files in os.walk(output_dir):
                 for file in files:
-                    if file.endswith('.mp4'):
+                    if file.endswith(('.mp4', '.gitkeep')):
                         continue
                     file_path = os.path.join(root, file)
                     object_key = file
@@ -379,19 +379,45 @@ def load_processing_output(time_segment):
     output_dir = os.path.join(project_root, 'files/output/')
 
     person_det_files = sorted(Path(output_dir).glob(f'{time_segment}_*_person_dets.parquet'))
-    region_log_files = sorted(Path(output_dir).glob(f'{time_segment}_*_region_log.parquet'))
-
     person_det_data = pd.concat([pd.read_parquet(f) for f in person_det_files], ignore_index=True)
-    region_log_data = pd.concat([pd.read_parquet(f) for f in region_log_files], ignore_index=True)
 
     face_files = sorted(Path(output_dir).glob(f'{time_segment}_*_faces.parquet'))
-
     if not face_files:
         face_data = pd.DataFrame()
     else:
         face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
 
+    region_log_files = sorted(Path(output_dir).glob(f'{time_segment}_*_region_log.parquet'))
+    region_log_data = pd.concat([pd.read_parquet(f) for f in region_log_files], ignore_index=True)
+
     return person_det_data, face_data, region_log_data, 
+
+
+def consolidate_processing_output(
+    time_segment, person_det_data, face_data, region_log_data
+):
+    project_root = get_project_root()
+    output_dir = os.path.join(project_root, 'files/output')
+
+    starting_path = os.path.join(output_dir, time_segment)
+
+    data = {
+        f'{starting_path}_person_dets.csv' : person_det_data,
+        f'{starting_path}_faces.csv'       : face_data,
+        f'{starting_path}_region_log.csv'  : region_log_data,
+    }
+    for path, df in data.items():
+        df.to_csv(path, index=False)
+
+    shard_patterns = [
+        Path(output_dir).glob(f'{time_segment}_*_person_dets.parquet'),
+        Path(output_dir).glob(f'{time_segment}_*_faces.parquet'),
+        Path(output_dir).glob(f'{time_segment}_*_region_log.parquet'),
+    ]
+
+    for pattern_results in shard_patterns:
+        for path in pattern_results:
+            path.unlink()
 
 
 def parquet_to_csv(input_path: str = os.path.expanduser('~/Downloads'), remove=True):
