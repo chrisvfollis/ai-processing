@@ -23,12 +23,14 @@ logger = log_utils.get_logger(__name__)
 
 
 def find_best_event_images(
-    time_segment: str, presence_df: pd.DataFrame, face_data: pd.DataFrame, trk_dets: pd.DataFrame,
-    min_frame_delta: int = 100, min_overlap: float = 0.4
+    time_segment: str,
+    presence_df: pd.DataFrame,
+    face_data: pd.DataFrame,
+    trk_dets: pd.DataFrame,
+    min_frame_delta: int = 100,
+    min_overlap: float = 0.4,
 ) -> tuple[pd.DataFrame, dict]:
     project_root = io_utils.get_project_root()
-
-    output = []
 
     present_idents = presence_df[presence_df['present_flag']]['identity'].values
     face_data = face_data[face_data['identity'].isin(present_idents)].copy()
@@ -36,8 +38,22 @@ def find_best_event_images(
     face_data['cam_id'] = face_data['cam_id'].astype(int)
     trk_dets['cam_id'] = trk_dets['cam_id'].astype(int)
 
+    output = []
     for identity, id_faces in face_data.groupby('identity'):
-        sorted_faces = id_faces.sort_values('distance').reset_index(drop=True)
+        sort_cols, sort_asc = [], []
+        if 'vote_signal' in id_faces.columns:
+            sort_cols += ['vote_signal']; sort_asc += [False]
+        if 'score' in id_faces.columns:
+            sort_cols += ['score'];       sort_asc += [False]
+        if 'confidence' in id_faces.columns:
+            sort_cols += ['confidence'];  sort_asc += [False]
+        if 'distance' in id_faces.columns:
+            sort_cols += ['distance'];    sort_asc += [True]
+
+        sorted_faces = (
+            id_faces.sort_values(sort_cols, ascending=sort_asc)
+            .reset_index(drop=True)
+        )
 
         selected_faces = []
 
@@ -211,8 +227,12 @@ def extract_and_save_event_images(
 
 
 def global_id_event_imgs(
-    time_segment, presence_df, face_data, trk_dets, credentials,
-    min_frame_delta: int = 100
+    time_segment: str,
+    presence_df: pd.DataFrame,
+    face_data: pd.DataFrame,
+    trk_dets: pd.DataFrame,
+    credentials: tuple,
+    min_frame_delta: int = 100,
 ) -> pd.DataFrame:
     event_imgs_df, video_paths = find_best_event_images(
         time_segment, presence_df, face_data, trk_dets, min_frame_delta
