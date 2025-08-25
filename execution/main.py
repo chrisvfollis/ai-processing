@@ -356,10 +356,16 @@ def main(
             else:
                 logger.progress('Generating event images...')
                 event_imgs_df = results.images.global_id_event_imgs(
-                    time_segment, presence_df, filtered_faces, trk_dets,
-                    credentials, min_frame_delta=60
+                    time_segment,
+                    presence_df,
+                    filtered_faces,
+                    trk_dets,
+                    credentials,
+                    min_frame_delta=60.
                 )
-                results.records.save_attendance(time_segment, presence_df, event_imgs_df)
+                results.records.save_attendance(
+                    time_segment, presence_df, event_imgs_df
+                )
                 
                 if save_all_data:
                     id_results_paths = [

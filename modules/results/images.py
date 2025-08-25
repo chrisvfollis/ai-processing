@@ -229,13 +229,13 @@ def extract_and_save_event_images(
 def global_id_event_imgs(
     time_segment: str,
     presence_df: pd.DataFrame,
-    face_data: pd.DataFrame,
+    filtered_face_data: pd.DataFrame,
     trk_dets: pd.DataFrame,
     credentials: tuple,
     min_frame_delta: int = 100,
 ) -> pd.DataFrame:
     event_imgs_df, video_paths = find_best_event_images(
-        time_segment, presence_df, face_data, trk_dets, min_frame_delta
+        time_segment, presence_df, filtered_face_data, trk_dets, min_frame_delta
     )
     extract_and_save_event_images(event_imgs_df, video_paths, credentials)
 
