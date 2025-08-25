@@ -26,9 +26,9 @@ def find_best_event_images(
     time_segment: str,
     presence_df: pd.DataFrame,
     face_data: pd.DataFrame,
-    trk_dets: pd.DataFrame,
+    person_dets: pd.DataFrame,
     min_frame_delta: int = 100,
-    min_overlap: float = 0.4,
+    min_overlap: float = 0.10,
 ) -> tuple[pd.DataFrame, dict]:
     project_root = io_utils.get_project_root()
 
@@ -36,20 +36,15 @@ def find_best_event_images(
     face_data = face_data[face_data['identity'].isin(present_idents)].copy()
 
     face_data['cam_id'] = face_data['cam_id'].astype(int)
-    trk_dets['cam_id'] = trk_dets['cam_id'].astype(int)
+    person_dets['cam_id'] = person_dets['cam_id'].astype(int)
 
     output = []
     for identity, id_faces in face_data.groupby('identity'):
         sort_cols, sort_asc = [], []
-        if 'vote_signal' in id_faces.columns:
-            sort_cols += ['vote_signal']; sort_asc += [False]
-        if 'score' in id_faces.columns:
-            sort_cols += ['score'];       sort_asc += [False]
-        if 'confidence' in id_faces.columns:
-            sort_cols += ['confidence'];  sort_asc += [False]
-        if 'distance' in id_faces.columns:
-            sort_cols += ['distance'];    sort_asc += [True]
-
+        sort_cols += ['score'];       sort_asc += [False]
+        sort_cols += ['distance'];    sort_asc += [True]
+        sort_cols += ['confidence'];  sort_asc += [False]
+        
         sorted_faces = (
             id_faces.sort_values(sort_cols, ascending=sort_asc)
             .reset_index(drop=True)
@@ -82,18 +77,23 @@ def find_best_event_images(
 
         for i, face in enumerate(selected_faces):
             event      = f'face{i+1}'
-            cam_id     = face['cam_id']
-            f_num      = face['f']
+            cam_id     = int(face['cam_id'])
+            f_num      = int(face['f'])
             face_box   = tuple(face[['x', 'y', 'w', 'h']].tolist())
 
             best_overlap, best_trk = 0.0, None
 
-            trk_candidates = trk_dets[
-                (trk_dets['cam_id'] == cam_id) & (trk_dets['f'] == f_num)
+            trk_candidates = person_dets[
+                (person_dets['cam_id'] == cam_id) & (person_dets['f'] == f_num)
             ]
+            logger.info(f'{len(trk_candidates)} detection candidates for cam_id {cam_id} frame {f_num}')
             for _, trk in trk_candidates.iterrows():
                 trk_box = tuple(trk[['x', 'y', 'w', 'h']].tolist())
                 overlap = bboxes.compute_overlap_ratio(face_box, trk_box)
+                if overlap >= min_overlap:
+                    logger.info(f'sufficient overlap: {overlap}')
+                else:
+                    logger.info(f'low overlap: {overlap}')
                 if (overlap >= min_overlap) and (overlap > best_overlap):
                     best_overlap, best_trk = overlap, trk
 
@@ -150,12 +150,12 @@ def find_best_event_images(
 
 
 def save_event_image(
-        img: np.ndarray,
-        object_key: Optional[str] = None,
-        credentials: Optional[tuple[str]] = None,
-        region: str = 'us-west-1',
-        bucket_name: str = 'timemanager-event-imgs',
-        event_imgs_dir: str = None,
+    img: np.ndarray,
+    object_key: Optional[str] = None,
+    credentials: Optional[tuple[str]] = None,
+    region: str = 'us-west-1',
+    bucket_name: str = 'timemanager-event-imgs',
+    event_imgs_dir: str = None,
 ) -> str | None:
     if img is None:
         print('Event image is NoneType')
@@ -230,12 +230,12 @@ def global_id_event_imgs(
     time_segment: str,
     presence_df: pd.DataFrame,
     filtered_face_data: pd.DataFrame,
-    trk_dets: pd.DataFrame,
+    person_dets: pd.DataFrame,
     credentials: tuple,
     min_frame_delta: int = 100,
 ) -> pd.DataFrame:
     event_imgs_df, video_paths = find_best_event_images(
-        time_segment, presence_df, filtered_face_data, trk_dets, min_frame_delta
+        time_segment, presence_df, filtered_face_data, person_dets, min_frame_delta
     )
     extract_and_save_event_images(event_imgs_df, video_paths, credentials)
 

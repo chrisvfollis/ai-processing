@@ -385,15 +385,13 @@ def load_processing_output(time_segment):
     region_log_data = pd.concat([pd.read_parquet(f) for f in region_log_files], ignore_index=True)
 
     face_files = sorted(Path(output_dir).glob(f'{time_segment}_*_faces.parquet'))
-    trk_files  = sorted(Path(output_dir).glob(f'{time_segment}_*_trk_dets.parquet'))
 
     if not face_files:
         face_data = pd.DataFrame()
     else:
         face_data = pd.concat([pd.read_parquet(f) for f in face_files], ignore_index=True)
-    trk_dets      = pd.concat([pd.read_parquet(f) for f in trk_files],  ignore_index=True)
 
-    return person_det_data, region_log_data, face_data, trk_dets, 
+    return person_det_data, face_data, region_log_data, 
 
 
 def parquet_to_csv(input_path: str = os.path.expanduser('~/Downloads'), remove=True):

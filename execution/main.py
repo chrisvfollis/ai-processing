@@ -55,8 +55,6 @@ def run_worker_pipeline(
     shop_uuid, filename = footage_record[1:3]
     time_segment, cam_id = utils.decode_vid_filename(filename)
 
-    logger.progress(f'Processing {filename}...')
-
     inference_cfg = {'model_cfg': model_cfg, 'device': device}
     if id_strategy == 'tracks':
         strategy_params = {
@@ -88,17 +86,15 @@ def run_worker_pipeline(
 
         inference = InferencePipeline(filename, **inference_cfg)
         
-        if inference.skim(f_cutoff) == False:
+        if inference.skim(conf_thresh=0.8, f_cutoff=f_cutoff) == False:
             io_utils.delete_s3_footage(object_key, credentials)
             return worker_pipeline_result
         
         person_detections, face_data = inference.run(batch_size=8, f_cutoff=f_cutoff)
 
-        tracking = TrackingPipeline(filename, person_detections)
-
-        active_trks, inactive_trks = tracking.run()
-
         if id_strategy == 'tracks':
+            tracking = TrackingPipeline(filename, person_detections)
+            active_trks, inactive_trks = tracking.run()
             tracking.filter_tracks()
             trk_detections, _ = tracking.format_track_data()
             try:
@@ -118,11 +114,12 @@ def run_worker_pipeline(
             results.records.save_tracks(
                 time_segment, cam_id, inactive_trks, tracking.fps
             )
-        elif id_strategy == 'presence':
-            trk_detections, _ = tracking.format_track_data()
+            tracking.save_run_info()
+            tracking.save_state()
+
+        elif id_strategy == 'presence':            
             output_data = {
                 'person_dets': inference.person_detection_df,
-                'trk_dets': trk_detections,
                 'region_log': pd.DataFrame(inference.region_log),
             }
             if (face_data is not None) and (not face_data.empty):
@@ -134,9 +131,6 @@ def run_worker_pipeline(
                 ))
 
         inference.save_run_info()
-        tracking.save_run_info()
-
-        tracking.save_state()
 
         n = None
         if done_counter is not None:
@@ -159,8 +153,9 @@ def run_worker_pipeline(
     finally:
         try:
             inference.close()
-            del inference, tracking
-            del person_detections, face_data, trk_detections
+            del inference, person_detections, face_data
+            if id_strategy == 'tracks':
+                del tracking, trk_detections
         except UnboundLocalError:
             pass
         except NameError as e:
@@ -303,7 +298,7 @@ def main(
         if id_strategy == 'presence':
             try:
                 processing_output = io_utils.load_processing_output(time_segment)
-                face_data, trk_dets = processing_output[2:]
+                person_dets, face_data = processing_output[:2]
             except ValueError:
                 logger.info('No results to process')
 
@@ -348,7 +343,7 @@ def main(
             if not (
                 ('identity' in presence_df.columns) and
                 (presence_df['identity'].notna().any()) and
-                ('cam_id' in trk_dets.columns)
+                ('cam_id' in person_dets.columns)
             ):
                 logger.warning(
                     'Skipping event image generation — no valid identities found'
@@ -359,7 +354,7 @@ def main(
                     time_segment,
                     presence_df,
                     filtered_faces,
-                    trk_dets,
+                    person_dets,
                     credentials,
                     min_frame_delta=60.
                 )
@@ -371,40 +366,12 @@ def main(
                     id_results_paths = [
                         os.path.join(output_dir, f'{time_segment}_{suffix}.csv')
                         for suffix in [
-                            'presence_summary', 'filtered_faces', 'trk_dets'
+                            'presence_summary', 'filtered_faces', 'person_dets'
                         ]
                     ]
                     presence_df.to_csv(id_results_paths[0], index=False)
                     filtered_faces.to_csv(id_results_paths[1], index=False)
-                    trk_dets.to_csv(id_results_paths[2], index=False)
-                    
-                    person_det_data, region_log_data = processing_output[:2]
-                    for filename in filenames:
-                        if not filename.endswith('.mp4'):
-                            continue
-
-                        _, cam_id = utils.decode_vid_filename(filename)
-                        cam_person_det_data = person_det_data.loc[person_det_data['cam_id'] == cam_id]
-                        cam_region_log_data = region_log_data.loc[region_log_data['cam_id'] == cam_id]
-                        cam_face_data = face_data.loc[face_data['cam_id'] == cam_id]
-                        cam_trk_dets  = trk_dets.loc[trk_dets['cam_id'] == cam_id]
-                        
-                        if cam_face_data.empty and cam_trk_dets.empty:
-                            continue
-
-                        # try:
-                        #     logger.info('Rendering video annotations...')
-                        #     render.video.global_id_output(
-                        #         filename,
-                        #         person_df = cam_person_det_data,
-                        #         face_df   = cam_face_data,
-                        #         trk_df    = cam_trk_dets,
-                        #         region_df = cam_region_log_data,
-                        #         f_cutoff  = f_cutoff,
-                        #     )
-                        #     logger.info(f'Annotated video saved')
-                        # except Exception as e:
-                        #     logger.exception(f'Failed to render annotated video for {filename}: {e}')
+                    person_dets.to_csv(id_results_paths[2], index=False)
 
         stop_timing.set()
         elapsed_time_logs.join()

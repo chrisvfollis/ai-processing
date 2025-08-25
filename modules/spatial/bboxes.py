@@ -47,14 +47,14 @@ def expand_bbox_asym(x1, y1, x2, y2, img_w, img_h, top=0.05, bottom=0.15, left=0
     return new_x1, new_y1, new_x2, new_y2
 
 
-def compute_overlap_ratio(boxA, boxB) -> float:
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
-    yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+def compute_overlap_ratio(face_bbox, person_bbox) -> float:
+    xA = max(face_bbox[0], person_bbox[0])
+    yA = max(face_bbox[1], person_bbox[1])
+    xB = min(face_bbox[0] + face_bbox[2], person_bbox[0] + person_bbox[2])
+    yB = min(face_bbox[1] + face_bbox[3], person_bbox[1] + person_bbox[3])
     
     interArea = max(0, xB - xA) * max(0, yB - yA)
-    faceArea = boxA[2] * boxA[3]
+    faceArea = face_bbox[2] * face_bbox[3]
     
     return interArea / (faceArea + 1e-6)
 

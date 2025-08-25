@@ -129,9 +129,9 @@ class InferencePipeline:
                 })
         return pd.DataFrame(person_dets)
 
-    def skim(self, f_cutoff: Optional[int] = None):
+    def skim(self, conf_thresh: float = 0.8, f_cutoff: Optional[int] = None):
         f_cutoff = f_cutoff or self.f_total
-        logger.progress(f'Skimming footage from Camera {self.cam_id}...')
+        logger.progress(f'Skimming cam_id {self.cam_id}...')
         log_utils.press_stopwatch(self, 'skim_time')
 
         cap = cv2.VideoCapture(self.video_path)
@@ -146,11 +146,11 @@ class InferencePipeline:
             ret, frame = cap.read()
 
             if (not ret) or (current_frame == prev_frame):
-                logger.info(f'Nothing to process in {self.video_file}')
+                logger.info(f'No detections in cam_id {self.cam_id}')
                 break
 
             if f_num % stride == 0:
-                detections = self.yolox.inference(frame, conf_thresh=0.78)
+                detections = self.yolox.inference(frame, conf_thresh=conf_thresh)
                 del frame
                 if detections:
                     result = True
@@ -180,7 +180,7 @@ class InferencePipeline:
             self.prog_interval = f_cutoff
             
         self.progress = 0
-        logger.progress(f'Running inference pipeline for cam_id {self.cam_id}...')
+        logger.progress(f'Running inference on cam_id {self.cam_id}...')
         log_utils.press_stopwatch(self, 'primary_run_time')
 
         while self.f_num < f_cutoff:
@@ -264,7 +264,7 @@ class InferencePipeline:
         
         person_detections = {}
         for idx, detections in enumerate(yolo_output):
-            f_num = frame_data['start'] + (idx * self.stride)
+            f_num = frame_data['frame_numbers'][idx]
 
             if isinstance(detections, (torch.Tensor, np.ndarray)):
                 person_detections[f_num] = detections
@@ -283,6 +283,7 @@ class InferencePipeline:
         log_progress_update = False
         batch_start = self.f_num
         frames = []
+        frame_numbers = []
         id_frames = {}
 
         log_utils.press_stopwatch(self, 'read_time')
@@ -297,9 +298,10 @@ class InferencePipeline:
                 continue
 
             img = frame.to_ndarray(format='bgr24')  # Converts to BGR numpy array
-
+            
             if self.f_num % self.stride == 0:
                 frames.append(img)
+                frame_numbers.append(self.f_num)
                 idx = len(frames) - 1
                 if self.f_num % self.id_stride == 0:
                     id_frames[idx] = {
@@ -320,6 +322,7 @@ class InferencePipeline:
             'start': batch_start,
             'end': self.f_num,
             'frames': frames,
+            'frame_numbers': frame_numbers,
             'id_frames': id_frames,
         }, log_progress_update
 

@@ -271,13 +271,14 @@ def s3_list_delete(
 
 
 def s3_time_delete(
-        start: datetime | list = None,
-        end: datetime | list = None,
-        shop_id: str = None,
-        region: str = 'us-west-1',
-        bucket: str = None,
-        s3_client: list = None,
-        use_key_timestamp: bool = False,
+    start: datetime | list = None,
+    end: datetime | list = None,
+    shop_id: str = None,
+    region: str = 'us-west-1',
+    bucket: str = None,
+    s3_client: list = None,
+    use_key_timestamp: bool = False,
+    dequeue: bool = True,
 ):
     '''
     Args:
@@ -369,8 +370,9 @@ def s3_time_delete(
         bucket,
         s3_client,
     )
-    for timestamp in timestamps_to_clear:
-        io_utils.dequeue_segment(shop_id, timestamp)
+    if dequeue == True:
+        for timestamp in timestamps_to_clear:
+            io_utils.dequeue_segment(shop_id, timestamp)
 
     return results
 
