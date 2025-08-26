@@ -233,12 +233,6 @@ def log_failed_workers(pool, initial_pids, async_result, logger=None):
 
 def memory_usage(focus, n=5, threshold=None, log_filter_key=None, logger=None):
     if focus == 'processes':
-        def _log_largest_processes(process_list, n, logger):
-            if process_list:
-                logger.info(f'Largest processes:')
-                for pid, name, mem in processes[:n]:
-                    logger.info(f'PID {pid} - {name}: {mem:.2f} MB')
-
         processes = []
         for p in psutil.process_iter(
             attrs=['pid', 'name', 'memory_info'], ad_value=None
@@ -254,21 +248,20 @@ def memory_usage(focus, n=5, threshold=None, log_filter_key=None, logger=None):
 
         processes.sort(key=lambda x: x[2], reverse=True)
 
+        def _log_largest_processes(process_list, n, logger):
+            if process_list:
+                logger.info(f'Largest processes:')
+                for pid, name, mem in processes[:n]:
+                    logger.info(f'PID {pid} - {name}: {mem:.2f} MB')
+
         total_process_memory = sum([process[2] for process in processes])
         if (threshold is None) or (total_process_memory > threshold):
-            _log_largest_processes(processes, n)
+            _log_largest_processes(processes, n, logger)
 
         return total_process_memory
 
     elif focus == 'objects':
-        def _log_largest_objects(object_list, n, obj_category):
-            if object_list:
-                logger.info(f'Largest {obj_category} objects:')
-                for obj, size in object_list[:n]:
-                    logger.info(f'Size: {size} MB | Type: {type(obj)}')
-
-            else:
-                logger.info(f'No {obj_category} objects found')
+        gc.collect()
 
         def _safe_sizeof(object):
             '''
@@ -280,8 +273,6 @@ def memory_usage(focus, n=5, threshold=None, log_filter_key=None, logger=None):
                 return round((raw_size / 1e6), 2)
             except TypeError:
                 return 0
-
-        gc.collect()
 
         standard_objects = sorted(
             [(obj, _safe_sizeof(obj)) for obj in gc.get_objects()],
@@ -299,6 +290,15 @@ def memory_usage(focus, n=5, threshold=None, log_filter_key=None, logger=None):
         gpu_obj_totals = [(torch.cuda.memory_allocated() / 1e6)]
         
         total_obj_memory = sum(cpu_obj_totals) + sum(gpu_obj_totals)
+
+        def _log_largest_objects(object_list, n, obj_category):
+            if object_list:
+                logger.info(f'Largest {obj_category} objects:')
+                for obj, size in object_list[:n]:
+                    logger.info(f'Size: {size} MB | Type: {type(obj)}')
+
+            else:
+                logger.info(f'No {obj_category} objects found')
 
         if (
             (threshold is None) or
