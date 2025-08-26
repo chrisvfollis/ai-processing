@@ -62,42 +62,115 @@ def extract_and_save_event_images(
     event_imgs_df: pd.DataFrame,
     video_paths: dict[int, str],
     credentials: tuple[str, str],
+    tol_frames: float = 0.5,
+    fallback_fps: float = 20.0,
+    max_seek_decode_s: float = 2.0,
 ):
+    def _resolve_fps(stream) -> float:
+        if stream.average_rate and stream.average_rate.denominator:
+            return float(stream.average_rate)
+        if stream.guessed_rate and stream.guessed_rate.denominator:
+            return float(stream.guessed_rate)
+        return fallback_fps
+
     for cam_id, cam_df in event_imgs_df.groupby('cam_id'):
-        logger.info(f'Extracting images from cam_id {cam_id}')
         video_path = video_paths.get(cam_id)
         if not video_path or not os.path.exists(video_path):
             print(f'Video path does not exist: {video_path}')
             continue
 
-        frame_crop_map = {}
+        frame_rows: dict[int, list] = {}
         for _, row in cam_df.iterrows():
-            f = row['f']
-            frame_crop_map.setdefault(f, []).append(row)
+            f = int(row['f'])
+            frame_rows.setdefault(f, []).append(row)
+        target_frames = sorted(frame_rows.keys())
 
-        container = av.open(video_path)
-        stream = container.streams.video[0]
-        stream.thread_type = 'AUTO'
+        with av.open(video_path) as container:
+            stream = container.streams.video[0]
+            try:
+                stream.thread_type = 'AUTO'
+            except Exception:
+                pass
 
-        for idx, frame in enumerate(container.decode(stream)):
-            if idx not in frame_crop_map:
+            fps = _resolve_fps(stream)
+            tb = float(stream.time_base) if stream.time_base is not None else None
+            tol_s = max(tol_frames / max(fps, 1e-6), 0.01)
+
+            if tb is None:
+                max_needed = max(target_frames)
+                for idx, frame in enumerate(container.decode(stream)):
+                    if idx in frame_rows:
+                        img = frame.to_ndarray(format='bgr24')
+                        H, W = img.shape[:2]
+                        for row in frame_rows[idx]:
+                            x1 = max(0, int(row['x']))
+                            y1 = max(0, int(row['y']))
+                            x2 = min(int(row['x'] + row['w']), W)
+                            y2 = min(int(row['y'] + row['h']), H)
+                            if x2 <= x1 or y2 <= y1:
+                                continue
+                            crop = img[y1:y2, x1:x2]
+                            save_event_image(
+                                img=crop, object_key=row['image'],
+                                credentials=credentials
+                            )
+                    if idx > max_needed:
+                        break
                 continue
 
-            img = frame.to_ndarray(format='bgr24')
-            for row in frame_crop_map[idx]:
-                x1 = max(0, row['x'])
-                y1 = max(0, row['y'])
-                x2 = min(row['x'] + row['w'], img.shape[1])
-                y2 = min(row['y'] + row['h'], img.shape[0])
-                crop = img[y1:y2, x1:x2]
+            cap_frames = int(max_seek_decode_s * fps) + 10
+            for f_idx in target_frames:
+                target_sec = f_idx / fps
+                target_ts = int(target_sec / tb)
 
-                save_event_image(
-                    img=crop,
-                    object_key=row['image'],
-                    credentials=credentials,
-                )
-        container.close()
-    return
+                try:
+                    container.seek(
+                        target_ts, any_frame=False, backward=True,
+                        stream=stream
+                    )
+                except av.AVError:
+                    continue
+
+                best_frame = None
+                best_dt = float('inf')
+                decoded = 0
+
+                for frame in container.decode(stream):
+                    if frame.pts is None:
+                        continue
+                    t = frame.pts * tb
+                    dt = t - target_sec
+                    decoded += 1
+
+                    if dt >= -tol_s:
+                        best_frame = frame
+                        break
+
+                    adt = abs(dt)
+                    if adt < best_dt:
+                        best_dt = adt
+                        best_frame = frame
+
+                    if decoded >= cap_frames:
+                        break
+
+                if best_frame is None:
+                    continue
+
+                img = best_frame.to_ndarray(format='bgr24')
+                H, W = img.shape[:2]
+                for row in frame_rows[f_idx]:
+                    x1 = max(0, int(row['x']))
+                    y1 = max(0, int(row['y']))
+                    x2 = min(int(row['x'] + row['w']), W)
+                    y2 = min(int(row['y'] + row['h']), H)
+                    if x2 <= x1 or y2 <= y1:
+                        continue
+                    crop = img[y1:y2, x1:x2]
+                    save_event_image(
+                        img=crop, object_key=row['image'],
+                        credentials=credentials
+                    )
 
 
 def find_best_event_images(
